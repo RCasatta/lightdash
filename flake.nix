@@ -52,8 +52,13 @@
         craneLibLLvmTools = craneLib.overrideToolchain
           (fenix.packages.${system}.complete.withComponents [
             "cargo"
+            "clippy"
+            "rust-src"
+            "rust-std"
+            "rustfmt"
             "llvm-tools"
             "rustc"
+            "rust-analyzer"
           ]);
 
         # Build *just* the cargo dependencies, so we can reuse

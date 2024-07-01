@@ -2,13 +2,14 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 fn main() {
+    let cat = get_info();
+    let info: GetInfo = serde_json::from_str(&cat).unwrap();
+
     let zcat = list_channels();
-    println!("len:{}", zcat.len());
     let channels: ListChannels = serde_json::from_str(&zcat).unwrap();
     println!("channels:{}", channels.channels.len());
 
     let zcat = list_nodes();
-    println!("len:{}", zcat.len());
     let nodes: ListNodes = serde_json::from_str(&zcat).unwrap();
     println!("nodes:{}", nodes.nodes.len());
 
@@ -20,21 +21,36 @@ fn main() {
         .collect();
 
     let cat = list_funds();
-    println!("len:{}", cat.len());
     let funds: ListFunds = serde_json::from_str(&cat).unwrap();
     println!("my channels:{}", funds.channels.len());
 
-    let channels_by_source: HashMap<_, _> =
-        channels.channels.iter().map(|e| (&e.source, e)).collect();
+    let channels_by_id: HashMap<_, _> = channels
+        .channels
+        .iter()
+        .map(|e| ((&e.short_channel_id, &e.source), e))
+        .collect();
 
+    let mut lines = std::collections::BTreeMap::new();
     for c in funds.channels {
-        println!(
-            "{} {} perc:{}",
-            c.peer_id,
-            nodes_by_id.get(&c.peer_id).unwrap_or(&&"".to_string()),
-            c.perc()
+        let perc = c.perc();
+        let our_fee = channels_by_id
+            .get(&(&c.short_channel_id, &info.id))
+            .map(|e| e.fee_per_millionth.to_string())
+            .unwrap_or("".to_string());
+        let s = format!(
+            "{our_fee:>5} {:>15} {:>3}% {} ",
+            c.short_channel_id,
+            c.perc(),
+            c.alias_or_id(&nodes_by_id),
         );
+        lines.insert(perc, s);
     }
+    for line in lines.values() {
+        println!("{line}");
+    }
+    let zcat = list_forwards();
+    let forwards: ListForwards = serde_json::from_str(&zcat).unwrap();
+    println!("forwards:{}", forwards.forwards.len());
 }
 
 fn list_funds() -> String {
@@ -61,18 +77,38 @@ fn list_channels() -> String {
     }
 }
 
+fn list_forwards() -> String {
+    if cfg!(debug_assertions) {
+        cmd_result("zcat", &["test-json/listforwards.gz"])
+    } else {
+        cmd_result("lightning-cli", &["listforwards"])
+    }
+}
+
+fn get_info() -> String {
+    if cfg!(debug_assertions) {
+        cmd_result("cat", &["test-json/getinfo"])
+    } else {
+        cmd_result("lightning-cli", &["getinfo"])
+    }
+}
+
 fn cmd_result(cmd: &str, args: &[&str]) -> String {
-    println!("executing `{cmd}`");
     let data = std::process::Command::new(cmd).args(args).output().unwrap();
     std::str::from_utf8(&data.stdout).unwrap().to_string()
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
+struct GetInfo {
+    id: String,
+}
+
+#[derive(Deserialize, Debug)]
 struct ListChannels {
     channels: Vec<Channel>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct Channel {
     source: String,
     destination: String,
@@ -88,19 +124,19 @@ struct Channel {
     features: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct ListNodes {
     nodes: Vec<Node>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct Node {
     nodeid: String,
     alias: Option<String>,
     last_timestamp: Option<u64>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct ListFunds {
     channels: Vec<Fund>,
 }
@@ -122,4 +158,30 @@ impl Fund {
     fn perc(&self) -> u64 {
         ((self.our_amount_msat as f64 / self.amount_msat as f64) * 100.0).floor() as u64
     }
+
+    fn alias_or_id(&self, m: &HashMap<&String, &String>) -> String {
+        m.get(&self.peer_id)
+            .unwrap_or(&&format!(
+                "{}...{}",
+                &self.peer_id[0..8],
+                &self.peer_id[58..]
+            ))
+            .to_string()
+    }
+}
+
+#[derive(Deserialize)]
+struct ListForwards {
+    forwards: Vec<Forward>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Forward {
+    in_channel: String,
+    out_channel: Option<String>,
+    in_msat: u64,
+    out_msat: Option<u64>,
+    status: String,
+    received_time: f64,
+    resolved_time: Option<f64>,
 }

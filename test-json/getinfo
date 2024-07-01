@@ -1,0 +1,39 @@
+{
+   "id": "02c095d069538f96bf14c5f90f6c0851bdf354a0ec86039a24bf38a73f705adc2c",
+   "alias": "LOUDTOLL",
+   "color": "02c095",
+   "num_peers": 10,
+   "num_pending_channels": 0,
+   "num_active_channels": 10,
+   "num_inactive_channels": 1,
+   "address": [
+      {
+         "type": "ipv4",
+         "address": "51.158.62.115",
+         "port": 9735
+      },
+      {
+         "type": "torv3",
+         "address": "ykubilhxbv2xpsnvunmduwew7p22n6jush2sjipcr5sfzyrshwpksayd.onion",
+         "port": 9735
+      }
+   ],
+   "binding": [
+      {
+         "type": "ipv4",
+         "address": "10.0.3.1",
+         "port": 9735
+      }
+   ],
+   "version": "v23.08.1",
+   "blockheight": 850276,
+   "network": "bitcoin",
+   "fees_collected_msat": 7623513,
+   "lightning-dir": "/home/casatta/.lightning/bitcoin",
+   "our_features": {
+      "init": "08a0000a0269a2",
+      "node": "88a0000a0269a2",
+      "channel": "",
+      "invoice": "02000002024100"
+   }
+}
