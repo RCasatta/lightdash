@@ -1,0 +1,223 @@
+{
+   "accounts": [
+      {
+         "account": "wallet",
+         "balances": [
+            {
+               "balance_msat": 0,
+               "coin_type": "bc"
+            }
+         ]
+      },
+      {
+         "account": "4af5ce9470b71ac01b71c8d24c2034b0abc3b0486f74d871fbff3644d978fc18",
+         "peer_id": "02b873b95a7b654fd70aa7af6f3d37bff83317f5db6a4f32c9b45b6f4cb1b065dc",
+         "we_opened": true,
+         "account_closed": true,
+         "account_resolved": true,
+         "resolved_at_block": 772466,
+         "balances": [
+            {
+               "balance_msat": 0,
+               "coin_type": "bc"
+            }
+         ]
+      },
+      {
+         "account": "2ce29a547c4ab8da4a2a61658e85a394cc086e40bee917837fe856f2005d5c91",
+         "peer_id": "03419fb20744f6ab0ebdc26804011daacdbbfdbdf60d255c3d849a57aecf862a80",
+         "we_opened": false,
+         "account_closed": true,
+         "account_resolved": false,
+         "balances": [
+            {
+               "balance_msat": 0,
+               "coin_type": "bc"
+            }
+         ]
+      },
+      {
+         "account": "bb2666772f572621cc81130f8bad796dbdeb9c0532929432deffc346d070b198",
+         "peer_id": "0259156aceaa943d8831fcc5252e3fbc80022256c56d39d430a27d7b59aa56c6b7",
+         "we_opened": false,
+         "account_closed": false,
+         "account_resolved": false,
+         "balances": [
+            {
+               "balance_msat": 93265063,
+               "coin_type": "bc"
+            }
+         ]
+      },
+      {
+         "account": "f20aca32a113ebc2320c4d155a9bc78b923bdcb1f96b3d3be9b91cb62db0c19b",
+         "peer_id": "027a507b034b1639603f2a4879493ea2f1004f3cf6831dc5dce193437d0d3e9ea6",
+         "we_opened": true,
+         "account_closed": true,
+         "account_resolved": false,
+         "balances": [
+            {
+               "balance_msat": 0,
+               "coin_type": "bc"
+            }
+         ]
+      },
+      {
+         "account": "f1bb37b947d882aef32641b0b26c17cf75c7917872f12615aad6dd92935c4aea",
+         "peer_id": "031371bfd9e935c86bf5fe814d8e6cbc8efe50a46d711f75837a32e35b66494153",
+         "we_opened": false,
+         "account_closed": true,
+         "account_resolved": true,
+         "resolved_at_block": 771259,
+         "balances": [
+            {
+               "balance_msat": 0,
+               "coin_type": "bc"
+            }
+         ]
+      },
+      {
+         "account": "ba0a064d23b3e4ef9a1e41ae4f2faebb1ed96916d9783852d11c792fcf93d2a6",
+         "peer_id": "029c1f31132d20d8242a75d09cc96a77fbe88026acf292c63714835b2b6c42eb1a",
+         "we_opened": false,
+         "account_closed": true,
+         "account_resolved": false,
+         "balances": [
+            {
+               "balance_msat": 0,
+               "coin_type": "bc"
+            }
+         ]
+      },
+      {
+         "account": "7262ad40c17b95d580ad9bc1e41a7344c62d9743c2b8c3561582c461eef61ead",
+         "peer_id": "0254e080f8ac34e1363556b901aa0dca1c36e1af8320c6ad7661de9505373a36d1",
+         "we_opened": false,
+         "account_closed": false,
+         "account_resolved": false,
+         "balances": [
+            {
+               "balance_msat": 975570612,
+               "coin_type": "bc"
+            }
+         ]
+      },
+      {
+         "account": "c16b5b1a1ad2eacb4084ffabfeea8254f4bf31b4d82c2c6288794cff2ff160ed",
+         "peer_id": "029d287e25680d38a5e10ee273a7164a129d5bb48e3b3622bb5397471946cd255d",
+         "we_opened": false,
+         "account_closed": false,
+         "account_resolved": false,
+         "balances": [
+            {
+               "balance_msat": 13926422,
+               "coin_type": "bc"
+            }
+         ]
+      },
+      {
+         "account": "af489c60b96df9cf1f337a29fe08b3469ec906c8f086274c26c848f519f782bf",
+         "peer_id": "0337694505123a12a8fadd95523dcc235898ad3b80a06e4a63ca26fed68dd0d17c",
+         "we_opened": false,
+         "account_closed": false,
+         "account_resolved": false,
+         "balances": [
+            {
+               "balance_msat": 981380190,
+               "coin_type": "bc"
+            }
+         ]
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "peer_id": "034d4fa84df92a846b17d8ea32064cb0dbb76ac55a64627a827d0cfb1a04ed0d05",
+         "we_opened": true,
+         "account_closed": false,
+         "account_resolved": false,
+         "balances": [
+            {
+               "balance_msat": 274373548,
+               "coin_type": "bc"
+            }
+         ]
+      },
+      {
+         "account": "1bf551d967561956ca04e25d214352b9e8a33aee878081972cc15f9710848ed9",
+         "peer_id": "02a66ceb1599b29ecce12b3893c46b0caffbfb7c1732db6084dfce49d40e383307",
+         "we_opened": false,
+         "account_closed": false,
+         "account_resolved": false,
+         "balances": [
+            {
+               "balance_msat": 7015775,
+               "coin_type": "bc"
+            }
+         ]
+      },
+      {
+         "account": "6feb1c546b8dcee8e33c9d950a8041476f659ad268f3577d4acaf7ed1b5e03dc",
+         "peer_id": "032b01b7585f781420cd4148841a82831ba37fa952342052cec16750852d4f2dd9",
+         "we_opened": true,
+         "account_closed": false,
+         "account_resolved": false,
+         "balances": [
+            {
+               "balance_msat": 1000000000,
+               "coin_type": "bc"
+            }
+         ]
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "peer_id": "03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f",
+         "we_opened": true,
+         "account_closed": false,
+         "account_resolved": false,
+         "balances": [
+            {
+               "balance_msat": 63097160,
+               "coin_type": "bc"
+            }
+         ]
+      },
+      {
+         "account": "643457fc9e65d18211a5cd0269705540ff3e7488491fe417e75c4d7625677e5c",
+         "peer_id": "02ab791b29a4631f805e37892e2dc90eb371262b4726786d84f4146eeeaad682c1",
+         "we_opened": false,
+         "account_closed": false,
+         "account_resolved": false,
+         "balances": [
+            {
+               "balance_msat": 26168949,
+               "coin_type": "bc"
+            }
+         ]
+      },
+      {
+         "account": "ffb80f7165e5f2d1d99d023611d8b1882b6cf742c2d2079798f9dfb1e63b4834",
+         "peer_id": "02b72157c7fa1463bd358169eb02e44466a5f10a2f4a7c5e015865e0eaad469b83",
+         "we_opened": true,
+         "account_closed": false,
+         "account_resolved": false,
+         "balances": [
+            {
+               "balance_msat": 1917082750,
+               "coin_type": "bc"
+            }
+         ]
+      },
+      {
+         "account": "c16aa45dde535ee17bf4c2a11532e279e31ee47288a6ae905ed00fe0cfbc71b3",
+         "peer_id": "030b5d1a2f2502eb14f7dfccd6de8d227cc533fe14214c80ecb5dd9bd6ef9dc8e9",
+         "we_opened": true,
+         "account_closed": false,
+         "account_resolved": false,
+         "balances": [
+            {
+               "balance_msat": 3179753878,
+               "coin_type": "bc"
+            }
+         ]
+      }
+   ]
+}

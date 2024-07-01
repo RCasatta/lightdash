@@ -1,0 +1,1931 @@
+{
+   "income_events": [
+      {
+         "account": "4af5ce9470b71ac01b71c8d24c2034b0abc3b0486f74d871fbff3644d978fc18",
+         "tag": "journal_entry",
+         "credit_msat": 0,
+         "debit_msat": 65624043,
+         "currency": "bc",
+         "timestamp": 1673347242
+      },
+      {
+         "account": "2ce29a547c4ab8da4a2a61658e85a394cc086e40bee917837fe856f2005d5c91",
+         "tag": "journal_entry",
+         "credit_msat": 410153641,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1673347242
+      },
+      {
+         "account": "bb2666772f572621cc81130f8bad796dbdeb9c0532929432deffc346d070b198",
+         "tag": "journal_entry",
+         "credit_msat": 93265063,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1673347242
+      },
+      {
+         "account": "f20aca32a113ebc2320c4d155a9bc78b923bdcb1f96b3d3be9b91cb62db0c19b",
+         "tag": "journal_entry",
+         "credit_msat": 0,
+         "debit_msat": 868531816,
+         "currency": "bc",
+         "timestamp": 1673347242
+      },
+      {
+         "account": "f1bb37b947d882aef32641b0b26c17cf75c7917872f12615aad6dd92935c4aea",
+         "tag": "journal_entry",
+         "credit_msat": 325798867,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1673347242
+      },
+      {
+         "account": "ba0a064d23b3e4ef9a1e41ae4f2faebb1ed96916d9783852d11c792fcf93d2a6",
+         "tag": "journal_entry",
+         "credit_msat": 511468038,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1673347242
+      },
+      {
+         "account": "7262ad40c17b95d580ad9bc1e41a7344c62d9743c2b8c3561582c461eef61ead",
+         "tag": "journal_entry",
+         "credit_msat": 921147181,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1673347242
+      },
+      {
+         "account": "c16b5b1a1ad2eacb4084ffabfeea8254f4bf31b4d82c2c6288794cff2ff160ed",
+         "tag": "journal_entry",
+         "credit_msat": 37728373,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1673347242
+      },
+      {
+         "account": "af489c60b96df9cf1f337a29fe08b3469ec906c8f086274c26c848f519f782bf",
+         "tag": "journal_entry",
+         "credit_msat": 0,
+         "debit_msat": 494224524,
+         "currency": "bc",
+         "timestamp": 1673347242
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "journal_entry",
+         "credit_msat": 0,
+         "debit_msat": 47253623,
+         "currency": "bc",
+         "timestamp": 1673347242
+      },
+      {
+         "account": "1bf551d967561956ca04e25d214352b9e8a33aee878081972cc15f9710848ed9",
+         "tag": "journal_entry",
+         "credit_msat": 7015775,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1673347242
+      },
+      {
+         "account": "wallet",
+         "tag": "journal_entry",
+         "credit_msat": 5448874000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1673347243
+      },
+      {
+         "account": "af489c60b96df9cf1f337a29fe08b3469ec906c8f086274c26c848f519f782bf",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1673348765,
+         "description": "pay2.email",
+         "payment_id": "8fad58519ba091fcf9486f370c4dc334060bbcb4c53c74a98a5925cf72968931"
+      },
+      {
+         "account": "c16b5b1a1ad2eacb4084ffabfeea8254f4bf31b4d82c2c6288794cff2ff160ed",
+         "tag": "invoice",
+         "credit_msat": 222000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1673349010,
+         "description": "⚡",
+         "payment_id": "5d7e6fe7d46581645835681283ede86016f3cefadf61c9eec10a2810ccc5a7cd"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "invoice",
+         "credit_msat": 0,
+         "debit_msat": 6226000,
+         "currency": "bc",
+         "timestamp": 1673354302,
+         "description": "Paid to hack.bs (Order ID: crowdfund-app_e3DTKDJajGrw5brS6V6fcZsDk4g)",
+         "payment_id": "a788fcd5b189facd042326dea8fc59f955df4fe6a5bed2438dab49a5716b8530"
+      },
+      {
+         "account": "c16b5b1a1ad2eacb4084ffabfeea8254f4bf31b4d82c2c6288794cff2ff160ed",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1673368047,
+         "description": "pay2.email",
+         "payment_id": "2e9506b4ad021b58d48d511ab41d0a59c9fa31bca69ddd413ee48cebcb09e059"
+      },
+      {
+         "account": "af489c60b96df9cf1f337a29fe08b3469ec906c8f086274c26c848f519f782bf",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1673369488,
+         "description": "pay2.email",
+         "payment_id": "3be98cd1ec4acdd763923cd6b7ddd14e9ace14933074fabc7792daae93c485e0"
+      },
+      {
+         "account": "af489c60b96df9cf1f337a29fe08b3469ec906c8f086274c26c848f519f782bf",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1673369906,
+         "description": "pay2.email",
+         "payment_id": "f315cb6f81ee72a068bfed7f6b919de0647b1f8eadc25dcfd79e85accdb60dc6"
+      },
+      {
+         "account": "af489c60b96df9cf1f337a29fe08b3469ec906c8f086274c26c848f519f782bf",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1673527308,
+         "description": "pay2.email",
+         "payment_id": "92ee84b726c5d09b06781ccf78725afd28068a3bd473db5b26a6bdf9642909e0"
+      },
+      {
+         "account": "af489c60b96df9cf1f337a29fe08b3469ec906c8f086274c26c848f519f782bf",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1673527860,
+         "description": "pay2.email",
+         "payment_id": "40218cf29a178fc9573a38378621603f38e9404fb906a3ae4b0dec877611927d"
+      },
+      {
+         "account": "4af5ce9470b71ac01b71c8d24c2034b0abc3b0486f74d871fbff3644d978fc18",
+         "tag": "onchain_fee",
+         "credit_msat": 0,
+         "debit_msat": 171957,
+         "currency": "bc",
+         "timestamp": 1674009910,
+         "txid": "87c66bfc8369d175b778128e177803ca69cfcb9b28728adb80f785bd487c9d15"
+      },
+      {
+         "account": "f1bb37b947d882aef32641b0b26c17cf75c7917872f12615aad6dd92935c4aea",
+         "tag": "onchain_fee",
+         "credit_msat": 0,
+         "debit_msat": 867,
+         "currency": "bc",
+         "timestamp": 1673347937,
+         "txid": "f5293656804087da02464acfc8f9c082e7c075a7272f8ce381db132346c9bf61"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1463,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1675801483,
+         "payment_id": "236f7e1f26ecee6829e06dc5dc717c6dbbf01b21630a5f2e51da304c3e2443e4"
+      },
+      {
+         "account": "7262ad40c17b95d580ad9bc1e41a7344c62d9743c2b8c3561582c461eef61ead",
+         "tag": "invoice",
+         "credit_msat": 0,
+         "debit_msat": 72560000,
+         "currency": "bc",
+         "timestamp": 1675884729,
+         "description": "",
+         "payment_id": "5b49bb6fdb1e28112cd4167f1a8a0e93770212ada6597469b46b3b4eb46fec3c"
+      },
+      {
+         "account": "7262ad40c17b95d580ad9bc1e41a7344c62d9743c2b8c3561582c461eef61ead",
+         "tag": "invoice_fee",
+         "credit_msat": 0,
+         "debit_msat": 111956,
+         "currency": "bc",
+         "timestamp": 1675884729,
+         "description": "",
+         "payment_id": "5b49bb6fdb1e28112cd4167f1a8a0e93770212ada6597469b46b3b4eb46fec3c"
+      },
+      {
+         "account": "af489c60b96df9cf1f337a29fe08b3469ec906c8f086274c26c848f519f782bf",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1677397377,
+         "description": "pay2.email",
+         "payment_id": "acd7b181c692e1ff05a2e4e2e23e240e2364591c0ce1944b70c24e9bec7f46b8"
+      },
+      {
+         "account": "af489c60b96df9cf1f337a29fe08b3469ec906c8f086274c26c848f519f782bf",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1680022882,
+         "description": "pay2.email",
+         "payment_id": "dc3aae365fded147f650a5f8df96ba2aa6b7ff96cfe6e51503352975d0a92c5d"
+      },
+      {
+         "account": "af489c60b96df9cf1f337a29fe08b3469ec906c8f086274c26c848f519f782bf",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1680074205,
+         "description": "pay2.email",
+         "payment_id": "82a5ffd875cdca202ac3e7b01210ee698d36de808aa691de562c327de9315509"
+      },
+      {
+         "account": "af489c60b96df9cf1f337a29fe08b3469ec906c8f086274c26c848f519f782bf",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1680074230,
+         "description": "pay2.email",
+         "payment_id": "937ef384b2b76142d064a77187045fe6945a20a3b85910bdd7c3ae3e9eda3e2b"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "onchain_fee",
+         "credit_msat": 0,
+         "debit_msat": 607000,
+         "currency": "bc",
+         "timestamp": 1680262860,
+         "txid": "40dea3a4b9d31f27d65275e10b9f5a903a4403ca49c904b2e702722aaf2bb28d"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 5885,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1680265712,
+         "payment_id": "c40e9ea5312e29fb5d53be56f0352d32364858342b76ac1ab86c5e4148533876"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 4726,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1680282317,
+         "payment_id": "9f33404330f4503213aa8d0ea4b67d00d288ac71fde11b6dd066740b1fa33adc"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 2036,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1680693981,
+         "payment_id": "840567e1ee557d4492960abf85d46e051921bff1a077fb7409bf18a0bb8cb089"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1365,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1680693981,
+         "payment_id": "840567e1ee557d4492960abf85d46e051921bff1a077fb7409bf18a0bb8cb089"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1900,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1680693981,
+         "payment_id": "840567e1ee557d4492960abf85d46e051921bff1a077fb7409bf18a0bb8cb089"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 2001,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1680730836,
+         "payment_id": "a663e5effee3db03c26aec2f96eba72dc736be49bedf760b2020818aceee7a04"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 0,
+         "debit_msat": 153680000,
+         "currency": "bc",
+         "timestamp": 1681324003,
+         "description": "",
+         "payment_id": "887aeef0b5f53482bd950d26215746c49f8c3c7da6cff350957db0d7948eb7c0"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice_fee",
+         "credit_msat": 0,
+         "debit_msat": 16368,
+         "currency": "bc",
+         "timestamp": 1681324003,
+         "description": "",
+         "payment_id": "887aeef0b5f53482bd950d26215746c49f8c3c7da6cff350957db0d7948eb7c0"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 4245,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1681487814,
+         "payment_id": "0e39d802a38c40e042cee8b511fa28f3b19c45cba73efcdc3b8aedb32ff28903"
+      },
+      {
+         "account": "af489c60b96df9cf1f337a29fe08b3469ec906c8f086274c26c848f519f782bf",
+         "tag": "routed",
+         "credit_msat": 1036,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1681487869,
+         "payment_id": "baf65abd50f66ba612cfeef94427cc2ffaf87f0564a9f266f77d0ba5798ee5c6"
+      },
+      {
+         "account": "af489c60b96df9cf1f337a29fe08b3469ec906c8f086274c26c848f519f782bf",
+         "tag": "routed",
+         "credit_msat": 1008,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1681495217,
+         "payment_id": "b20187a756b87f1875cb110336f3c34b6070fdec5716c7d9e665bfa53ae1ae66"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1005,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1681679645,
+         "payment_id": "9f527df79b463394121cfab988cca3b7fc5f54828434228ee856740542c08e16"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 0,
+         "debit_msat": 140155692,
+         "currency": "bc",
+         "timestamp": 1683100582,
+         "description": "",
+         "payment_id": "e4782b78410b235fa2d96d4c13785f129cc14d01ac558e38913a19f19ce086ce"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice_fee",
+         "credit_msat": 0,
+         "debit_msat": 15015,
+         "currency": "bc",
+         "timestamp": 1683100582,
+         "description": "",
+         "payment_id": "e4782b78410b235fa2d96d4c13785f129cc14d01ac558e38913a19f19ce086ce"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 0,
+         "debit_msat": 130692125,
+         "currency": "bc",
+         "timestamp": 1683100582,
+         "description": "",
+         "payment_id": "e4782b78410b235fa2d96d4c13785f129cc14d01ac558e38913a19f19ce086ce"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice_fee",
+         "credit_msat": 0,
+         "debit_msat": 14069,
+         "currency": "bc",
+         "timestamp": 1683100582,
+         "description": "",
+         "payment_id": "e4782b78410b235fa2d96d4c13785f129cc14d01ac558e38913a19f19ce086ce"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 0,
+         "debit_msat": 29152183,
+         "currency": "bc",
+         "timestamp": 1683100582,
+         "description": "",
+         "payment_id": "e4782b78410b235fa2d96d4c13785f129cc14d01ac558e38913a19f19ce086ce"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice_fee",
+         "credit_msat": 0,
+         "debit_msat": 3915,
+         "currency": "bc",
+         "timestamp": 1683100582,
+         "description": "",
+         "payment_id": "e4782b78410b235fa2d96d4c13785f129cc14d01ac558e38913a19f19ce086ce"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1059,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1683986629,
+         "payment_id": "43c82863924954c39b7be9311f4d4f2daa47f5abd0b2498076de99839da99e12"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1087,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1683987225,
+         "payment_id": "0badaa314380964c0013f2eefe9bb97461795ed7332c9edce913d312cd84f4fa"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1021,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1683987225,
+         "payment_id": "0badaa314380964c0013f2eefe9bb97461795ed7332c9edce913d312cd84f4fa"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1059,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1683987291,
+         "payment_id": "2a8cc8869f297761ab8b7cdc85783f439206329e92f4b169ea87f4d18a5016b8"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1684859129,
+         "description": "pay2.email",
+         "payment_id": "77c57dbb203d553c59ccfaf53180c51badd9e3bb0503130952be20d3e96ca9a5"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1684861369,
+         "description": "pay2.email",
+         "payment_id": "2037167eb2b1e251ee23f85418bf06a10166d0ff16f669e80743c2bdb73d1ce2"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1119,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1685118737,
+         "payment_id": "ed3fcb4b7642e45e8fc45f082a8149b1413a944638d1ebc44b5eac0f20f63934"
+      },
+      {
+         "account": "7262ad40c17b95d580ad9bc1e41a7344c62d9743c2b8c3561582c461eef61ead",
+         "tag": "routed",
+         "credit_msat": 101006,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1685355955,
+         "payment_id": "c2a212dee17e84f3524f1c2d0fccd57f122eb6cd6cbf49d5805fd94378aaf9b6"
+      },
+      {
+         "account": "7262ad40c17b95d580ad9bc1e41a7344c62d9743c2b8c3561582c461eef61ead",
+         "tag": "routed",
+         "credit_msat": 251013,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1685355989,
+         "payment_id": "7e2f02890483e84920fe24a4e6c4c59ebb592fb2432050decd84a878aced2269"
+      },
+      {
+         "account": "7262ad40c17b95d580ad9bc1e41a7344c62d9743c2b8c3561582c461eef61ead",
+         "tag": "routed",
+         "credit_msat": 251013,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1685449628,
+         "payment_id": "e27d740f4fa627b7c3179c0e3cb862ee4ce380ba9a1936cc583350ab1da5e4d7"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1125,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1686756591,
+         "payment_id": "6c15f8c479b7c78f828b311f2e2f79cd9025f4db70d7f7962d2f23e9284ef718"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1417,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1686765630,
+         "payment_id": "10c458785fa950637437f918df637520bf7434a09564a2b5cb0b5386b7b59082"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1087,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1686848416,
+         "payment_id": "4155aea40d84319a927df05ea14c816990a9f57dbdd0e5b85ed8581094a8b4d0"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1124,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1687016801,
+         "payment_id": "1eca5c197d7e9c80f6bd570d493a20266d12ba8af7b8d634c85a9cdf07185935"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1206,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1687022730,
+         "payment_id": "e22f4c9310ab0237e1f21dbc8f18bff75df70ac70dbfc18eb5c5fc861267c797"
+      },
+      {
+         "account": "7262ad40c17b95d580ad9bc1e41a7344c62d9743c2b8c3561582c461eef61ead",
+         "tag": "invoice",
+         "credit_msat": 555000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1687373111,
+         "description": "Spark",
+         "payment_id": "cae427c23c1313a1b68335ec4ebefd2b7474dd7f9662ffecb585ebdbcc58a311"
+      },
+      {
+         "account": "7262ad40c17b95d580ad9bc1e41a7344c62d9743c2b8c3561582c461eef61ead",
+         "tag": "invoice",
+         "credit_msat": 1000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1687373347,
+         "description": "⚡",
+         "payment_id": "412445acb0e18337a602e94ef01319b5a01123a8b44b076591ceaede88173b7a"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1280,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1687541778,
+         "payment_id": "1ffaf93ab313149fa0714a970ace424eff29b78e73e5968f533baa03cb028ace"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 2791,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1687898276,
+         "payment_id": "b64218f6aac02d8e8f21fca5eee68b172cf03f641bbdddd6fa082fc6a9cb7e16"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1688241650,
+         "description": "pay2.email",
+         "payment_id": "bccb66570e3fb1ef9c8c841c48c243a9e91fd9c0ae82205de8dd1e048ed023bf"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1187,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1689758324,
+         "payment_id": "b65da82096f7c59d2fff94ea57e0d3157bfe2ecf05ab0484162f170b0fabd10c"
+      },
+      {
+         "account": "7262ad40c17b95d580ad9bc1e41a7344c62d9743c2b8c3561582c461eef61ead",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1690347283,
+         "description": "pay2.email",
+         "payment_id": "b6f00772fe3c6e3e12ddfd8024bffdc4fcbec87c9497f42cbd9973ec40b8fd2d"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1690375011,
+         "description": "pay2.email",
+         "payment_id": "062708bd056ec2081570797469b7d0bcff8838069c67aaaf44a0785e5c185721"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1690392553,
+         "description": "pay2.email",
+         "payment_id": "888d766e354b68bb80d8b828d06a8c15f4afb61fd04f5b02ce6bd12854762802"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1100,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1692699055,
+         "payment_id": "feedeff8aefe5337fca9490689c3d8b98e4069ae0cf507fae988b5c4d89f23d1"
+      },
+      {
+         "account": "7262ad40c17b95d580ad9bc1e41a7344c62d9743c2b8c3561582c461eef61ead",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1692799808,
+         "description": "pay2.email",
+         "payment_id": "f8b1b5d559928d9a2c8fc2fd519fb6eab7abe23cff113592f4793623e84476a7"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1692799894,
+         "description": "pay2.email",
+         "payment_id": "7b21116e3be51f179f223a98af0528f7931266a15713ac00f1146c19d57c0d05"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 2286,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1693384675,
+         "payment_id": "23ae82caa1be43d9974f1999307602b27901efe85f5a9b5ea01967adaf0d82d9"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1099,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1693469931,
+         "payment_id": "749025f8a2e09bae18d96cec8d4e4bf9c0d9af8cfb5bc763189fcb8fe1d463c1"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1359,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1693593612,
+         "payment_id": "3525f0bc260d726869ee3a861bb0cd4dd69b4d082f3b8dbfa0f9949833afd2bb"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1693999779,
+         "description": "pay2.email",
+         "payment_id": "77594b6e87f40fd0ef5ce67239369799b4e960411a3cb53268c0e1112a6e04fd"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 2001,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1694322493,
+         "payment_id": "dd6756b9f6c37eb3c21b12c26ea774c975ae68369415de148766687554d8f3e5"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 2001,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1694322502,
+         "payment_id": "037749ec2a01506efdf79666418bfc11934e7bb408383c6d014de35a00786e3d"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1084,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1694983496,
+         "payment_id": "b69bb53b958e40cbd93aaa1bf18b75b1557ae0f0c2801e322c75eaded9c1298d"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1123,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1694983497,
+         "payment_id": "b69bb53b958e40cbd93aaa1bf18b75b1557ae0f0c2801e322c75eaded9c1298d"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1115,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1694983497,
+         "payment_id": "b69bb53b958e40cbd93aaa1bf18b75b1557ae0f0c2801e322c75eaded9c1298d"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1695124583,
+         "description": "pay2.email",
+         "payment_id": "96faa65effdb8ef14a2ac7cc910dae234330bda8084ed2afd50809205ff0cb59"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1695753076,
+         "description": "pay2.email",
+         "payment_id": "6e8ad0cd17f6f8a15adcf3a53467871c702dc1ec4a22866081bc09afb7e817cb"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1697050582,
+         "description": "pay2.email",
+         "payment_id": "e5e3339ec1d5000a5c9b5c55dafe915ae588415702a95da1f3c8a6c3d1d649b9"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1019,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1697300527,
+         "payment_id": "1da474bbcfcf0f68b515e583cab8932aebf2780da8a45feca1ef961689e797bf"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1390,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1697300774,
+         "payment_id": "c32388cac12633abee44db7f48a808cef5349a0c89c527df135db8f89034fa04"
+      },
+      {
+         "account": "c16b5b1a1ad2eacb4084ffabfeea8254f4bf31b4d82c2c6288794cff2ff160ed",
+         "tag": "routed",
+         "credit_msat": 1038,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1697300993,
+         "payment_id": "4882159d8ea05b8275eb39521abad5e663cae393b1d80dd55df4b24403b6e264"
+      },
+      {
+         "account": "c16b5b1a1ad2eacb4084ffabfeea8254f4bf31b4d82c2c6288794cff2ff160ed",
+         "tag": "routed",
+         "credit_msat": 1038,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1697301003,
+         "payment_id": "4882159d8ea05b8275eb39521abad5e663cae393b1d80dd55df4b24403b6e264"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1251,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1697441102,
+         "payment_id": "ff9ff6bc607051ab5115c15346e23ae423d7a14516aca1e8e4cae30039b1d0cf"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1018,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1697465871,
+         "payment_id": "fca8b2bdbb73540f3dd52ca36694010de8109f41f0aa5a2e2b6b494e6785f8bd"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1018,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1697470526,
+         "payment_id": "7ab0f90ca054754777ff243f5c6895aadb57c3144b08def9ef0321aee496c6f1"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1697482386,
+         "description": "pay2.email",
+         "payment_id": "4c2385d586ece5b8c5ec7ca8f182e0db0da098c2c9945665da63c2861790880b"
+      },
+      {
+         "account": "c16b5b1a1ad2eacb4084ffabfeea8254f4bf31b4d82c2c6288794cff2ff160ed",
+         "tag": "routed",
+         "credit_msat": 1069,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1697553260,
+         "payment_id": "a66bddd8528fe09fb9378c863e50cd73b93dd718bfc2886965735f5f594f427b"
+      },
+      {
+         "account": "c16b5b1a1ad2eacb4084ffabfeea8254f4bf31b4d82c2c6288794cff2ff160ed",
+         "tag": "routed",
+         "credit_msat": 1088,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1697554154,
+         "payment_id": "c54d66b01c084664bf1c70c80a3410301ff3a105a02873e86ca108648bcd5be7"
+      },
+      {
+         "account": "c16b5b1a1ad2eacb4084ffabfeea8254f4bf31b4d82c2c6288794cff2ff160ed",
+         "tag": "routed",
+         "credit_msat": 1093,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1697554155,
+         "payment_id": "c54d66b01c084664bf1c70c80a3410301ff3a105a02873e86ca108648bcd5be7"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1032,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1697563638,
+         "payment_id": "21d5f7065883e33096458fd831a6c85bc409100735c1f8f83632cb4628b33e42"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1040,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1697563737,
+         "payment_id": "d5e51cea831f56e27ee0c1fcefeaba0d253267867761f175ce5fe916a87649ae"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1003,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1697791081,
+         "payment_id": "1dc9d35a6e602ee6619184cba6abca718090cafffd4ed9f8853315209036c308"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1007,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1697791142,
+         "payment_id": "931b5dce8ffead51eca1e7d1c7b2aeae8a838ec38e87e59a3b5926acc4d2da2e"
+      },
+      {
+         "account": "7262ad40c17b95d580ad9bc1e41a7344c62d9743c2b8c3561582c461eef61ead",
+         "tag": "routed",
+         "credit_msat": 11015,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1697794376,
+         "payment_id": "667d979dec123723aa27f7a287636777e698c2333a27be436199d1ec5e2d316c"
+      },
+      {
+         "account": "c16b5b1a1ad2eacb4084ffabfeea8254f4bf31b4d82c2c6288794cff2ff160ed",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1698920132,
+         "description": "pay2.email",
+         "payment_id": "1c32e577d03d7b00e7dd4fa88706ea699ac85903f20d4365ff970fefefd0115a"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1766,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1699281417,
+         "payment_id": "d45b2d96d467b5309da184530d9993ec9984d07cfda7320969e0f0dd9a071326"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1051,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1699710075,
+         "payment_id": "592657f499cb6382bbee26d0b76d5adaac5ce487c304a68dc84bf8a855347f52"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1051,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1699710113,
+         "payment_id": "79fc4368af6982d60c1dc896dc50c133384e20baa103d5d821a1fd6862b804fc"
+      },
+      {
+         "account": "c16b5b1a1ad2eacb4084ffabfeea8254f4bf31b4d82c2c6288794cff2ff160ed",
+         "tag": "routed",
+         "credit_msat": 1012,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1701314682,
+         "payment_id": "265a216e1d79df20326a1d6426ff41268b98372b329196d8f6cc59950cbcea4c"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1702011313,
+         "description": "pay2.email",
+         "payment_id": "e9eb5a4930c0e68aef15f4185f32fd8ae08f1346f4a6f7d370d3aff5cfff1f86"
+      },
+      {
+         "account": "7262ad40c17b95d580ad9bc1e41a7344c62d9743c2b8c3561582c461eef61ead",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1702224913,
+         "description": "pay2.email",
+         "payment_id": "dcc61e442ac3b8dfbf6fe6542fb927809f69f81415c47a38738ddcac501b8f62"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1705518897,
+         "description": "pay2.email",
+         "payment_id": "a666ea42394727456ab471f4989fe3c661ef1edd882d01b62d2840ed208ccf17"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1051,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1706291450,
+         "payment_id": "37580459b548213209942982c0e1128404a5b641a9606b10a8e0253d5c68a016"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1103,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1706291482,
+         "payment_id": "e8f6fb9a834de05ec5e3ba43d04ae0a6b1f7c8bbb16772465d074a5b963c59e1"
+      },
+      {
+         "account": "af489c60b96df9cf1f337a29fe08b3469ec906c8f086274c26c848f519f782bf",
+         "tag": "routed",
+         "credit_msat": 1053,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1706291916,
+         "payment_id": "0f28ea7a8b798965d6081551e3ab34a559e2dc920f9e55e84634ddac56cc60e0"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1103,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1706292696,
+         "payment_id": "ccdb656ffc1e87351167e1a507efa2f9b832fefea539a4fea80d4bf5d48f29a0"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1051,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1706306948,
+         "payment_id": "bb211dfdf567e34af73c55272ceae630a7e49bd7df396dd3c8243a144614e490"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1045,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1707588377,
+         "payment_id": "0791062262ce71ea9f1cd044a1abfb30d1b9507a88e910bc307c9bdebb2f0853"
+      },
+      {
+         "account": "af489c60b96df9cf1f337a29fe08b3469ec906c8f086274c26c848f519f782bf",
+         "tag": "routed",
+         "credit_msat": 2265,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1709205334,
+         "payment_id": "9ba634c008f6a5871165b39580407ab79afa93a3e14a9af7cb2271fd6f5c3803"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1200,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1710277079,
+         "payment_id": "c653d21c907a278456b827968d1e604f5b5abc006af3f237a61552e3af038f2d"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1200,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1710287839,
+         "payment_id": "9eb7074c167c43ab1721e5399656d433a037f903a91f49baa9dc514978836b3b"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1301,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1710304645,
+         "payment_id": "94862c58b802437a53cd1e98f075e6fd8f1f907c22a8d726d8584a00b4cd7b18"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1364,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1710304699,
+         "payment_id": "3fbe7a9a6b11d8f85a93dcaef3806f990395f344b7902acbf64584a0e66f23a0"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1710311150,
+         "description": "pay2.email",
+         "payment_id": "3b083ae0369c8da22b58857ef9434e94a709f5163e5dd2bf30c69adc0d4231d3"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1200,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1710359240,
+         "payment_id": "ec0da1b05c591e061c2a67524e3d85e686d00fadc742eb5c492e5884ef2c4b00"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1200,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1710414429,
+         "payment_id": "44f8596df28bd5972dac2ebd504a5cb86841c507fd6fdeb30dca562292d113c5"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1200,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1710433341,
+         "payment_id": "9d8c715cf43e2546e58135454f969df5e3c5b19d370931ad20c5cbd027df424d"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1200,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1710434771,
+         "payment_id": "54f189dfcd90beaa95da1338b6b129726a47c40ef0d2fd1cd074dcdf9759574d"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1200,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1710465760,
+         "payment_id": "f23bf4eb761d1c505f24c0cf366f8907b193272839d2a32f48fe33e5cb425af2"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1200,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1710506001,
+         "payment_id": "7bceddc82d85f19fb323d28fb63b5e12bb28514bac7d664ababe76f40ecfef77"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1200,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1710581038,
+         "payment_id": "f7698482cdf0e139f75a9ee3db7a8c2640dc0b906f1c51707b8dc664d37fa4b9"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1400,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1710792196,
+         "payment_id": "aebe411f499349829f7563d05ee9f00ec9904eaa7a44d88c64e2ebc22a025ae6"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1200,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1710875141,
+         "payment_id": "73b27f3bcc4ae9e55a9eaa7845a5443df71bbc24c0fa5584001f28b004de150e"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1711826265,
+         "description": "pay2.email",
+         "payment_id": "6c8ff49183a12b73a7660bafac870370ee0800af695d7d9869b23a1e2a657b0b"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1711993503,
+         "description": "pay2.email",
+         "payment_id": "332547e3d8754ba24b05d0c005928fcc3ea6da02476c95a43d0ce06adf8e57b8"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 2001,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1712016882,
+         "payment_id": "457401edc891cac233d23e330ed2507971812a007f19b3866988af934cacdb79"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1223,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1712436172,
+         "payment_id": "810bed6ccdbfb76414c4cd98d4b4886534460902b1d9c825e844f39d1eb22298"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1252,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1712436172,
+         "payment_id": "810bed6ccdbfb76414c4cd98d4b4886534460902b1d9c825e844f39d1eb22298"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1398,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1712436718,
+         "payment_id": "3c32046dedfc4ca2ba0079f8c117749edb2a9f452fa98819a394fd2a0e38000d"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1713224842,
+         "description": "pay2.email",
+         "payment_id": "6acdbb5ecddbd2c141985cce3aaa483eb723b146bf7d2f540944b1750f561bfa"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 2001,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1713268328,
+         "payment_id": "5dce46fd4ebbfda9637d5493be78d56d154995e824b076039858d8a9628a31e2"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1713876733,
+         "description": "pay2.email",
+         "payment_id": "e493b65a52b023d5ce1c68079fd902317faff000914e4e448e9d3c890b7fef18"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1138,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1715161148,
+         "payment_id": "aa58c4a37c7b592241e99f1ce5c173beec1260edffc0065f5483902ee42ccffa"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1070,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1715355439,
+         "payment_id": "f01f7391947909ec605d5bdebdc7d797478aed7475cca3116642acc7440f2565"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1035,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1715355474,
+         "payment_id": "7ca0bec9333f11882836b0003893d9a3b3745fa9ebf859fab25e13e43d647df0"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1035,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1715356255,
+         "payment_id": "e1d810242788db6944b545e36d58ffaaa7b30f444e702729954f832fa3dca83f"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1044,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1715358941,
+         "payment_id": "e643efa6fa3b8475bf7d7dde9ce8bbdf0507a86d12e56eb083b57c737d722750"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1017,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1715608817,
+         "payment_id": "0c78464a8b5c288abbc17f8e72cdd14d6076252a206f0619d4e4847fcdbcc8a5"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1200,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1716645573,
+         "payment_id": "b47fc07c951c6b7d363bb774340d7691676157392947c68755ea6e53a8d93854"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1716967348,
+         "description": "pay2.email",
+         "payment_id": "f69df49aea1da47399391d29d57ce9df825b9735bdd37718b8f51738a413917b"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1073,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1716972515,
+         "payment_id": "ca9ba10c7da96a67ee9677de4bd2ff2c7068dbd259bcd36c23a2301208cb7a20"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1717357597,
+         "description": "pay2.email",
+         "payment_id": "04be584e0f3917abd42ca9d2d9072c423103822c8c6d7664cc27bae3628d5e9c"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1717358241,
+         "description": "pay2.email",
+         "payment_id": "01b3500cd5a703cdeb69241fd9d8a8873a5f6fa9e50da3f319514ada3f818f6e"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1717358552,
+         "description": "pay2.email",
+         "payment_id": "2426dc870b7b163f3d7f1451003d3a913eb4d0d97563fb022354554d003272cb"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1717358941,
+         "description": "pay2.email",
+         "payment_id": "3fdd40bf5c719560a8888841b9b35e2a0d3c9faad61131e51a8148d6f8f54915"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1717392908,
+         "description": "pay2.email",
+         "payment_id": "094aa9733316bc6566b9821cc0319102285cf493ded42a5924662026f9a3f0c2"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1717397832,
+         "description": "pay2.email",
+         "payment_id": "5d04985f378da686d1a1e9d762b6cfc64c975a112372bfcccd10407321d28bf1"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1050,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1717527591,
+         "payment_id": "74043f5be9b5b78c15c64877a414c036348f67d87ed4f5937034b9ecd478a9b8"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1717790124,
+         "description": "pay2.email",
+         "payment_id": "b674c6913f18ec07c60322f612de7e0008dc9bc77af56be3db3a918bb7ee98b8"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1717891775,
+         "payment_id": "70c72a7ebae00c41d13af898f4e5e1811421687a139bca4070a5d0e6a1d73701"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "routed",
+         "credit_msat": 1000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1717905119,
+         "payment_id": "ac3eaa24ff1d93922d5bc234a84857f3c72562eafac82976fb08d97ecdbe0fc7"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1718225866,
+         "description": "pay2.email",
+         "payment_id": "e10df6486d6da2c4cf200efc4c3047eebab9a93c80d57a89294c494e931c144c"
+      },
+      {
+         "account": "af489c60b96df9cf1f337a29fe08b3469ec906c8f086274c26c848f519f782bf",
+         "tag": "routed",
+         "credit_msat": 2278,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1718376480,
+         "payment_id": "8e6ec930c3e12f26d49737c0bae42fc6ab1f9365aeb0ad38e16c56f833a2a77d"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "routed",
+         "credit_msat": 1210,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1718572945,
+         "payment_id": "77321252aec6431e117194255185687c8757dd7429455f77f9c7ab113baa0c3c"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1718652290,
+         "description": "pay2.email",
+         "payment_id": "95af3ca1e50c2733f749cd9b30c643b20da40a76697c3a775234fdbb4fbcb912"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "invoice",
+         "credit_msat": 0,
+         "debit_msat": 100000,
+         "currency": "bc",
+         "timestamp": 1718692135,
+         "description": "OpenTimestamps Donation (Alice Calendar)",
+         "payment_id": "4790de380896c349f9fc24d9ef1a031c29f0dc0bc9e12f99907c072c95a53070"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "invoice_fee",
+         "credit_msat": 0,
+         "debit_msat": 2325,
+         "currency": "bc",
+         "timestamp": 1718692135,
+         "description": "OpenTimestamps Donation (Alice Calendar)",
+         "payment_id": "4790de380896c349f9fc24d9ef1a031c29f0dc0bc9e12f99907c072c95a53070"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 2222000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1718876766,
+         "description": "A donation for OpenTimestamps calendar finney",
+         "payment_id": "acd96cac0110b25eb8cfba7cb884a2849cf8e81a5efdc5d9d742c36a0c1e6bb3"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 1000000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1718881636,
+         "description": "A donation for OpenTimestamps calendar finney",
+         "payment_id": "abdbce6e7466527cd6a2d20ace75668089f1bf2167c58e63c560b0ed6d33bbc2"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 234000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1718893933,
+         "description": "A donation for OpenTimestamps calendar finney",
+         "payment_id": "41e2a2a49999fe2cd675bb8ec74ba62d9c42279eaee2212dcd6eaae792c297cb"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "invoice",
+         "credit_msat": 0,
+         "debit_msat": 100000,
+         "currency": "bc",
+         "timestamp": 1718902055,
+         "description": "OpenTimestamps Donation (Alice Calendar)",
+         "payment_id": "8615354178ad14b3a13e760d45cb67c3eba6192facf3ccc5e02e8b977d8b9d90"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "invoice_fee",
+         "credit_msat": 0,
+         "debit_msat": 2383,
+         "currency": "bc",
+         "timestamp": 1718902055,
+         "description": "OpenTimestamps Donation (Alice Calendar)",
+         "payment_id": "8615354178ad14b3a13e760d45cb67c3eba6192facf3ccc5e02e8b977d8b9d90"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "invoice",
+         "credit_msat": 0,
+         "debit_msat": 101000,
+         "currency": "bc",
+         "timestamp": 1718902155,
+         "description": "OpenTimestamps Donation (Bob Calendar)",
+         "payment_id": "5090c0aaec37a4b8e9ff792c0390351a72efe66ca545028d014576a215da3c68"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "invoice_fee",
+         "credit_msat": 0,
+         "debit_msat": 4503,
+         "currency": "bc",
+         "timestamp": 1718902155,
+         "description": "OpenTimestamps Donation (Bob Calendar)",
+         "payment_id": "5090c0aaec37a4b8e9ff792c0390351a72efe66ca545028d014576a215da3c68"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 10000000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1718941964,
+         "description": "A donation for OpenTimestamps calendar finney",
+         "payment_id": "a22602004bdcc78111cc7861e1d8ac5d43a6bf7f434ef897c1f6030a6c77ce34"
+      },
+      {
+         "account": "af489c60b96df9cf1f337a29fe08b3469ec906c8f086274c26c848f519f782bf",
+         "tag": "invoice",
+         "credit_msat": 0,
+         "debit_msat": 151690000,
+         "currency": "bc",
+         "timestamp": 1718955627,
+         "description": "Send to L-BTC address",
+         "payment_id": "8e7b1ca1193f64e0e311d081fddea833f5f115e44bb6c0caec94d305ffd01c83"
+      },
+      {
+         "account": "af489c60b96df9cf1f337a29fe08b3469ec906c8f086274c26c848f519f782bf",
+         "tag": "invoice_fee",
+         "credit_msat": 0,
+         "debit_msat": 119263,
+         "currency": "bc",
+         "timestamp": 1718955627,
+         "description": "Send to L-BTC address",
+         "payment_id": "8e7b1ca1193f64e0e311d081fddea833f5f115e44bb6c0caec94d305ffd01c83"
+      },
+      {
+         "account": "c16aa45dde535ee17bf4c2a11532e279e31ee47288a6ae905ed00fe0cfbc71b3",
+         "tag": "onchain_fee",
+         "credit_msat": 0,
+         "debit_msat": 2837000,
+         "currency": "bc",
+         "timestamp": 1718956278,
+         "txid": "b371bccfe00fd05e90aea68872e41ee379e23215a1c2f47be15e53de5da46ac1"
+      },
+      {
+         "account": "ffb80f7165e5f2d1d99d023611d8b1882b6cf742c2d2079798f9dfb1e63b4834",
+         "tag": "onchain_fee",
+         "credit_msat": 0,
+         "debit_msat": 7782000,
+         "currency": "bc",
+         "timestamp": 1718912966,
+         "txid": "34483be6b1dff9989707d2c242f76c2b88b1d81136029dd9d1f2e565710fb8ff"
+      },
+      {
+         "account": "ffb80f7165e5f2d1d99d023611d8b1882b6cf742c2d2079798f9dfb1e63b4834",
+         "tag": "routed",
+         "credit_msat": 3829,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1718986463,
+         "payment_id": "d7a714c1af60344f8a5613009573cad373f7d7755e189780a3ca6b3e6ddcfd97"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1718987468,
+         "description": "pay2.email",
+         "payment_id": "96e94100bcd4ac443b030e1851931fa95613ccabb60cd697f141f51afe60a178"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1718988143,
+         "description": "pay2.email",
+         "payment_id": "5b907c5d1038badcbb3c23e88dcf43ed196410f2043840b2e394ef1f1cc9bdc1"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1718988340,
+         "description": "pay2.email",
+         "payment_id": "33402248b6cca42b634f07f0ab12410a708eef8902eac12ddbf5343561789d3e"
+      },
+      {
+         "account": "ffb80f7165e5f2d1d99d023611d8b1882b6cf742c2d2079798f9dfb1e63b4834",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1718988421,
+         "description": "pay2.email",
+         "payment_id": "da2741279b45b1595eebfb106a92e34bd82f42d42384e309550c063fd0540e89"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1718988697,
+         "description": "pay2.email",
+         "payment_id": "075c3303f37e3c7fab45662cb9ff85c2f13044ac6560efb5e92ca5aae73e472e"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1718989005,
+         "description": "pay2.email",
+         "payment_id": "bb718d8005d347d13eb8c97b7d5590a4527ba7df4e66bbf7bff4e0e3acb333b4"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1718989124,
+         "description": "pay2.email",
+         "payment_id": "343d01c838417c23608ac36c2fbf8010c4ad98d17f336f44696257757ab57a50"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1718989489,
+         "description": "pay2.email",
+         "payment_id": "9713c293dd605656c03da95ed59c27868a3f1e1102aa06a322fd335e2c6646e1"
+      },
+      {
+         "account": "edffffdb28b8fdeeca7b18a559de8ea1eda89695147fc70bff44c41f4d0c0111",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1718989589,
+         "description": "pay2.email",
+         "payment_id": "4b828b6eb46003aad407e0e343c93c75968ebc966d97c5f8ac27f22f01074ca2"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1718989718,
+         "description": "pay2.email",
+         "payment_id": "2ac4f0076b56a8a8649f30fc2d068f9e49ffc527b17249323bd027933ac0a161"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1718989802,
+         "description": "pay2.email",
+         "payment_id": "532aea4a850b9fe4193afed57f001585aa660b9ab6277ebd6dd16cba0c6409f8"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1718990040,
+         "description": "pay2.email",
+         "payment_id": "5e6d56ce36ef552e02395328f77f4a986862901b6c96c5c0d7ff399622794a83"
+      },
+      {
+         "account": "af489c60b96df9cf1f337a29fe08b3469ec906c8f086274c26c848f519f782bf",
+         "tag": "invoice",
+         "credit_msat": 1000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1719020319,
+         "description": "A donation for OpenTimestamps calendar finney",
+         "payment_id": "98f4fd63d64bdbaaef490de80e03bfef10c41b62c0b10c6076475ee005a57072"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 10000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1719020386,
+         "description": "A donation for OpenTimestamps calendar finney",
+         "payment_id": "0a2f1d3def113fcab00fd113a44ebdcb3fe28a7ad6a5a69b9bd9d1118bd384fd"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 100000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1719020409,
+         "description": "A donation for OpenTimestamps calendar finney",
+         "payment_id": "7dc75f85e859e2e364c2195bec8d0c04fe647b175e1d25885f30760ef3257ab2"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 1000000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1719020429,
+         "description": "A donation for OpenTimestamps calendar finney",
+         "payment_id": "fd1e67fac955d27ce3b5e0ddd59b6eaebd3edeb5186079906d14aea349081250"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 10000000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1719020449,
+         "description": "A donation for OpenTimestamps calendar finney",
+         "payment_id": "59613c9eba90b669e0989fdb018c9d17d4a96ce0cc8c1bffb4a20454f825c299"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 2000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1719020511,
+         "description": "A donation for OpenTimestamps calendar finney",
+         "payment_id": "b6231c857118c6551501c404ec47c40b0b95969bf5860828c4029878fd1e3f49"
+      },
+      {
+         "account": "af489c60b96df9cf1f337a29fe08b3469ec906c8f086274c26c848f519f782bf",
+         "tag": "invoice",
+         "credit_msat": 1000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1719020535,
+         "description": "A donation for OpenTimestamps calendar finney",
+         "payment_id": "0c269004990741766cbda434cc549dc123439fd55eab905a67a84952909f4902"
+      },
+      {
+         "account": "af489c60b96df9cf1f337a29fe08b3469ec906c8f086274c26c848f519f782bf",
+         "tag": "invoice",
+         "credit_msat": 1000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1719020618,
+         "description": "A donation for OpenTimestamps calendar finney",
+         "payment_id": "a7991fecc54e93e7446cf8d2dc63952b331025c9ef9b4fadf4e5c01b214a3bdd"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 11000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1719020680,
+         "description": "A donation for OpenTimestamps calendar finney",
+         "payment_id": "3c63a5900367bec5b592c71cca304a8943c4039690e470bbc23ca90bcec3351a"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 10000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1719020736,
+         "description": "A donation for OpenTimestamps calendar finney",
+         "payment_id": "a8a27fd6e14a658330efc9757f954424a0a8fe635128d926a5dcc137828a1ee1"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 2222000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1719042331,
+         "description": "A donation for OpenTimestamps calendar finney",
+         "payment_id": "4df19bb1e8986285d99d56fe620e0a46d7ca5b77510e09b9d98d3e4f42e385f6"
+      },
+      {
+         "account": "8db22baf2a7202e7b204c949ca03443a905a9f0be17552d6271fd3b9a4a3de40",
+         "tag": "invoice",
+         "credit_msat": 20000,
+         "debit_msat": 0,
+         "currency": "bc",
+         "timestamp": 1719042361,
+         "description": "pay2.email",
+         "payment_id": "05af542a89fa666c1f0c7a67fba519ee8339fe8181c2bd273130ebd35ddfdcd7"
+      },
+      {
+         "account": "c16aa45dde535ee17bf4c2a11532e279e31ee47288a6ae905ed00fe0cfbc71b3",
+         "tag": "invoice",
+         "credit_msat": 0,
+         "debit_msat": 50000000,
+         "currency": "bc",
+         "timestamp": 1719061980,
+         "description": "Send to L-BTC address",
+         "payment_id": "f95c8d938aeaac2d99a3beea2b8002132a1a7d2f86bef11443a551556c8a2d72"
+      },
+      {
+         "account": "c16aa45dde535ee17bf4c2a11532e279e31ee47288a6ae905ed00fe0cfbc71b3",
+         "tag": "invoice_fee",
+         "credit_msat": 0,
+         "debit_msat": 158122,
+         "currency": "bc",
+         "timestamp": 1719061980,
+         "description": "Send to L-BTC address",
+         "payment_id": "f95c8d938aeaac2d99a3beea2b8002132a1a7d2f86bef11443a551556c8a2d72"
+      }
+   ]
+}
