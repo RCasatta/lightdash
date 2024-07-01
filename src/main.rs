@@ -2,16 +2,16 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 fn main() {
-    let cat = get_info();
-    let info: GetInfo = serde_json::from_str(&cat).unwrap();
+    let info: GetInfo = serde_json::from_str(&get_info()).unwrap();
+    println!("my id:{}", info.id);
 
-    let zcat = list_channels();
-    let channels: ListChannels = serde_json::from_str(&zcat).unwrap();
-    println!("channels:{}", channels.channels.len());
-
-    let zcat = list_nodes();
-    let nodes: ListNodes = serde_json::from_str(&zcat).unwrap();
-    println!("nodes:{}", nodes.nodes.len());
+    let channels: ListChannels = serde_json::from_str(&list_channels()).unwrap();
+    let nodes: ListNodes = serde_json::from_str(&list_nodes()).unwrap();
+    println!(
+        "network channels:{} nodes:{}",
+        channels.channels.len(),
+        nodes.nodes.len()
+    );
 
     let nodes_by_id: HashMap<_, _> = nodes
         .nodes
@@ -22,7 +22,20 @@ fn main() {
 
     let cat = list_funds();
     let funds: ListFunds = serde_json::from_str(&cat).unwrap();
-    println!("my channels:{}", funds.channels.len());
+    // let zero_fees = funds.channels.iter().all(|e| e.base_fee == 0);
+    println!(
+        "my channels:{} - zero fees:{}",
+        funds.channels.len(),
+        "TODO"
+    );
+
+    let forwards: ListForwards = serde_json::from_str(&list_forwards()).unwrap();
+    let settled = forwards
+        .forwards
+        .iter()
+        .filter(|e| e.status == "settled")
+        .count();
+    println!("forwards:{}/{} ", settled, forwards.forwards.len());
 
     let channels_by_id: HashMap<_, _> = channels
         .channels
@@ -37,8 +50,16 @@ fn main() {
             .get(&(&c.short_channel_id, &info.id))
             .map(|e| e.fee_per_millionth.to_string())
             .unwrap_or("".to_string());
+        let their_fee = channels_by_id
+            .get(&(&c.short_channel_id, &c.peer_id))
+            .map(|e| e.fee_per_millionth.to_string())
+            .unwrap_or("".to_string());
+        let their_base_fee = channels_by_id
+            .get(&(&c.short_channel_id, &c.peer_id))
+            .map(|e| (e.base_fee_millisatoshi / 1000).to_string())
+            .unwrap_or("".to_string());
         let s = format!(
-            "{our_fee:>5} {:>15} {:>3}% {} ",
+            "{our_fee:>5} {:>15} {:>3}% {:25} {their_fee:>5} {their_base_fee:>5}",
             c.short_channel_id,
             c.perc(),
             c.alias_or_id(&nodes_by_id),
@@ -48,9 +69,6 @@ fn main() {
     for line in lines.values() {
         println!("{line}");
     }
-    let zcat = list_forwards();
-    let forwards: ListForwards = serde_json::from_str(&zcat).unwrap();
-    println!("forwards:{}", forwards.forwards.len());
 }
 
 fn list_funds() -> String {
