@@ -37,6 +37,24 @@ fn main() {
         .count();
     println!("forwards: {}/{} ", settled, forwards.forwards.len());
 
+    let mut sum_fee_rate = 0u128;
+    let mut count = 0u128;
+    for c in channels.channels.iter() {
+        if c.base_fee_millisatoshi != 0 {
+            continue;
+        }
+        if c.fee_per_millionth > 10000 {
+            continue;
+        }
+        sum_fee_rate += c.fee_per_millionth as u128;
+        count += 1;
+    }
+    let network_average = (sum_fee_rate / count) as u64;
+    println!(
+        "network average fee: {network_average} per millionth {:.3}% ",
+        network_average as f64 / 10000.0
+    );
+
     let channels_by_id: HashMap<_, _> = channels
         .channels
         .iter()
@@ -90,24 +108,49 @@ fn main() {
             .get(&c.peer_id)
             .map(|e| DateTime::from_timestamp(e.last_timestamp.unwrap_or(0) as i64, 0).unwrap())
             .unwrap_or(DateTime::from_timestamp(0, 0).unwrap());
-        let last_timestamp_delta = now.signed_duration_since(last_timestamp).num_days();
+        let last_timestamp_delta = cut_days(now.signed_duration_since(last_timestamp).num_days());
 
         let last_update = their
             .map(|e| DateTime::from_timestamp(e.last_update as i64, 0).unwrap())
             .unwrap_or(DateTime::from_timestamp(0, 0).unwrap());
-        let last_update_delta = now.signed_duration_since(last_update).num_days();
+        let last_update_delta = cut_days(now.signed_duration_since(last_update).num_days());
+        let perc = c.perc();
+        let short_channel_id = c.short_channel_id.to_string();
+        let alias_or_id = c.alias_or_id(&nodes_by_id);
+
+        let perc_float = c.perc_float();
+        calc_setchannel(
+            &short_channel_id,
+            perc_float,
+            amount,
+            their,
+            network_average,
+        );
 
         let s = format!(
-            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {:>15} {amount:8} {:>3}% ({}) {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3}d {last_update_delta:>3}d",
-            c.short_channel_id,
-            c.perc(),
-            c.alias_or_id(&nodes_by_id),
+            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {alias_or_id}"
         );
-        lines.insert(perc, s);
+        lines.insert((perc_float * 100000.0) as u64, s);
     }
     for line in lines.values() {
         println!("{line}");
     }
+}
+
+fn calc_setchannel(
+    short_channel_id: &str,
+    perc: f64,
+    amount: u64,
+    their: Option<&&Channel>,
+    network_average: u64,
+) {
+    let calc_fee = ((perc + 0.5) * (network_average as f64)) as u64;
+    let max_htlc = amount / 2;
+    let their_fee = their.map(|e| e.fee_per_millionth).unwrap_or(calc_fee);
+    let adj_calc_fee = (calc_fee + their_fee) / 2;
+    let final_fee = adj_calc_fee.min(100);
+
+    println!("lightning-cli setchannel {short_channel_id} 0 {final_fee} 10sat {max_htlc}sat");
 }
 
 fn list_funds() -> String {
@@ -221,6 +264,9 @@ impl Fund {
     fn perc(&self) -> u64 {
         ((self.our_amount_msat as f64 / self.amount_msat as f64) * 100.0).floor() as u64
     }
+    fn perc_float(&self) -> f64 {
+        self.our_amount_msat as f64 / self.amount_msat as f64
+    }
 
     fn alias_or_id(&self, m: &HashMap<&String, &Node>) -> String {
         pad_or_trunc(
@@ -231,6 +277,14 @@ impl Fund {
             )),
             24,
         )
+    }
+}
+
+fn cut_days(d: i64) -> String {
+    if d > 99 {
+        "99+".to_string()
+    } else {
+        format!("{d:>2}d")
     }
 }
 
