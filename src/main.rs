@@ -22,6 +22,11 @@ fn main() {
 
     let cat = list_funds();
     let funds: ListFunds = serde_json::from_str(&cat).unwrap();
+    let normal_channels: Vec<_> = funds
+        .channels
+        .into_iter()
+        .filter(|c| c.state == "CHANNELD_NORMAL")
+        .collect();
 
     let forwards: ListForwards = serde_json::from_str(&list_forwards()).unwrap();
     let settled = forwards
@@ -37,7 +42,7 @@ fn main() {
         .map(|e| ((&e.short_channel_id, &e.source), e))
         .collect();
 
-    let zero_fees = funds.channels.iter().all(|c| {
+    let zero_fees = normal_channels.iter().all(|c| {
         channels_by_id
             .get(&(&c.short_channel_id, &info.id))
             .map(|e| e.base_fee_millisatoshi)
@@ -46,35 +51,31 @@ fn main() {
     });
     println!(
         "my channels: {} - zero base fees? {}",
-        funds
-            .channels
-            .iter()
-            .filter(|c| c.state == "CHANNELD_NORMAL")
-            .count(),
+        normal_channels.len(),
         zero_fees
     );
 
     let mut lines = std::collections::BTreeMap::new();
-    for c in funds.channels {
-        if c.state != "CHANNELD_NORMAL" {
-            continue;
-        }
+    for c in normal_channels {
         let perc = c.perc();
-        let our_fee = channels_by_id
-            .get(&(&c.short_channel_id, &info.id))
+        let our = channels_by_id.get(&(&c.short_channel_id, &info.id));
+        let our_fee = our
             .map(|e| e.fee_per_millionth.to_string())
+            .unwrap_or("".to_string());
+        let our_base_fee = our
+            .map(|e| (e.base_fee_millisatoshi / 1000).to_string())
             .unwrap_or("".to_string());
 
-        let get = channels_by_id.get(&(&c.short_channel_id, &c.peer_id));
-        let their_fee = get
+        let their = channels_by_id.get(&(&c.short_channel_id, &c.peer_id));
+        let their_fee = their
             .map(|e| e.fee_per_millionth.to_string())
             .unwrap_or("".to_string());
-        let their_base_fee = get
+        let their_base_fee = their
             .map(|e| (e.base_fee_millisatoshi / 1000).to_string())
             .unwrap_or("".to_string());
 
         let s = format!(
-            "{our_fee:>5} {:>15} {:>3}% {} {their_fee:>5} {their_base_fee:>5}",
+            "{our_base_fee:>5} {our_fee:>5} {:>15} {:>3}% {} {their_fee:>5} {their_base_fee:>5}",
             c.short_channel_id,
             c.perc(),
             c.alias_or_id(&nodes_by_id),
