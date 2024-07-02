@@ -63,7 +63,7 @@ fn main() {
 
     let zero_fees = normal_channels.iter().all(|c| {
         channels_by_id
-            .get(&(&c.short_channel_id, &info.id))
+            .get(&(&c.short_channel_id(), &info.id))
             .map(|e| e.base_fee_millisatoshi)
             .unwrap_or(1)
             == 0
@@ -79,7 +79,8 @@ fn main() {
 
     for c in normal_channels {
         let perc = c.perc();
-        let our = channels_by_id.get(&(&c.short_channel_id, &info.id));
+        let short_channel_id = c.short_channel_id();
+        let our = channels_by_id.get(&(&short_channel_id, &info.id));
         let our_fee = our
             .map(|e| e.fee_per_millionth.to_string())
             .unwrap_or("".to_string());
@@ -95,7 +96,7 @@ fn main() {
 
         let amount = c.amount_msat / 1000;
 
-        let their = channels_by_id.get(&(&c.short_channel_id, &c.peer_id));
+        let their = channels_by_id.get(&(&short_channel_id, &c.peer_id));
         let their_fee = their
             .map(|e| e.fee_per_millionth.to_string())
             .unwrap_or("".to_string());
@@ -115,7 +116,7 @@ fn main() {
             .unwrap_or(DateTime::from_timestamp(0, 0).unwrap());
         let last_update_delta = cut_days(now.signed_duration_since(last_update).num_days());
         let perc = c.perc();
-        let short_channel_id = c.short_channel_id.to_string();
+        let short_channel_id = c.short_channel_id();
         let alias_or_id = c.alias_or_id(&nodes_by_id);
 
         let perc_float = c.perc_float();
@@ -253,7 +254,7 @@ struct Fund {
     connected: bool,
     state: String,
     channel_id: String,
-    short_channel_id: String,
+    short_channel_id: Option<String>,
     our_amount_msat: u64,
     amount_msat: u64,
     funding_txid: String,
@@ -266,6 +267,10 @@ impl Fund {
     }
     fn perc_float(&self) -> f64 {
         self.our_amount_msat as f64 / self.amount_msat as f64
+    }
+
+    fn short_channel_id(&self) -> String {
+        self.short_channel_id.clone().unwrap_or("".to_string())
     }
 
     fn alias_or_id(&self, m: &HashMap<&String, &Node>) -> String {
