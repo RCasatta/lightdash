@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -17,7 +18,7 @@ fn main() {
         .nodes
         .iter()
         .filter(|e| e.alias.is_some())
-        .map(|e| (&e.nodeid, e.alias.as_ref().unwrap()))
+        .map(|e| (&e.nodeid, e))
         .collect();
 
     let cat = list_funds();
@@ -83,8 +84,15 @@ fn main() {
             .unwrap_or("".to_string());
         let min_max = format!("{our_min}/{our_max}");
 
+        let last_timestamp = nodes_by_id
+            .get(&c.peer_id)
+            .map(|e| DateTime::from_timestamp(e.last_timestamp.unwrap_or(0) as i64, 0).unwrap())
+            .unwrap_or(DateTime::from_timestamp(0, 0).unwrap());
+        let now = Utc::now();
+        let delta = now.signed_duration_since(last_timestamp).num_days();
+
         let s = format!(
-            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {:>15} {amount:8} {:>3}% ({}) {their_fee:>5} {their_base_fee:>5}",
+            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {:>15} {amount:8} {:>3}% ({}) {their_fee:>5} {their_base_fee:>5} {delta}d",
             c.short_channel_id,
             c.perc(),
             c.alias_or_id(&nodes_by_id),
@@ -179,6 +187,12 @@ struct Node {
     last_timestamp: Option<u64>,
 }
 
+impl Node {
+    fn alias(&self) -> String {
+        self.alias.clone().unwrap_or("".to_string())
+    }
+}
+
 #[derive(Deserialize, Debug)]
 struct ListFunds {
     channels: Vec<Fund>,
@@ -202,9 +216,9 @@ impl Fund {
         ((self.our_amount_msat as f64 / self.amount_msat as f64) * 100.0).floor() as u64
     }
 
-    fn alias_or_id(&self, m: &HashMap<&String, &String>) -> String {
+    fn alias_or_id(&self, m: &HashMap<&String, &Node>) -> String {
         pad_or_trunc(
-            m.get(&self.peer_id).unwrap_or(&&format!(
+            &m.get(&self.peer_id).map(|e| e.alias()).unwrap_or(format!(
                 "{}...{}",
                 &self.peer_id[0..8],
                 &self.peer_id[58..]
@@ -215,6 +229,7 @@ impl Fund {
 }
 
 fn pad_or_trunc(s: &str, l: usize) -> String {
+    println!("DEBUG {s} has {} chars", s.chars().count());
     if s.chars().count() > l {
         s.chars().take(l).collect()
     } else {
