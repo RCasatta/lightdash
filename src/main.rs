@@ -22,12 +22,6 @@ fn main() {
 
     let cat = list_funds();
     let funds: ListFunds = serde_json::from_str(&cat).unwrap();
-    // let zero_fees = funds.channels.iter().all(|e| e.base_fee == 0);
-    println!(
-        "my channels:{} - zero fees:{}",
-        funds.channels.len(),
-        "TODO"
-    );
 
     let forwards: ListForwards = serde_json::from_str(&list_forwards()).unwrap();
     let settled = forwards
@@ -35,13 +29,30 @@ fn main() {
         .iter()
         .filter(|e| e.status == "settled")
         .count();
-    println!("forwards:{}/{} ", settled, forwards.forwards.len());
+    println!("forwards: {}/{} ", settled, forwards.forwards.len());
 
     let channels_by_id: HashMap<_, _> = channels
         .channels
         .iter()
         .map(|e| ((&e.short_channel_id, &e.source), e))
         .collect();
+
+    let zero_fees = funds.channels.iter().all(|c| {
+        channels_by_id
+            .get(&(&c.short_channel_id, &info.id))
+            .map(|e| e.base_fee_millisatoshi)
+            .unwrap_or(1)
+            == 0
+    });
+    println!(
+        "my channels: {} - zero base fees? {}",
+        funds
+            .channels
+            .iter()
+            .filter(|c| c.state == "CHANNELD_NORMAL")
+            .count(),
+        zero_fees
+    );
 
     let mut lines = std::collections::BTreeMap::new();
     for c in funds.channels {
@@ -62,7 +73,7 @@ fn main() {
             .map(|e| (e.base_fee_millisatoshi / 1000).to_string())
             .unwrap_or("".to_string());
         let s = format!(
-            "{our_fee:>5} {:>15} {:>3}% ({:25}) {their_fee:>5} {their_base_fee:>5}",
+            "{our_fee:>5} {:>15} {:>3}% {} {their_fee:>5} {their_base_fee:>5}",
             c.short_channel_id,
             c.perc(),
             c.alias_or_id(&nodes_by_id),
