@@ -53,16 +53,17 @@ fn main() {
             .get(&(&c.short_channel_id, &info.id))
             .map(|e| e.fee_per_millionth.to_string())
             .unwrap_or("".to_string());
-        let their_fee = channels_by_id
-            .get(&(&c.short_channel_id, &c.peer_id))
+
+        let get = channels_by_id.get(&(&c.short_channel_id, &c.peer_id));
+        let their_fee = get
             .map(|e| e.fee_per_millionth.to_string())
             .unwrap_or("".to_string());
-        let their_base_fee = channels_by_id
-            .get(&(&c.short_channel_id, &c.peer_id))
+        let their_base_fee = get
             .map(|e| (e.base_fee_millisatoshi / 1000).to_string())
             .unwrap_or("".to_string());
+
         let s = format!(
-            "{our_fee:>5} {:>15} {:>3}% ({:25}) {their_fee:>5} {their_base_fee:>5}",
+            "{our_fee:>5} {:>15} {:>3}% {} {their_fee:>5} {their_base_fee:>5}",
             c.short_channel_id,
             c.perc(),
             c.alias_or_id(&nodes_by_id),
@@ -181,14 +182,22 @@ impl Fund {
     }
 
     fn alias_or_id(&self, m: &HashMap<&String, &String>) -> String {
-        m.get(&self.peer_id)
-            .unwrap_or(&&format!(
+        pad_or_trunc(
+            m.get(&self.peer_id).unwrap_or(&&format!(
                 "{}...{}",
                 &self.peer_id[0..8],
                 &self.peer_id[58..]
-            ))
-            .trim()
-            .to_string()
+            )),
+            22,
+        )
+    }
+}
+
+fn pad_or_trunc(s: &str, l: usize) -> String {
+    if s.chars().count() > l {
+        s.chars().take(l).collect()
+    } else {
+        format!("{:width$}", s, width = l)
     }
 }
 
