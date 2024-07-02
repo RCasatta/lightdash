@@ -144,7 +144,7 @@ fn calc_setchannel(
     their: Option<&&Channel>,
     network_average: u64,
 ) {
-    let calc_fee = ((perc + 0.5) * (network_average as f64)) as u64;
+    let calc_fee = (((1.0 - perc) + 0.5) * (network_average as f64)) as u64;
     let max_htlc = amount / 2;
     let their_fee = their.map(|e| e.fee_per_millionth).unwrap_or(calc_fee);
     let adj_calc_fee = (calc_fee + their_fee) / 2;
