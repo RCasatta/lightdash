@@ -65,6 +65,14 @@ fn main() {
         let our_base_fee = our
             .map(|e| (e.base_fee_millisatoshi / 1000).to_string())
             .unwrap_or("".to_string());
+        let our_min = our
+            .map(|e| (e.htlc_minimum_msat / 1000).to_string())
+            .unwrap_or("".to_string());
+        let our_max = our
+            .map(|e| (e.htlc_maximum_msat / 1000).to_string())
+            .unwrap_or("".to_string());
+
+        let amount = c.amount_msat / 1000;
 
         let their = channels_by_id.get(&(&c.short_channel_id, &c.peer_id));
         let their_fee = their
@@ -73,9 +81,10 @@ fn main() {
         let their_base_fee = their
             .map(|e| (e.base_fee_millisatoshi / 1000).to_string())
             .unwrap_or("".to_string());
+        let min_max = format!("{our_min}/{our_max}");
 
         let s = format!(
-            "{our_base_fee:>5} {our_fee:>5} {:>15} {:>3}% {} {their_fee:>5} {their_base_fee:>5}",
+            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {:>15} {amount:8} {:>3}% ({}) {their_fee:>5} {their_base_fee:>5}",
             c.short_channel_id,
             c.perc(),
             c.alias_or_id(&nodes_by_id),
