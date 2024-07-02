@@ -184,6 +184,7 @@ impl Fund {
                 &self.peer_id[0..8],
                 &self.peer_id[58..]
             ))
+            .trim()
             .to_string()
     }
 }
