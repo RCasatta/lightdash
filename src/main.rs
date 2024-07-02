@@ -148,7 +148,7 @@ fn calc_setchannel(
     let max_htlc = amount / 2;
     let their_fee = their.map(|e| e.fee_per_millionth).unwrap_or(calc_fee);
     let adj_calc_fee = (calc_fee + their_fee) / 2;
-    let final_fee = adj_calc_fee.min(100);
+    let final_fee = adj_calc_fee.max(100);
 
     println!("lightning-cli setchannel {short_channel_id} 0 {final_fee} 10sat {max_htlc}sat");
 }
