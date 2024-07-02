@@ -45,6 +45,9 @@ fn main() {
 
     let mut lines = std::collections::BTreeMap::new();
     for c in funds.channels {
+        if c.state != "CHANNELD_NORMAL" {
+            continue;
+        }
         let perc = c.perc();
         let our_fee = channels_by_id
             .get(&(&c.short_channel_id, &info.id))
@@ -59,7 +62,7 @@ fn main() {
             .map(|e| (e.base_fee_millisatoshi / 1000).to_string())
             .unwrap_or("".to_string());
         let s = format!(
-            "{our_fee:>5} {:>15} {:>3}% {:25} {their_fee:>5} {their_base_fee:>5}",
+            "{our_fee:>5} {:>15} {:>3}% ({:25}) {their_fee:>5} {their_base_fee:>5}",
             c.short_channel_id,
             c.perc(),
             c.alias_or_id(&nodes_by_id),
