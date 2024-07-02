@@ -57,6 +57,8 @@ fn main() {
     );
 
     let mut lines = std::collections::BTreeMap::new();
+    let now = Utc::now();
+
     for c in normal_channels {
         let perc = c.perc();
         let our = channels_by_id.get(&(&c.short_channel_id, &info.id));
@@ -88,11 +90,15 @@ fn main() {
             .get(&c.peer_id)
             .map(|e| DateTime::from_timestamp(e.last_timestamp.unwrap_or(0) as i64, 0).unwrap())
             .unwrap_or(DateTime::from_timestamp(0, 0).unwrap());
-        let now = Utc::now();
-        let delta = now.signed_duration_since(last_timestamp).num_days();
+        let last_timestamp_delta = now.signed_duration_since(last_timestamp).num_days();
+
+        let last_update = their
+            .map(|e| DateTime::from_timestamp(e.last_update as i64, 0).unwrap())
+            .unwrap_or(DateTime::from_timestamp(0, 0).unwrap());
+        let last_update_delta = now.signed_duration_since(last_update).num_days();
 
         let s = format!(
-            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {:>15} {amount:8} {:>3}% ({}) {their_fee:>5} {their_base_fee:>5} {delta}d",
+            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {:>15} {amount:8} {:>3}% ({}) {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3}d {last_update_delta:>3}d",
             c.short_channel_id,
             c.perc(),
             c.alias_or_id(&nodes_by_id),
@@ -223,13 +229,13 @@ impl Fund {
                 &self.peer_id[0..8],
                 &self.peer_id[58..]
             )),
-            22,
+            24,
         )
     }
 }
 
 fn pad_or_trunc(s: &str, l: usize) -> String {
-    println!("DEBUG {s} has {} chars", s.chars().count());
+    // println!("DEBUG {s} has {} chars", s.chars().count());
     if s.chars().count() > l {
         s.chars().take(l).collect()
     } else {
