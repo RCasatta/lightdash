@@ -156,7 +156,7 @@ fn calc_setchannel(
 
     let diff = (our_fee as f64 - final_fee as f64) / final_fee as f64;
     if diff.abs() > 0.05 {
-        println!("lightning-cli setchannel {short_channel_id} 0 {final_fee} 10sat {max_htlc}sat");
+        println!("`lightning-cli setchannel {short_channel_id} 0 {final_fee} 10sat {max_htlc}sat` diff:{diff:.2}");
     }
 }
 
