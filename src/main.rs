@@ -124,6 +124,7 @@ fn main() {
             &short_channel_id,
             perc_float,
             amount,
+            our,
             their,
             network_average,
         );
@@ -142,6 +143,7 @@ fn calc_setchannel(
     short_channel_id: &str,
     perc: f64,
     amount: u64,
+    our: Option<&&Channel>,
     their: Option<&&Channel>,
     network_average: u64,
 ) {
@@ -150,8 +152,12 @@ fn calc_setchannel(
     let their_fee = their.map(|e| e.fee_per_millionth).unwrap_or(calc_fee);
     let adj_calc_fee = (calc_fee + their_fee) / 2;
     let final_fee = adj_calc_fee.max(100);
+    let our_fee = our.map(|e| e.fee_per_millionth).unwrap_or(final_fee);
 
-    println!("lightning-cli setchannel {short_channel_id} 0 {final_fee} 10sat {max_htlc}sat");
+    let diff = (our_fee as f64 - final_fee as f64) / final_fee as f64;
+    if diff.abs() > 0.05 {
+        println!("lightning-cli setchannel {short_channel_id} 0 {final_fee} 10sat {max_htlc}sat");
+    }
 }
 
 fn list_funds() -> String {
