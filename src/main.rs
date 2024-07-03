@@ -41,8 +41,10 @@ fn main() {
     let mut last_year = 0f64;
     let mut last_month = 0f64;
     let mut last_week = 0f64;
+    let mut first = now;
     for s in settled.iter() {
         let d = DateTime::from_timestamp(s.resolved_time.unwrap() as i64, 0).unwrap();
+        first = first.min(d);
         let days_elapsed = now.signed_duration_since(d).num_days();
         if days_elapsed < 365 {
             last_year += 1.0;
@@ -54,8 +56,10 @@ fn main() {
             }
         }
     }
+    let el = now.signed_duration_since(first).num_days();
     println!(
-        "settled frequency year:{:.2} month:{:.2} week:{:.2}",
+        "settled frequency ever:{:.2} year:{:.2} month:{:.2} week:{:.2}",
+        settled.len() as f64 / el as f64,
         last_year / 365.0,
         last_month / 30.0,
         last_week / 7.0
