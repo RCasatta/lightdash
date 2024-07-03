@@ -1,0 +1,1 @@
+lightning-cli listchannels | jq '[.channels | group_by(.source)[] | { source:.[0].source, active:([.[].active] | map(select(.)) | length) , capacity: ([.[].amount_msat] | add/100000000000), avg_fee:([.[].fee_per_millionth] | add/length|floor), base_fee:([.[].base_fee_millisatoshi] | add/length|floor), channels: ([.[].destination] | length)}] | sort_by(-.avg_fee)'

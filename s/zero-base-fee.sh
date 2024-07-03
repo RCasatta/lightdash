@@ -1,0 +1,1 @@
+lightning-cli listchannels | jq '[.channels[] | {amount: .amount_msat, base_fee: .base_fee_millisatoshi, fee_rate: .fee_per_millionth}  | select(.base_fee==0)  | select(.fee_rate<5000)] | { count:(length), avg_amount_sat:(([.[].amount] | add / length)/1000) | floor, avg_fee_rate: ([.[].fee_rate] | add / length | floor), avg_base_fee: ([.[].base_fee] | add / length | floor)  }'
