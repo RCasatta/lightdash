@@ -3,6 +3,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 fn main() {
+    let now = Utc::now();
     let info: GetInfo = serde_json::from_str(&get_info()).unwrap();
     println!("my id:{}", info.id);
 
@@ -30,12 +31,35 @@ fn main() {
         .collect();
 
     let forwards: ListForwards = serde_json::from_str(&list_forwards()).unwrap();
-    let settled = forwards
+    let settled: Vec<_> = forwards
         .forwards
         .iter()
         .filter(|e| e.status == "settled")
-        .count();
-    println!("forwards: {}/{} ", settled, forwards.forwards.len());
+        .collect();
+
+    println!("forwards: {}/{} ", settled.len(), forwards.forwards.len());
+    let mut last_year = 0f64;
+    let mut last_month = 0f64;
+    let mut last_week = 0f64;
+    for s in settled.iter() {
+        let d = DateTime::from_timestamp(s.resolved_time.unwrap() as i64, 0).unwrap();
+        let days_elapsed = now.signed_duration_since(d).num_days();
+        if days_elapsed < 365 {
+            last_year += 1.0;
+            if days_elapsed < 30 {
+                last_month += 1.0;
+                if days_elapsed < 7 {
+                    last_week += 1.0;
+                }
+            }
+        }
+    }
+    println!(
+        "settled frequency year:{:.2} month:{:.2} week:{:.2}",
+        last_year / 365.0,
+        last_month / 30.0,
+        last_week / 7.0
+    );
 
     let mut sum_fee_rate = 0u128;
     let mut count = 0u128;
@@ -75,7 +99,6 @@ fn main() {
     );
 
     let mut lines = std::collections::BTreeMap::new();
-    let now = Utc::now();
 
     for c in normal_channels {
         let perc = c.perc();
