@@ -1,0 +1,57 @@
+{
+   "703083x928x0": {
+      "amount_msat": 1000000,
+      "maxppm": 500,
+      "outppm": 100,
+      "sat_direction": "Pull"
+   },
+   "704790x2774x1": {
+      "amount_msat": 1000000,
+      "maxppm": 400,
+      "outppm": 100,
+      "sat_direction": "Push"
+   },
+   "783327x386x0": {
+      "amount_msat": 1000000,
+      "maxppm": 500,
+      "outppm": 100,
+      "sat_direction": "Pull"
+   },
+   "848790x1606x0": {
+      "amount_msat": 1000000,
+      "maxppm": 500,
+      "outppm": 100,
+      "sat_direction": "Pull"
+   },
+   "848864x399x0": {
+      "amount_msat": 1000000,
+      "depleteuptoamount": 100000000,
+      "maxppm": 500,
+      "outppm": 200,
+      "sat_direction": "Push"
+   },
+   "849827x2932x1": {
+      "amount_msat": 1000000,
+      "maxppm": 400,
+      "outppm": 100,
+      "sat_direction": "Push"
+   },
+   "850226x1660x1": {
+      "amount_msat": 1000000,
+      "maxppm": 400,
+      "outppm": 100,
+      "sat_direction": "Push"
+   },
+   "850401x1102x0": {
+      "amount_msat": 1000000,
+      "maxppm": 500,
+      "outppm": 100,
+      "sat_direction": "Pull"
+   },
+   "850401x1102x3": {
+      "amount_msat": 1000000,
+      "maxppm": 200,
+      "outppm": 100,
+      "sat_direction": "Push"
+   }
+}

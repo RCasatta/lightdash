@@ -8,4 +8,5 @@ BOLT11=$2
 
 EXCLUDE=$(./exclude-all-channels-but.sh $CHANNEL)
 
-lightning-cli pay -k bolt11=$BOLT11 exclude=${EXCLUDE}
+
+lightning-cli pay -k bolt11=$BOLT11 exclude="${EXCLUDE}"
