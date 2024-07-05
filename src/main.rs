@@ -4,11 +4,11 @@ use std::collections::HashMap;
 
 fn main() {
     let now = Utc::now();
-    let info: GetInfo = serde_json::from_str(&get_info()).unwrap();
+    let info = get_info();
     println!("my id:{}", info.id);
 
-    let channels: ListChannels = serde_json::from_str(&list_channels()).unwrap();
-    let nodes: ListNodes = serde_json::from_str(&list_nodes()).unwrap();
+    let channels = list_channels();
+    let nodes = list_nodes();
     println!(
         "network channels:{} nodes:{}",
         channels.channels.len(),
@@ -22,20 +22,21 @@ fn main() {
         .map(|e| (&e.nodeid, e))
         .collect();
 
-    let cat = list_funds();
-    let funds: ListFunds = serde_json::from_str(&cat).unwrap();
+    let funds = list_funds();
     let normal_channels: Vec<_> = funds
         .channels
         .into_iter()
         .filter(|c| c.state == "CHANNELD_NORMAL")
         .collect();
 
-    let forwards: ListForwards = serde_json::from_str(&list_forwards()).unwrap();
+    let forwards = list_forwards();
     let settled: Vec<_> = forwards
         .forwards
         .iter()
         .filter(|e| e.status == "settled")
         .collect();
+
+    let jobs = sling_jobsettings();
 
     println!("forwards: {}/{} ", settled.len(), forwards.forwards.len());
     let mut last_year = 0f64;
@@ -142,12 +143,11 @@ fn main() {
             .map(|e| DateTime::from_timestamp(e.last_update as i64, 0).unwrap())
             .unwrap_or(DateTime::from_timestamp(0, 0).unwrap());
         let last_update_delta = cut_days(now.signed_duration_since(last_update).num_days());
-        let perc = c.perc();
         let short_channel_id = c.short_channel_id();
         let alias_or_id = c.alias_or_id(&nodes_by_id);
 
         let perc_float = c.perc_float();
-        calc_setchannel(
+        let out_fee = calc_setchannel(
             &short_channel_id,
             perc_float,
             amount,
@@ -155,6 +155,8 @@ fn main() {
             their,
             network_average,
         );
+
+        calc_slingjobs(&short_channel_id, &jobs, out_fee, perc_float, amount);
 
         let s = format!(
             "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {alias_or_id}"
@@ -166,65 +168,106 @@ fn main() {
     }
 }
 
+// lightning-cli sling-job -k scid=848864x399x0 direction=push amount=1000 maxppm=500 outppm=200 depleteuptoamount=100000
+fn calc_slingjobs(
+    scid: &str,
+    jobs: &HashMap<String, JobSetting>,
+    calc_fee: u64,
+    perc: f64,
+    _amount: u64,
+) {
+    let current = jobs.get(scid);
+    let maxppm = calc_fee - calc_fee / 4; // maxppm fee for rebalance 25% less the fee we want on the channel
+    let dir = if perc < 0.4 {
+        "push"
+    } else if perc > 0.6 {
+        "pull"
+    } else {
+        return;
+    };
+    if let Some(c) = current {
+        if c.maxppm == calc_fee {
+            return;
+        }
+    }
+
+    println!("`lightning-cli sling-job -k scid={scid} amount=1000 depleteuptoamount=100000 maxppm={maxppm} outppm={maxppm} direction={dir}`",);
+}
+
 fn calc_setchannel(
     short_channel_id: &str,
     perc: f64,
     amount: u64,
     our: Option<&&Channel>,
-    their: Option<&&Channel>,
+    _their: Option<&&Channel>,
     network_average: u64,
-) {
+) -> u64 {
     let calc_fee = (((1.0 - perc) + 0.5) * (network_average as f64)) as u64;
-    let max_htlc = amount / 2;
-    let their_fee = their.map(|e| e.fee_per_millionth).unwrap_or(calc_fee);
-    let adj_calc_fee = (calc_fee + their_fee) / 2;
-    let final_fee = adj_calc_fee.max(100);
+    let max_htlc = amount / 2 + 100;
+    // let their_fee = their.map(|e| e.fee_per_millionth).unwrap_or(calc_fee);
+    // let adj_calc_fee = (calc_fee + their_fee) / 2;
+    let final_fee = calc_fee.max(100);
     let our_fee = our.map(|e| e.fee_per_millionth).unwrap_or(final_fee);
 
     let diff = (our_fee as f64 - final_fee as f64) / final_fee as f64;
     if diff.abs() > 0.05 {
         println!("`lightning-cli setchannel {short_channel_id} 0 {final_fee} 10sat {max_htlc}sat` diff:{diff:.2}");
     }
+    final_fee
 }
 
-fn list_funds() -> String {
-    if cfg!(debug_assertions) {
+fn sling_jobsettings() -> HashMap<String, JobSetting> {
+    let str = if cfg!(debug_assertions) {
+        cmd_result("cat", &["test-json/sling-jobsettings"])
+    } else {
+        cmd_result("lightning-cli", &["sling-jobsettings"])
+    };
+    serde_json::from_str(&str).unwrap()
+}
+
+fn list_funds() -> ListFunds {
+    let str = if cfg!(debug_assertions) {
         cmd_result("cat", &["test-json/listfunds"])
     } else {
         cmd_result("lightning-cli", &["listfunds"])
-    }
+    };
+    serde_json::from_str(&str).unwrap()
 }
 
-fn list_nodes() -> String {
-    if cfg!(debug_assertions) {
+fn list_nodes() -> ListNodes {
+    let str = if cfg!(debug_assertions) {
         cmd_result("zcat", &["test-json/listnodes.gz"])
     } else {
         cmd_result("lightning-cli", &["listnodes"])
-    }
+    };
+    serde_json::from_str(&str).unwrap()
 }
 
-fn list_channels() -> String {
-    if cfg!(debug_assertions) {
+fn list_channels() -> ListChannels {
+    let str = if cfg!(debug_assertions) {
         cmd_result("zcat", &["test-json/listchannels.gz"])
     } else {
         cmd_result("lightning-cli", &["listchannels"])
-    }
+    };
+    serde_json::from_str(&str).unwrap()
 }
 
-fn list_forwards() -> String {
-    if cfg!(debug_assertions) {
+fn list_forwards() -> ListForwards {
+    let str = if cfg!(debug_assertions) {
         cmd_result("zcat", &["test-json/listforwards.gz"])
     } else {
         cmd_result("lightning-cli", &["listforwards"])
-    }
+    };
+    serde_json::from_str(&str).unwrap()
 }
 
-fn get_info() -> String {
-    if cfg!(debug_assertions) {
+fn get_info() -> GetInfo {
+    let str = if cfg!(debug_assertions) {
         cmd_result("cat", &["test-json/getinfo"])
     } else {
         cmd_result("lightning-cli", &["getinfo"])
-    }
+    };
+    serde_json::from_str(&str).unwrap()
 }
 
 fn cmd_result(cmd: &str, args: &[&str]) -> String {
@@ -243,19 +286,27 @@ struct ListChannels {
 }
 
 #[derive(Deserialize, Debug)]
+struct JobSetting {
+    amount_msat: u64,
+    maxppm: u64,
+    outppm: u64,
+    sat_direction: String,
+}
+
+#[derive(Deserialize, Debug)]
 struct Channel {
     source: String,
-    destination: String,
+    // destination: String,
     short_channel_id: String,
-    amount_msat: u64,
-    active: bool,
+    // amount_msat: u64,
+    // active: bool,
     last_update: u64,
     base_fee_millisatoshi: u64,
     fee_per_millionth: u64,
-    delay: u64,
+    // delay: u64,
     htlc_minimum_msat: u64,
     htlc_maximum_msat: u64,
-    features: String,
+    // features: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -284,14 +335,14 @@ struct ListFunds {
 #[derive(Deserialize, Debug)]
 struct Fund {
     peer_id: String,
-    connected: bool,
+    // connected: bool,
     state: String,
-    channel_id: String,
+    // channel_id: String,
     short_channel_id: Option<String>,
     our_amount_msat: u64,
     amount_msat: u64,
-    funding_txid: String,
-    funding_output: u32,
+    // funding_txid: String,
+    // funding_output: u32,
 }
 
 impl Fund {
@@ -342,11 +393,11 @@ struct ListForwards {
 
 #[derive(Deserialize, Debug)]
 struct Forward {
-    in_channel: String,
-    out_channel: Option<String>,
-    in_msat: u64,
-    out_msat: Option<u64>,
+    // in_channel: String,
+    // out_channel: Option<String>,
+    // in_msat: u64,
+    // out_msat: Option<u64>,
     status: String,
-    received_time: f64,
+    // received_time: f64,
     resolved_time: Option<f64>,
 }
