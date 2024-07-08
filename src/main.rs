@@ -165,12 +165,12 @@ fn main() {
 
         calc_slingjobs(&short_channel_id, &jobs, out_fee, perc_float, amount);
 
-        let ll = per_channel_montly_forwards
+        let monthly_forw = per_channel_montly_forwards
             .get(&short_channel_id)
             .unwrap_or(&0u64);
 
         let s = format!(
-            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {ll} {alias_or_id}"
+            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {monthly_forw:>3} {alias_or_id}"
         );
         lines.insert((perc_float * 100000.0) as u64, s);
     }
