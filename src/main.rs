@@ -44,6 +44,8 @@ fn main() {
     let mut last_week = 0f64;
     let mut first = now;
     let mut per_channel_montly_forwards: HashMap<String, u64> = HashMap::new();
+    let mut per_channel_montly_fee_sat: HashMap<String, u64> = HashMap::new();
+
     for s in settled.iter() {
         let d = DateTime::from_timestamp(s.resolved_time.unwrap() as i64, 0).unwrap();
         first = first.min(d);
@@ -55,6 +57,11 @@ fn main() {
                     *per_channel_montly_forwards
                         .entry(channel.to_string())
                         .or_default() += 1;
+                    if let Some(fee) = s.fee_msat.as_ref() {
+                        *per_channel_montly_fee_sat
+                            .entry(channel.to_string())
+                            .or_default() += fee / 1000;
+                    }
                 }
 
                 last_month += 1.0;
@@ -169,8 +176,12 @@ fn main() {
             .get(&short_channel_id)
             .unwrap_or(&0u64);
 
+        let monthly_forw_fee = per_channel_montly_fee_sat
+            .get(&short_channel_id)
+            .unwrap_or(&0u64);
+
         let s = format!(
-            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {monthly_forw:>3} {alias_or_id}"
+            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {monthly_forw:>3} {monthly_forw_fee:>5} {alias_or_id}"
         );
         lines.insert((perc_float * 100000.0) as u64, s);
     }
@@ -406,6 +417,7 @@ struct ListForwards {
 struct Forward {
     // in_channel: String,
     out_channel: Option<String>,
+    fee_msat: Option<u64>,
     // in_msat: u64,
     // out_msat: Option<u64>,
     status: String,
