@@ -43,6 +43,7 @@ fn main() {
     let mut last_month = 0f64;
     let mut last_week = 0f64;
     let mut first = now;
+    let mut per_channel_montly_forwards: HashMap<String, u64> = HashMap::new();
     for s in settled.iter() {
         let d = DateTime::from_timestamp(s.resolved_time.unwrap() as i64, 0).unwrap();
         first = first.min(d);
@@ -50,6 +51,12 @@ fn main() {
         if days_elapsed < 365 {
             last_year += 1.0;
             if days_elapsed < 30 {
+                if let Some(channel) = s.out_channel.as_ref() {
+                    *per_channel_montly_forwards
+                        .entry(channel.to_string())
+                        .or_default() += 1;
+                }
+
                 last_month += 1.0;
                 if days_elapsed < 7 {
                     last_week += 1.0;
@@ -158,8 +165,12 @@ fn main() {
 
         calc_slingjobs(&short_channel_id, &jobs, out_fee, perc_float, amount);
 
+        let ll = per_channel_montly_forwards
+            .get(&short_channel_id)
+            .unwrap_or(&0u64);
+
         let s = format!(
-            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {alias_or_id}"
+            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {ll} {alias_or_id}"
         );
         lines.insert((perc_float * 100000.0) as u64, s);
     }
@@ -179,9 +190,9 @@ fn calc_slingjobs(
     let current = jobs.get(scid);
     let maxppm = calc_fee - calc_fee / 4; // maxppm fee for rebalance 25% less the fee we want on the channel
     let dir = if perc < 0.4 {
-        "push"
-    } else if perc > 0.6 {
         "pull"
+    } else if perc > 0.6 {
+        "push"
     } else {
         return;
     };
@@ -394,7 +405,7 @@ struct ListForwards {
 #[derive(Deserialize, Debug)]
 struct Forward {
     // in_channel: String,
-    // out_channel: Option<String>,
+    out_channel: Option<String>,
     // in_msat: u64,
     // out_msat: Option<u64>,
     status: String,
