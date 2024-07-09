@@ -253,7 +253,8 @@ fn calc_setchannel(
 
     let current_ppm = our.map(|e| e.fee_per_millionth).unwrap_or(min_ppm);
 
-    let did_forward_last_24h = did_forward_last_24h(short_channel_id, forwards, now);
+    let forwards_24h = filter_forwards(forwards, 100, &now);
+    let did_forward_last_24h = did_forward_last_24h(short_channel_id, &forwards_24h);
     let new_ppm = if did_forward_last_24h {
         current_ppm.saturating_add(STEP)
     } else {
@@ -279,16 +280,22 @@ fn calc_setchannel(
     (new_ppm, result)
 }
 
-fn did_forward_last_24h(short_channel_id: &str, forwards: &[Forward], now: &DateTime<Utc>) -> bool {
+fn filter_forwards(forwards: &[Forward], hour: i64, now: &DateTime<Utc>) -> Vec<Forward> {
+    forwards
+        .iter()
+        .filter(|f| now.signed_duration_since(f.resolved_time()).num_hours() <= hour)
+        .cloned()
+        .collect()
+}
+
+fn did_forward_last_24h(short_channel_id: &str, forwards: &[Forward]) -> bool {
     for f in forwards {
-        if f.resolved_time().signed_duration_since(now).num_hours() <= 24 {
-            if &f.in_channel == short_channel_id {
+        if &f.in_channel == short_channel_id {
+            return true;
+        }
+        if let Some(out_channel) = f.out_channel.as_ref() {
+            if out_channel == short_channel_id {
                 return true;
-            }
-            if let Some(out_channel) = f.out_channel.as_ref() {
-                if out_channel == short_channel_id {
-                    return true;
-                }
             }
         }
     }
@@ -470,7 +477,7 @@ struct ListForwards {
     forwards: Vec<Forward>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 struct Forward {
     in_channel: String,
     out_channel: Option<String>,
