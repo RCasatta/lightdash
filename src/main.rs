@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 const MIN_PPM: u64 = 100; // when channel 0%
 const MAX_PPM: u64 = 1000; // when channel 100%
-const STEP: i64 = 20;
+const STEP: u64 = 20;
 
 fn main() {
     let now = Utc::now();
@@ -123,7 +123,7 @@ fn main() {
         zero_fees
     );
 
-    let mut lines = std::collections::BTreeMap::new();
+    let mut lines = vec![];
 
     for fund in normal_channels {
         let perc = fund.perc();
@@ -166,8 +166,7 @@ fn main() {
         let short_channel_id = fund.short_channel_id();
         let alias_or_id = fund.alias_or_id(&nodes_by_id);
 
-        let perc_float = fund.perc_float();
-        let out_fee = calc_setchannel(
+        let (_new_fee, cmd) = calc_setchannel(
             &short_channel_id,
             &fund,
             our,
@@ -190,10 +189,19 @@ fn main() {
         let s = format!(
             "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {monthly_forw:>3} {monthly_forw_fee:>5} {alias_or_id}"
         );
-        lines.insert((perc_float * 100000.0) as u64, s);
+        lines.push((perc, s, cmd));
     }
-    for line in lines.values() {
-        println!("{line}");
+
+    lines.sort_by(|a, b| a.0.cmp(&b.0));
+
+    for (_, l1, _) in lines.iter() {
+        println!("{l1}");
+    }
+
+    for (_, _, l2) in lines {
+        if let Some(l) = l2 {
+            println!("{l}");
+        }
     }
 }
 
@@ -231,7 +239,7 @@ fn calc_setchannel(
     forwards: &[Forward],
     _network_average: u64,
     now: &DateTime<Utc>,
-) -> u64 {
+) -> (u64, Option<String>) {
     let perc = fund.perc_float();
     // let amount = fund.amount_msat;
     let our_amount = fund.our_amount_msat;
@@ -245,12 +253,13 @@ fn calc_setchannel(
 
     let current_ppm = our.map(|e| e.fee_per_millionth).unwrap_or(min_ppm);
 
-    let step = if did_forward_last_24h(short_channel_id, forwards, now) {
-        STEP
+    let new_ppm = if did_forward_last_24h(short_channel_id, forwards, now) {
+        current_ppm.saturating_add(STEP)
     } else {
-        -STEP
+        current_ppm.saturating_sub(STEP)
     };
-    let new_ppm = ((current_ppm as i64).saturating_sub(step) as u64).max(min_ppm);
+
+    let new_ppm = new_ppm.max(min_ppm);
 
     // let calc_fee = (((1.0 - perc) + 0.5) * (network_average as f64)) as u64;
     // let max_htlc = amount / 2 + 100;
@@ -260,11 +269,13 @@ fn calc_setchannel(
     // let our_fee = our.map(|e| e.fee_per_millionth).unwrap_or(final_fee);
     // let our_amount = our.map(|e| e).unwrap_or(final_fee);
 
-    if current_ppm != new_ppm {
-        println!("lightning-cli setchannel {short_channel_id} 0 {new_ppm} 10sat {max_htlc_sat}");
-    }
+    let result = if current_ppm != new_ppm {
+        Some(format!("`lightning-cli setchannel {short_channel_id} 0 {new_ppm} 10sat {max_htlc_sat}` current was:{current_ppm}"))
+    } else {
+        None
+    };
 
-    current_ppm
+    (new_ppm, result)
 }
 
 fn did_forward_last_24h(short_channel_id: &str, forwards: &[Forward], now: &DateTime<Utc>) -> bool {
