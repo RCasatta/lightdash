@@ -2,6 +2,9 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use std::collections::HashMap;
 
+const MIN_PPM: u64 = 100; // when channel 0%
+const MAX_PPM: u64 = 1000; // when channel 100%
+
 fn main() {
     let now = Utc::now();
     let info = get_info();
@@ -36,7 +39,7 @@ fn main() {
         .filter(|e| e.status == "settled")
         .collect();
 
-    let jobs = sling_jobsettings();
+    // let jobs = sling_jobsettings();
 
     println!("forwards: {}/{} ", settled.len(), forwards.forwards.len());
     let mut last_year = 0f64;
@@ -119,9 +122,9 @@ fn main() {
 
     let mut lines = std::collections::BTreeMap::new();
 
-    for c in normal_channels {
-        let perc = c.perc();
-        let short_channel_id = c.short_channel_id();
+    for fund in normal_channels {
+        let perc = fund.perc();
+        let short_channel_id = fund.short_channel_id();
         let our = channels_by_id.get(&(&short_channel_id, &info.id));
         let our_fee = our
             .map(|e| e.fee_per_millionth.to_string())
@@ -136,9 +139,9 @@ fn main() {
             .map(|e| (e.htlc_maximum_msat / 1000).to_string())
             .unwrap_or("".to_string());
 
-        let amount = c.amount_msat / 1000;
+        let amount = fund.amount_msat / 1000;
 
-        let their = channels_by_id.get(&(&short_channel_id, &c.peer_id));
+        let their = channels_by_id.get(&(&short_channel_id, &fund.peer_id));
         let their_fee = their
             .map(|e| e.fee_per_millionth.to_string())
             .unwrap_or("".to_string());
@@ -148,7 +151,7 @@ fn main() {
         let min_max = format!("{our_min}/{our_max}");
 
         let last_timestamp = nodes_by_id
-            .get(&c.peer_id)
+            .get(&fund.peer_id)
             .map(|e| DateTime::from_timestamp(e.last_timestamp.unwrap_or(0) as i64, 0).unwrap())
             .unwrap_or(DateTime::from_timestamp(0, 0).unwrap());
         let last_timestamp_delta = cut_days(now.signed_duration_since(last_timestamp).num_days());
@@ -157,20 +160,13 @@ fn main() {
             .map(|e| DateTime::from_timestamp(e.last_update as i64, 0).unwrap())
             .unwrap_or(DateTime::from_timestamp(0, 0).unwrap());
         let last_update_delta = cut_days(now.signed_duration_since(last_update).num_days());
-        let short_channel_id = c.short_channel_id();
-        let alias_or_id = c.alias_or_id(&nodes_by_id);
+        let short_channel_id = fund.short_channel_id();
+        let alias_or_id = fund.alias_or_id(&nodes_by_id);
 
-        let perc_float = c.perc_float();
-        let out_fee = calc_setchannel(
-            &short_channel_id,
-            perc_float,
-            amount,
-            our,
-            their,
-            network_average,
-        );
+        let perc_float = fund.perc_float();
+        let out_fee = calc_setchannel(&short_channel_id, &fund, our, their, network_average);
 
-        calc_slingjobs(&short_channel_id, &jobs, out_fee, perc_float, amount);
+        // calc_slingjobs(&short_channel_id, &jobs, out_fee, perc_float, amount);
 
         let monthly_forw = per_channel_montly_forwards
             .get(&short_channel_id)
@@ -191,61 +187,71 @@ fn main() {
 }
 
 // lightning-cli sling-job -k scid=848864x399x0 direction=push amount=1000 maxppm=500 outppm=200 depleteuptoamount=100000
-fn calc_slingjobs(
-    scid: &str,
-    jobs: &HashMap<String, JobSetting>,
-    calc_fee: u64,
-    perc: f64,
-    _amount: u64,
-) {
-    let current = jobs.get(scid);
-    let maxppm = calc_fee - calc_fee / 4; // maxppm fee for rebalance 25% less the fee we want on the channel
-    let dir = if perc < 0.4 {
-        "pull"
-    } else if perc > 0.6 {
-        "push"
-    } else {
-        return;
-    };
-    if let Some(c) = current {
-        if c.maxppm == calc_fee {
-            return;
-        }
-    }
+// fn _calc_slingjobs(
+//     scid: &str,
+//     jobs: &HashMap<String, JobSetting>,
+//     calc_fee: u64,
+//     perc: f64,
+//     _amount: u64,
+// ) {
+//     let current = jobs.get(scid);
+//     let maxppm = calc_fee - calc_fee / 4; // maxppm fee for rebalance 25% less the fee we want on the channel
+//     let dir = if perc < 0.4 {
+//         "pull"
+//     } else if perc > 0.6 {
+//         "push"
+//     } else {
+//         return;
+//     };
+//     if let Some(c) = current {
+//         if c.maxppm == calc_fee {
+//             return;
+//         }
+//     }
 
-    println!("`lightning-cli sling-job -k scid={scid} amount=1000 depleteuptoamount=100000 maxppm={maxppm} outppm={maxppm} direction={dir}`",);
-}
+//     println!("`lightning-cli sling-job -k scid={scid} amount=1000 depleteuptoamount=100000 maxppm={maxppm} outppm={maxppm} direction={dir}`",);
+// }
 
 fn calc_setchannel(
     short_channel_id: &str,
-    perc: f64,
-    amount: u64,
-    our: Option<&&Channel>,
+    fund: &Fund,
+    _our: Option<&&Channel>,
     _their: Option<&&Channel>,
-    network_average: u64,
+    _network_average: u64,
 ) -> u64 {
-    let calc_fee = (((1.0 - perc) + 0.5) * (network_average as f64)) as u64;
-    let max_htlc = amount / 2 + 100;
+    let perc = fund.perc_float();
+    let amount = fund.amount_msat;
+    let our_amount = fund.our_amount_msat;
+    let max_htlc = our_amount;
+
+    // if perc 1.0 => ppm = MAX_PPM
+    // if perc 0.0 => ppm = MIN_PPM
+
+    let ppm = MIN_PPM + ((MAX_PPM - MIN_PPM) as f64 * perc) as u64;
+
+    // let calc_fee = (((1.0 - perc) + 0.5) * (network_average as f64)) as u64;
+    // let max_htlc = amount / 2 + 100;
     // let their_fee = their.map(|e| e.fee_per_millionth).unwrap_or(calc_fee);
     // let adj_calc_fee = (calc_fee + their_fee) / 2;
-    let final_fee = calc_fee.max(100);
-    let our_fee = our.map(|e| e.fee_per_millionth).unwrap_or(final_fee);
+    // let final_fee = calc_fee.max(100);
+    // let our_fee = our.map(|e| e.fee_per_millionth).unwrap_or(final_fee);
+    // let our_amount = our.map(|e| e).unwrap_or(final_fee);
 
-    let diff = (our_fee as f64 - final_fee as f64) / final_fee as f64;
-    if diff.abs() > 0.05 {
-        println!("`lightning-cli setchannel {short_channel_id} 0 {final_fee} 10sat {max_htlc}sat` diff:{diff:.2}");
-    }
-    final_fee
+    // let diff = (our_fee as f64 - final_fee as f64) / final_fee as f64;
+    // if diff.abs() > 0.05 {
+    println!("lightning-cli setchannel {short_channel_id} 0 {ppm} 10sat {max_htlc}");
+    // }
+    0
 }
 
-fn sling_jobsettings() -> HashMap<String, JobSetting> {
-    let str = if cfg!(debug_assertions) {
-        cmd_result("cat", &["test-json/sling-jobsettings"])
-    } else {
-        cmd_result("lightning-cli", &["sling-jobsettings"])
-    };
-    serde_json::from_str(&str).unwrap()
-}
+// fn sling_jobsettings() -> HashMap<String, JobSetting> {
+//     let str = if cfg!(debug_assertions) {
+//         cmd_result("cat", &["test-json/sling-jobsettings"])
+//     } else {
+//         cmd_result("lightning-cli", &["sling-jobsettings"])
+//     };
+//     serde_json::from_str(&str).unwrap()
+// }
 
 fn list_funds() -> ListFunds {
     let str = if cfg!(debug_assertions) {
@@ -307,13 +313,13 @@ struct ListChannels {
     channels: Vec<Channel>,
 }
 
-#[derive(Deserialize, Debug)]
-struct JobSetting {
-    amount_msat: u64,
-    maxppm: u64,
-    outppm: u64,
-    sat_direction: String,
-}
+// #[derive(Deserialize, Debug)]
+// struct JobSetting {
+//     amount_msat: u64,
+//     maxppm: u64,
+//     outppm: u64,
+//     sat_direction: String,
+// }
 
 #[derive(Deserialize, Debug)]
 struct Channel {
