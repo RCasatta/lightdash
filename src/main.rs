@@ -4,9 +4,11 @@ use std::collections::HashMap;
 
 const MIN_PPM: u64 = 100; // when channel 0%
 const MAX_PPM: u64 = 1000; // when channel 100%
+const STEP: i64 = 20;
 
 fn main() {
     let now = Utc::now();
+    println!("{}", now);
     let info = get_info();
     println!("my id:{}", info.id);
 
@@ -33,15 +35,16 @@ fn main() {
         .collect();
 
     let forwards = list_forwards();
+    let total_forwards = forwards.forwards.len();
     let settled: Vec<_> = forwards
         .forwards
-        .iter()
+        .into_iter()
         .filter(|e| e.status == "settled")
         .collect();
 
     // let jobs = sling_jobsettings();
 
-    println!("forwards: {}/{} ", settled.len(), forwards.forwards.len());
+    println!("forwards: {}/{} ", settled.len(), total_forwards);
     let mut last_year = 0f64;
     let mut last_month = 0f64;
     let mut last_week = 0f64;
@@ -50,7 +53,7 @@ fn main() {
     let mut per_channel_montly_fee_sat: HashMap<String, u64> = HashMap::new();
 
     for s in settled.iter() {
-        let d = DateTime::from_timestamp(s.resolved_time.unwrap() as i64, 0).unwrap();
+        let d = s.resolved_time();
         first = first.min(d);
         let days_elapsed = now.signed_duration_since(d).num_days();
         if days_elapsed < 365 {
@@ -164,7 +167,15 @@ fn main() {
         let alias_or_id = fund.alias_or_id(&nodes_by_id);
 
         let perc_float = fund.perc_float();
-        let out_fee = calc_setchannel(&short_channel_id, &fund, our, their, network_average);
+        let out_fee = calc_setchannel(
+            &short_channel_id,
+            &fund,
+            our,
+            their,
+            &settled,
+            network_average,
+            &now,
+        );
 
         // calc_slingjobs(&short_channel_id, &jobs, out_fee, perc_float, amount);
 
@@ -215,19 +226,31 @@ fn main() {
 fn calc_setchannel(
     short_channel_id: &str,
     fund: &Fund,
-    _our: Option<&&Channel>,
+    our: Option<&&Channel>,
     _their: Option<&&Channel>,
+    forwards: &[Forward],
     _network_average: u64,
+    now: &DateTime<Utc>,
 ) -> u64 {
     let perc = fund.perc_float();
-    let amount = fund.amount_msat;
+    // let amount = fund.amount_msat;
     let our_amount = fund.our_amount_msat;
-    let max_htlc = our_amount;
+    let max_htlc_sat = our_amount / 1000;
+    let max_htlc_sat = format!("{max_htlc_sat}sat");
 
     // if perc 1.0 => ppm = MAX_PPM
     // if perc 0.0 => ppm = MIN_PPM
 
-    let ppm = MIN_PPM + ((MAX_PPM - MIN_PPM) as f64 * perc) as u64;
+    let min_ppm = MIN_PPM + ((MAX_PPM - MIN_PPM) as f64 * (1.0 - perc)) as u64;
+
+    let current_ppm = our.map(|e| e.fee_per_millionth).unwrap_or(min_ppm);
+
+    let step = if did_forward_last_24h(short_channel_id, forwards, now) {
+        STEP
+    } else {
+        -STEP
+    };
+    let new_ppm = ((current_ppm as i64).saturating_sub(step) as u64).max(min_ppm);
 
     // let calc_fee = (((1.0 - perc) + 0.5) * (network_average as f64)) as u64;
     // let max_htlc = amount / 2 + 100;
@@ -237,11 +260,27 @@ fn calc_setchannel(
     // let our_fee = our.map(|e| e.fee_per_millionth).unwrap_or(final_fee);
     // let our_amount = our.map(|e| e).unwrap_or(final_fee);
 
-    // let diff = (our_fee as f64 - final_fee as f64) / final_fee as f64;
-    // if diff.abs() > 0.05 {
-    println!("lightning-cli setchannel {short_channel_id} 0 {ppm} 10sat {max_htlc}");
-    // }
-    0
+    if current_ppm != new_ppm {
+        println!("lightning-cli setchannel {short_channel_id} 0 {new_ppm} 10sat {max_htlc_sat}");
+    }
+
+    current_ppm
+}
+
+fn did_forward_last_24h(short_channel_id: &str, forwards: &[Forward], now: &DateTime<Utc>) -> bool {
+    for f in forwards {
+        if f.resolved_time().signed_duration_since(now).num_hours() <= 24 {
+            if &f.in_channel == short_channel_id {
+                return true;
+            }
+            if let Some(out_channel) = f.out_channel.as_ref() {
+                if out_channel == short_channel_id {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 // fn sling_jobsettings() -> HashMap<String, JobSetting> {
@@ -421,7 +460,7 @@ struct ListForwards {
 
 #[derive(Deserialize, Debug)]
 struct Forward {
-    // in_channel: String,
+    in_channel: String,
     out_channel: Option<String>,
     fee_msat: Option<u64>,
     // in_msat: u64,
@@ -429,4 +468,9 @@ struct Forward {
     status: String,
     // received_time: f64,
     resolved_time: Option<f64>,
+}
+impl Forward {
+    fn resolved_time(&self) -> DateTime<Utc> {
+        DateTime::from_timestamp(self.resolved_time.unwrap() as i64, 0).unwrap()
+    }
 }
