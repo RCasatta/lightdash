@@ -187,7 +187,7 @@ fn main() {
             .unwrap_or(&0u64);
 
         let s = format!(
-            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {monthly_forw:>3} {monthly_forw_fee:>5} {alias_or_id}"
+            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {monthly_forw:>3} {monthly_forw_fee:>5}sat {alias_or_id}"
         );
         lines.push((perc, s, cmd));
     }
@@ -253,7 +253,7 @@ fn calc_setchannel(
 
     let current_ppm = our.map(|e| e.fee_per_millionth).unwrap_or(min_ppm);
 
-    let forwards_24h = filter_forwards(forwards, 100, &now);
+    let forwards_24h = filter_forwards(forwards, 24, &now);
     let did_forward_last_24h = did_forward_last_24h(short_channel_id, &forwards_24h);
     let new_ppm = if did_forward_last_24h {
         current_ppm.saturating_add(STEP)
