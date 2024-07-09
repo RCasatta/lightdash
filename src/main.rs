@@ -253,7 +253,8 @@ fn calc_setchannel(
 
     let current_ppm = our.map(|e| e.fee_per_millionth).unwrap_or(min_ppm);
 
-    let new_ppm = if did_forward_last_24h(short_channel_id, forwards, now) {
+    let did_forward_last_24h = did_forward_last_24h(short_channel_id, forwards, now);
+    let new_ppm = if did_forward_last_24h {
         current_ppm.saturating_add(STEP)
     } else {
         current_ppm.saturating_sub(STEP)
@@ -270,7 +271,7 @@ fn calc_setchannel(
     // let our_amount = our.map(|e| e).unwrap_or(final_fee);
 
     let result = if current_ppm != new_ppm {
-        Some(format!("`lightning-cli setchannel {short_channel_id} 0 {new_ppm} 10sat {max_htlc_sat}` current was:{current_ppm}"))
+        Some(format!("`lightning-cli setchannel {short_channel_id} 0 {new_ppm} 10sat {max_htlc_sat}` current was:{current_ppm} did_forward_last_24h:{did_forward_last_24h}"))
     } else {
         None
     };
