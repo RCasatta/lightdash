@@ -1,10 +1,13 @@
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
 use std::collections::HashMap;
 
-const MIN_PPM: u64 = 100; // when channel 0%
-const MAX_PPM: u64 = 1000; // when channel 100%
+const PPM_100: u64 = 100; // when channel 100%
+const PPM_0: u64 = 1000; // when channel 0%
 const STEP: u64 = 20;
+
+mod cmd;
+
+use cmd::*;
 
 fn main() {
     let now = Utc::now();
@@ -40,7 +43,9 @@ fn main() {
         .forwards
         .into_iter()
         .filter(|e| e.status == "settled")
+        .map(|e| SettledForward::try_from(e).unwrap())
         .collect();
+    let settled_24h = filter_forwards(&settled, 24, &now);
 
     // let jobs = sling_jobsettings();
 
@@ -53,22 +58,18 @@ fn main() {
     let mut per_channel_montly_fee_sat: HashMap<String, u64> = HashMap::new();
 
     for s in settled.iter() {
-        let d = s.resolved_time();
+        let d = s.resolved_time;
         first = first.min(d);
         let days_elapsed = now.signed_duration_since(d).num_days();
         if days_elapsed < 365 {
             last_year += 1.0;
             if days_elapsed < 30 {
-                if let Some(channel) = s.out_channel.as_ref() {
-                    *per_channel_montly_forwards
-                        .entry(channel.to_string())
-                        .or_default() += 1;
-                    if let Some(fee) = s.fee_msat.as_ref() {
-                        *per_channel_montly_fee_sat
-                            .entry(channel.to_string())
-                            .or_default() += fee / 1000;
-                    }
-                }
+                *per_channel_montly_forwards
+                    .entry(s.out_channel.to_string())
+                    .or_default() += 1;
+                *per_channel_montly_fee_sat
+                    .entry(s.out_channel.to_string())
+                    .or_default() += s.fee_sat;
 
                 last_month += 1.0;
                 if days_elapsed < 7 {
@@ -166,15 +167,7 @@ fn main() {
         let short_channel_id = fund.short_channel_id();
         let alias_or_id = fund.alias_or_id(&nodes_by_id);
 
-        let (_new_fee, cmd) = calc_setchannel(
-            &short_channel_id,
-            &fund,
-            our,
-            their,
-            &settled,
-            network_average,
-            &now,
-        );
+        let (_new_fee, cmd) = calc_setchannel(&short_channel_id, &fund, our, &settled_24h);
 
         // calc_slingjobs(&short_channel_id, &jobs, out_fee, perc_float, amount);
 
@@ -235,10 +228,7 @@ fn calc_setchannel(
     short_channel_id: &str,
     fund: &Fund,
     our: Option<&&Channel>,
-    _their: Option<&&Channel>,
-    forwards: &[Forward],
-    _network_average: u64,
-    now: &DateTime<Utc>,
+    settled_24h: &[SettledForward],
 ) -> (u64, Option<String>) {
     let perc = fund.perc_float();
     // let amount = fund.amount_msat;
@@ -249,12 +239,11 @@ fn calc_setchannel(
     // if perc 1.0 => ppm = MAX_PPM
     // if perc 0.0 => ppm = MIN_PPM
 
-    let min_ppm = MIN_PPM + ((MAX_PPM - MIN_PPM) as f64 * (1.0 - perc)) as u64;
+    let min_ppm = PPM_100 + ((PPM_0 - PPM_100) as f64 * (1.0 - perc)) as u64;
 
     let current_ppm = our.map(|e| e.fee_per_millionth).unwrap_or(min_ppm);
 
-    let forwards_24h = filter_forwards(forwards, 24, &now);
-    let did_forward_last_24h = did_forward_last_24h(short_channel_id, &forwards_24h);
+    let did_forward_last_24h = did_forward(short_channel_id, &settled_24h);
     let new_ppm = if did_forward_last_24h {
         current_ppm.saturating_add(STEP)
     } else {
@@ -273,7 +262,7 @@ fn calc_setchannel(
 
     let result = if current_ppm != new_ppm {
         let cmd = "lightning-cli";
-        let args = format!("setchannel {short_channel_id} 0 {new_ppm} 10sat {max_htlc_sat}`");
+        let args = format!("setchannel {short_channel_id} 0 {new_ppm} 10sat {max_htlc_sat}");
 
         let execute = std::env::var("EXECUTE").is_ok();
         if execute {
@@ -292,229 +281,31 @@ fn calc_setchannel(
     (new_ppm, result)
 }
 
-fn filter_forwards(forwards: &[Forward], hour: i64, now: &DateTime<Utc>) -> Vec<Forward> {
+fn filter_forwards(
+    forwards: &[SettledForward],
+    hour: i64,
+    now: &DateTime<Utc>,
+) -> Vec<SettledForward> {
     forwards
         .iter()
-        .filter(|f| now.signed_duration_since(f.resolved_time()).num_hours() <= hour)
+        .filter(|f| now.signed_duration_since(f.resolved_time).num_hours() <= hour)
         .cloned()
         .collect()
 }
 
-fn did_forward_last_24h(short_channel_id: &str, forwards: &[Forward]) -> bool {
+fn did_forward(short_channel_id: &str, forwards: &[SettledForward]) -> bool {
     for f in forwards {
-        if &f.in_channel == short_channel_id {
+        if &f.out_channel == short_channel_id {
             return true;
-        }
-        if let Some(out_channel) = f.out_channel.as_ref() {
-            if out_channel == short_channel_id {
-                return true;
-            }
         }
     }
     false
 }
 
-// fn sling_jobsettings() -> HashMap<String, JobSetting> {
-//     let str = if cfg!(debug_assertions) {
-//         cmd_result("cat", &["test-json/sling-jobsettings"])
-//     } else {
-//         cmd_result("lightning-cli", &["sling-jobsettings"])
-//     };
-//     serde_json::from_str(&str).unwrap()
-// }
-
-fn list_funds() -> ListFunds {
-    let str = if cfg!(debug_assertions) {
-        cmd_result("cat", &["test-json/listfunds"])
-    } else {
-        cmd_result("lightning-cli", &["listfunds"])
-    };
-    serde_json::from_str(&str).unwrap()
-}
-
-fn list_nodes() -> ListNodes {
-    let str = if cfg!(debug_assertions) {
-        cmd_result("zcat", &["test-json/listnodes.gz"])
-    } else {
-        cmd_result("lightning-cli", &["listnodes"])
-    };
-    serde_json::from_str(&str).unwrap()
-}
-
-fn list_channels() -> ListChannels {
-    let str = if cfg!(debug_assertions) {
-        cmd_result("zcat", &["test-json/listchannels.gz"])
-    } else {
-        cmd_result("lightning-cli", &["listchannels"])
-    };
-    serde_json::from_str(&str).unwrap()
-}
-
-fn list_forwards() -> ListForwards {
-    let str = if cfg!(debug_assertions) {
-        cmd_result("zcat", &["test-json/listforwards.gz"])
-    } else {
-        cmd_result("lightning-cli", &["listforwards"])
-    };
-    serde_json::from_str(&str).unwrap()
-}
-
-fn get_info() -> GetInfo {
-    let str = if cfg!(debug_assertions) {
-        cmd_result("cat", &["test-json/getinfo"])
-    } else {
-        cmd_result("lightning-cli", &["getinfo"])
-    };
-    serde_json::from_str(&str).unwrap()
-}
-
-fn cmd_result(cmd: &str, args: &[&str]) -> String {
-    let data = std::process::Command::new(cmd).args(args).output().unwrap();
-    let err = std::str::from_utf8(&data.stdout).unwrap().to_string();
-    // eprintln!("{err}");
-
-    std::str::from_utf8(&data.stdout).unwrap().to_string()
-}
-
-// fn lcli_named(subcmd: &str, args: &[&str]) -> String {
-//     let data = std::process::Command::new("lightning-cli")
-//         .arg(subcmd)
-//         .arg("-k")
-//         .args(args)
-//         .output()
-//         .unwrap();
-//     std::str::from_utf8(&data.stdout).unwrap().to_string()
-// }
-
-#[derive(Deserialize, Debug)]
-struct GetInfo {
-    id: String,
-}
-
-#[derive(Deserialize, Debug)]
-struct ListChannels {
-    channels: Vec<Channel>,
-}
-
-// #[derive(Deserialize, Debug)]
-// struct JobSetting {
-//     amount_msat: u64,
-//     maxppm: u64,
-//     outppm: u64,
-//     sat_direction: String,
-// }
-
-#[derive(Deserialize, Debug)]
-struct Channel {
-    source: String,
-    // destination: String,
-    short_channel_id: String,
-    // amount_msat: u64,
-    // active: bool,
-    last_update: u64,
-    base_fee_millisatoshi: u64,
-    fee_per_millionth: u64,
-    // delay: u64,
-    htlc_minimum_msat: u64,
-    htlc_maximum_msat: u64,
-    // features: String,
-}
-
-#[derive(Deserialize, Debug)]
-struct ListNodes {
-    nodes: Vec<Node>,
-}
-
-#[derive(Deserialize, Debug)]
-struct Node {
-    nodeid: String,
-    alias: Option<String>,
-    last_timestamp: Option<u64>,
-}
-
-impl Node {
-    fn alias(&self) -> String {
-        self.alias.clone().unwrap_or("".to_string())
-    }
-}
-
-#[derive(Deserialize, Debug)]
-struct ListFunds {
-    channels: Vec<Fund>,
-}
-
-#[derive(Deserialize, Debug)]
-struct Fund {
-    peer_id: String,
-    // connected: bool,
-    state: String,
-    // channel_id: String,
-    short_channel_id: Option<String>,
-    our_amount_msat: u64,
-    amount_msat: u64,
-    // funding_txid: String,
-    // funding_output: u32,
-}
-
-impl Fund {
-    fn perc(&self) -> u64 {
-        ((self.our_amount_msat as f64 / self.amount_msat as f64) * 100.0).floor() as u64
-    }
-    fn perc_float(&self) -> f64 {
-        self.our_amount_msat as f64 / self.amount_msat as f64
-    }
-
-    fn short_channel_id(&self) -> String {
-        self.short_channel_id.clone().unwrap_or("".to_string())
-    }
-
-    fn alias_or_id(&self, m: &HashMap<&String, &Node>) -> String {
-        pad_or_trunc(
-            &m.get(&self.peer_id).map(|e| e.alias()).unwrap_or(format!(
-                "{}...{}",
-                &self.peer_id[0..8],
-                &self.peer_id[58..]
-            )),
-            24,
-        )
-    }
-}
-
-fn cut_days(d: i64) -> String {
+pub fn cut_days(d: i64) -> String {
     if d > 99 {
         "99+".to_string()
     } else {
         format!("{d:>2}d")
-    }
-}
-
-fn pad_or_trunc(s: &str, l: usize) -> String {
-    // println!("DEBUG {s} has {} chars", s.chars().count());
-    if s.chars().count() > l {
-        s.chars().take(l).collect()
-    } else {
-        format!("{:width$}", s, width = l)
-    }
-}
-
-#[derive(Deserialize)]
-struct ListForwards {
-    forwards: Vec<Forward>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-struct Forward {
-    in_channel: String,
-    out_channel: Option<String>,
-    fee_msat: Option<u64>,
-    // in_msat: u64,
-    // out_msat: Option<u64>,
-    status: String,
-    // received_time: f64,
-    resolved_time: Option<f64>,
-}
-impl Forward {
-    fn resolved_time(&self) -> DateTime<Utc> {
-        DateTime::from_timestamp(self.resolved_time.unwrap() as i64, 0).unwrap()
     }
 }
