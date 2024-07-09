@@ -272,7 +272,19 @@ fn calc_setchannel(
     // let our_amount = our.map(|e| e).unwrap_or(final_fee);
 
     let result = if current_ppm != new_ppm {
-        Some(format!("`lightning-cli setchannel {short_channel_id} 0 {new_ppm} 10sat {max_htlc_sat}` current was:{current_ppm} did_forward_last_24h:{did_forward_last_24h}"))
+        let cmd = "lightning-cli";
+        let args = format!("setchannel {short_channel_id} 0 {new_ppm} 10sat {max_htlc_sat}`");
+
+        let execute = std::env::var("EXECUTE").is_ok();
+        if execute {
+            let splitted_args: Vec<&str> = args.split(' ').collect();
+            let result = cmd_result(cmd, &splitted_args);
+            println!("{result}");
+        }
+
+        Some(format!(
+            "`{cmd} {args}` current was:{current_ppm} did_forward_last_24h:{did_forward_last_24h}"
+        ))
     } else {
         None
     };
@@ -358,8 +370,21 @@ fn get_info() -> GetInfo {
 
 fn cmd_result(cmd: &str, args: &[&str]) -> String {
     let data = std::process::Command::new(cmd).args(args).output().unwrap();
+    let err = std::str::from_utf8(&data.stdout).unwrap().to_string();
+    // eprintln!("{err}");
+
     std::str::from_utf8(&data.stdout).unwrap().to_string()
 }
+
+// fn lcli_named(subcmd: &str, args: &[&str]) -> String {
+//     let data = std::process::Command::new("lightning-cli")
+//         .arg(subcmd)
+//         .arg("-k")
+//         .args(args)
+//         .output()
+//         .unwrap();
+//     std::str::from_utf8(&data.stdout).unwrap().to_string()
+// }
 
 #[derive(Deserialize, Debug)]
 struct GetInfo {
