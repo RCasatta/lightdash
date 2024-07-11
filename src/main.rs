@@ -233,7 +233,7 @@ fn calc_setchannel(
     let perc = fund.perc_float();
     // let amount = fund.amount_msat;
     let our_amount = fund.our_amount_msat;
-    let max_htlc_sat = our_amount / 1000;
+    let max_htlc_sat = fund.amount_msat / 1000;
     let max_htlc_sat = format!("{max_htlc_sat}sat");
 
     // if perc 1.0 => ppm = MAX_PPM
