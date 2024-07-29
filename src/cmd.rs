@@ -57,6 +57,15 @@ pub fn get_info() -> GetInfo {
     serde_json::from_str(&str).unwrap()
 }
 
+pub fn get_route(id: &str) -> GetRoute {
+    let str = if cfg!(debug_assertions) {
+        cmd_result("cat", &["test-json/getroute"])
+    } else {
+        cmd_result("lightning-cli", &["getroute", id, "1000", "10"]) // TODO parametrize amount and riskfactor
+    };
+    serde_json::from_str(&str).unwrap()
+}
+
 pub fn cmd_result(cmd: &str, args: &[&str]) -> String {
     let data = std::process::Command::new(cmd).args(args).output().unwrap();
     std::str::from_utf8(&data.stdout).unwrap().to_string()
@@ -189,6 +198,21 @@ pub struct SettledForward {
     pub out_channel: String,
     pub fee_sat: u64,
     pub resolved_time: DateTime<Utc>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct RouteNode {
+    pub id: String,
+    pub channel: String,
+    pub direction: u8,
+    pub amount_msat: u64,
+    pub delay: u64,
+    pub style: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct GetRoute {
+    pub route: Vec<RouteNode>,
 }
 
 impl TryFrom<Forward> for SettledForward {

@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use rand::prelude::SliceRandom;
 use std::collections::HashMap;
 
 const PPM_100: u64 = 100; // when channel 100%
@@ -196,6 +197,20 @@ fn main() {
             println!("{l}");
         }
     }
+
+    // getroute
+    let nodes_ids: Vec<_> = nodes_by_id.keys().collect();
+    let mut rng = rand::thread_rng();
+    let mut counters = HashMap::new();
+    for _ in 0..100 {
+        let id = nodes_ids.choose(&mut rng).unwrap();
+        let mut route = get_route(id).route;
+        route.pop(); // remove the random destination
+        for n in route.iter() {
+            *counters.entry(n.id.to_string()).or_insert(0u64) += 1;
+        }
+    }
+    println!("{counters:?}");
 }
 
 // lightning-cli sling-job -k scid=848864x399x0 direction=push amount=1000 maxppm=500 outppm=200 depleteuptoamount=100000
@@ -232,7 +247,7 @@ fn calc_setchannel(
 ) -> (u64, Option<String>) {
     let perc = fund.perc_float();
     // let amount = fund.amount_msat;
-    let our_amount = fund.our_amount_msat;
+    // let our_amount = fund.our_amount_msat;
     let max_htlc_sat = fund.amount_msat / 1000;
     let max_htlc_sat = format!("{max_htlc_sat}sat");
 
