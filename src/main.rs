@@ -204,10 +204,12 @@ fn main() {
     let mut counters = HashMap::new();
     for _ in 0..100 {
         let id = nodes_ids.choose(&mut rng).unwrap();
-        let mut route = get_route(id).route;
-        route.pop(); // remove the random destination
-        for n in route.iter() {
-            *counters.entry(n.id.to_string()).or_insert(0u64) += 1;
+        if let Some(route) = get_route(id) {
+            let mut nodes = route.route;
+            nodes.pop(); // remove the random destination
+            for n in nodes.iter() {
+                *counters.entry(n.id.to_string()).or_insert(0u64) += 1;
+            }
         }
     }
     println!("{counters:?}");

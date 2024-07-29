@@ -57,13 +57,13 @@ pub fn get_info() -> GetInfo {
     serde_json::from_str(&str).unwrap()
 }
 
-pub fn get_route(id: &str) -> GetRoute {
+pub fn get_route(id: &str) -> Option<GetRoute> {
     let str = if cfg!(debug_assertions) {
         cmd_result("cat", &["test-json/getroute"])
     } else {
         cmd_result("lightning-cli", &["getroute", id, "1000", "10"]) // TODO parametrize amount and riskfactor
     };
-    serde_json::from_str(&str).unwrap()
+    serde_json::from_str(&str).ok()
 }
 
 pub fn cmd_result(cmd: &str, args: &[&str]) -> String {
