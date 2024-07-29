@@ -202,7 +202,7 @@ fn main() {
     let nodes_ids: Vec<_> = nodes_by_id.keys().collect();
     let mut rng = rand::thread_rng();
     let mut counters = HashMap::new();
-    for _ in 0..100 {
+    for _ in 0..500 {
         let id = nodes_ids.choose(&mut rng).unwrap();
         if let Some(route) = get_route(id) {
             let mut nodes = route.route;
@@ -212,7 +212,9 @@ fn main() {
             }
         }
     }
-    println!("{counters:?}");
+    let mut counters_vec: Vec<_> = counters.into_iter().collect();
+    counters_vec.sort_by(|a, b| a.1.cmp(&b.1));
+    println!("{counters_vec:?}");
 }
 
 // lightning-cli sling-job -k scid=848864x399x0 direction=push amount=1000 maxppm=500 outppm=200 depleteuptoamount=100000
