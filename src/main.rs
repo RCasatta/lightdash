@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use rand::prelude::SliceRandom;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 const PPM_100: u64 = 100; // when channel 100%
 const PPM_0: u64 = 1000; // when channel 0%
@@ -18,11 +18,21 @@ fn main() {
 
     let channels = list_channels();
     let nodes = list_nodes();
+    let peers = list_peers();
+
     println!(
-        "network channels:{} nodes:{}",
+        "network channels:{} nodes:{} peers:{}",
         channels.channels.len(),
-        nodes.nodes.len()
+        nodes.nodes.len(),
+        peers.peers.len(),
     );
+
+    let peers_ids: HashSet<_> = peers
+        .peers
+        .iter()
+        .filter(|e| e.num_channels > 0)
+        .map(|e| &e.id)
+        .collect();
 
     let nodes_by_id: HashMap<_, _> = nodes
         .nodes
@@ -208,7 +218,9 @@ fn main() {
             let mut nodes = route.route;
             nodes.pop(); // remove the random destination
             for n in nodes.iter() {
-                *counters.entry(n.id.to_string()).or_insert(0u64) += 1;
+                if !peers_ids.contains(&n.id) {
+                    *counters.entry(n.id.to_string()).or_insert(0u64) += 1;
+                }
             }
         }
     }

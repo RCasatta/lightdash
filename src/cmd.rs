@@ -39,6 +39,15 @@ pub fn list_channels() -> ListChannels {
     serde_json::from_str(&str).unwrap()
 }
 
+pub fn list_peers() -> ListPeers {
+    let str = if cfg!(debug_assertions) {
+        cmd_result("cat", &["test-json/listpeers"])
+    } else {
+        cmd_result("lightning-cli", &["listpeers"])
+    };
+    serde_json::from_str(&str).unwrap()
+}
+
 pub fn list_forwards() -> ListForwards {
     let str = if cfg!(debug_assertions) {
         cmd_result("zcat", &["test-json/listforwards.gz"])
@@ -97,6 +106,17 @@ pub struct JobSetting {
     pub maxppm: u64,
     pub outppm: u64,
     pub sat_direction: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ListPeers {
+    pub peers: Vec<Peer>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Peer {
+    pub id: String,
+    pub num_channels: u64,
 }
 
 #[derive(Deserialize, Debug)]
