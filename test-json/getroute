@@ -1,0 +1,44 @@
+{
+   "route": [
+      {
+         "id": "03b2fdf3674e934a13a72f495d471dbe15962edd4d37b9ef3bdf2cd6c09ef9f719",
+         "channel": "854507x1427x0",
+         "direction": 0,
+         "amount_msat": 1001,
+         "delay": 283,
+         "style": "tlv"
+      },
+      {
+         "id": "037659a0ac8eb3b8d0a720114efc861d3a940382dcfa1403746b4f8f6b2e8810ba",
+         "channel": "714455x1131x1",
+         "direction": 1,
+         "amount_msat": 1000,
+         "delay": 183,
+         "style": "tlv"
+      },
+      {
+         "id": "0391e2edea5191627a25ecbd327c0dc2a95c880a5b0e73af38dc4a5a8964263b3f",
+         "channel": "709880x1930x0",
+         "direction": 0,
+         "amount_msat": 1000,
+         "delay": 83,
+         "style": "tlv"
+      },
+      {
+         "id": "0294ac3e099def03c12a37e30fe5364b1223fd60069869142ef96580c8439c2e0a",
+         "channel": "710606x806x1",
+         "direction": 1,
+         "amount_msat": 1000,
+         "delay": 49,
+         "style": "tlv"
+      },
+      {
+         "id": "03037dc08e9ac63b82581f79b662a4d0ceca8a8ca162b1af3551595b8f2d97b70a",
+         "channel": "775673x949x1",
+         "direction": 0,
+         "amount_msat": 1000,
+         "delay": 9,
+         "style": "tlv"
+      }
+   ]
+}
