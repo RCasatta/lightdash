@@ -224,7 +224,7 @@ fn main() {
             }
         }
     }
-    let mut counters_vec: Vec<_> = counters.into_iter().filter(|e| e.1 > 10).collect();
+    let mut counters_vec: Vec<_> = counters.into_iter().filter(|e| e.1 > 5).collect();
     counters_vec.sort_by(|a, b| a.1.cmp(&b.1));
 
     println!("{counters_vec:?}");
