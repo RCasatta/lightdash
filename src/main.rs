@@ -41,6 +41,11 @@ fn main() {
         .map(|e| (&e.nodeid, e))
         .collect();
 
+    let mut channels_per_node = HashMap::new();
+    for c in channels.channels.iter() {
+        *channels_per_node.entry(&c.source).or_insert(0u64) += 1;
+    }
+
     let funds = list_funds();
     let normal_channels: Vec<_> = funds
         .channels
@@ -209,7 +214,16 @@ fn main() {
     }
 
     // getroute
-    let nodes_ids: Vec<_> = nodes_by_id.keys().collect();
+    let nodes_ids: Vec<_> = nodes_by_id
+        .keys()
+        .filter(|n| {
+            channels_per_node
+                .get(&n.to_string())
+                .cloned()
+                .unwrap_or(0u64)
+                > 1
+        })
+        .collect();
     let mut rng = rand::thread_rng();
     let mut counters = HashMap::new();
     for _ in 0..1000 {
