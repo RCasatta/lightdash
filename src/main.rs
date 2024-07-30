@@ -212,7 +212,7 @@ fn main() {
     let nodes_ids: Vec<_> = nodes_by_id.keys().collect();
     let mut rng = rand::thread_rng();
     let mut counters = HashMap::new();
-    for _ in 0..500 {
+    for _ in 0..1000 {
         let id = nodes_ids.choose(&mut rng).unwrap();
         if let Some(route) = get_route(id) {
             let mut nodes = route.route;
@@ -227,7 +227,17 @@ fn main() {
     let mut counters_vec: Vec<_> = counters.into_iter().filter(|e| e.1 > 5).collect();
     counters_vec.sort_by(|a, b| a.1.cmp(&b.1));
 
-    println!("{counters_vec:?}");
+    println!("\nNode most present in random routes:");
+    for c in counters_vec {
+        let id = &c.0;
+        let count = c.1;
+        let alias = nodes_by_id
+            .get(id)
+            .map(|n| n.alias.clone())
+            .flatten()
+            .unwrap_or("".to_string());
+        println!("{id} {count:>5} {alias:?}");
+    }
 }
 
 // lightning-cli sling-job -k scid=848864x399x0 direction=push amount=1000 maxppm=500 outppm=200 depleteuptoamount=100000
