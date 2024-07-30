@@ -70,7 +70,7 @@ pub fn get_route(id: &str) -> Option<GetRoute> {
     let str = if cfg!(debug_assertions) {
         cmd_result("cat", &["test-json/getroute"])
     } else {
-        cmd_result("lightning-cli", &["getroute", id, "1000", "10"]) // TODO parametrize amount and riskfactor
+        cmd_result("lightning-cli", &["getroute", id, "10000000", "10"]) // TODO parametrize amount and riskfactor
     };
     serde_json::from_str(&str).ok()
 }
