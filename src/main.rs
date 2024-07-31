@@ -336,7 +336,7 @@ fn calc_setchannel(
         }
 
         Some(format!(
-            "`{cmd} {args}` current was:{current_ppm} did_forward_last_24h:{did_forward_last_24h}"
+            "`{cmd} {args}` current was:{current_ppm} did_forward_last_24h:{did_forward_last_24h} perc:{perc:.1} min:{min_ppm}"
         ))
     } else {
         None
