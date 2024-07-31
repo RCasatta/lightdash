@@ -7,10 +7,11 @@ use std::collections::{HashMap, HashSet};
 fn min_ppm(perc: f64) -> u64 {
     const PPM_MIN: u64 = 100; // minimum betwee 100% and 50%
     const PPM_MAX: u64 = 2000; // when channel 0%, between 0% and 50% increase linearly
+    let delta = (PPM_MAX - PPM_MIN) as f64;
     if perc > 0.5 {
         PPM_MIN
     } else {
-        PPM_MIN + ((PPM_MAX - PPM_MIN) as f64 * (1.0 - perc)) as u64
+        ((PPM_MAX as f64) + (2.0 * perc * -delta)) as u64 // since perc>0 this is positive
     }
 }
 
