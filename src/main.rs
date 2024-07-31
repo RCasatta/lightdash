@@ -2,8 +2,16 @@ use chrono::{DateTime, Utc};
 use rand::prelude::SliceRandom;
 use std::collections::{HashMap, HashSet};
 
+// The following costants define the minimum ppm of the channel according to the percentual owned by us
+// The intention is to signal via an high fee the channel depletion
+// The values in the middle are not linear, they increase ~linearly from 100% to 50% then very fast while approaching 0%
+// The used formula is `plot (1-x^(1/10))*(PPM_0-PPM_100)+PPM_100`
+// https://www.wolframalpha.com/input?i=plot+%281-x%5E%281%2F10%29%29*1900%2B100
+// At 50% the value is approximately 2*PPM_100, rapidly increasing after that
+
 const PPM_100: u64 = 100; // when channel 100%
-const PPM_0: u64 = 1000; // when channel 0%
+const PPM_0: u64 = 2000; // when channel 0%
+
 const STEP: u64 = 20;
 
 mod cmd;
@@ -295,7 +303,7 @@ fn calc_setchannel(
     // if perc 1.0 => ppm = MAX_PPM
     // if perc 0.0 => ppm = MIN_PPM
 
-    let min_ppm = PPM_100 + ((PPM_0 - PPM_100) as f64 * (1.0 - perc)) as u64;
+    let min_ppm = PPM_100 + ((PPM_0 - PPM_100) as f64 * (1.0 - perc.powf(0.1))) as u64;
 
     let current_ppm = our.map(|e| e.fee_per_millionth).unwrap_or(min_ppm);
 
