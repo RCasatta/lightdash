@@ -15,12 +15,6 @@ fn min_ppm(perc: f64) -> u64 {
     }
 }
 
-//
-// The values in the middle are not linear, they increase ~linearly from 100% to 50% then very fast while approaching 0%
-// The used formula is `plot (1-x^(1/10))*(PPM_0-PPM_100)+PPM_100`
-// https://www.wolframalpha.com/input?i=plot+%281-x%5E%281%2F10%29%29*1900%2B100
-// At 50% the value is approximately 2*PPM_100, rapidly increasing after that
-
 const STEP: u64 = 20;
 
 mod cmd;
@@ -243,10 +237,13 @@ fn main() {
         .collect();
     let mut rng = rand::thread_rng();
     let mut counters = HashMap::new();
-    for _ in 0..1000 {
+    let mut hop_sum = 0usize;
+    let total = 1000;
+    for _ in 0..total {
         let id = nodes_ids.choose(&mut rng).unwrap();
         if let Some(route) = get_route(id) {
             let mut nodes = route.route;
+            hop_sum += nodes.len();
             nodes.pop(); // remove the random destination
             for n in nodes.iter() {
                 if !peers_ids.contains(&n.id) {
@@ -258,7 +255,8 @@ fn main() {
     let mut counters_vec: Vec<_> = counters.into_iter().filter(|e| e.1 > 5).collect();
     counters_vec.sort_by(|a, b| a.1.cmp(&b.1));
 
-    println!("\nNode most present in random routes:");
+    let average_hops = hop_sum as f64 / total as f64;
+    println!("\nNode most present in random routes (average hops:{average_hops:.2}):");
     for c in counters_vec {
         let id = &c.0;
         let count = c.1;
