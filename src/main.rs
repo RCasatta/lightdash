@@ -15,7 +15,7 @@ fn min_ppm(perc: f64) -> u64 {
     }
 }
 
-const STEP: u64 = 20;
+const STEP_PERC: f64 = 0.05;
 
 mod cmd;
 
@@ -312,10 +312,11 @@ fn calc_setchannel(
     let current_ppm = our.map(|e| e.fee_per_millionth).unwrap_or(min_ppm);
 
     let did_forward_last_24h = did_forward(short_channel_id, &settled_24h);
+    let step = (current_ppm as f64 * STEP_PERC) as u64;
     let new_ppm = if did_forward_last_24h {
-        current_ppm.saturating_add(STEP)
+        current_ppm.saturating_add(step)
     } else {
-        current_ppm.saturating_sub(STEP)
+        current_ppm.saturating_sub(step)
     };
 
     let new_ppm = new_ppm.max(min_ppm);
