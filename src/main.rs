@@ -210,7 +210,7 @@ fn main() {
             .get(&short_channel_id)
             .unwrap_or(&0u64);
 
-        let monthly_in_forw = *per_channel_montly_forwards
+        let monthly_in_forw = *per_channel_montly_in_forwards
             .get(&short_channel_id)
             .unwrap_or(&0u64);
 
@@ -223,7 +223,7 @@ fn main() {
     }
 
     lines.sort_by(|a, b| a.0.cmp(&b.0));
-    println!("min_max our_base_fee our_fee short_channel_id amount perc their_fee their_base_fee last_timestamp_delta last_update_delta monthly_forw monthly_forw_fee is_sink alias_or_id");
+    println!("min_max our_base_fee our_fee scid amount perc their_fee their_base_fee last_tstamp_delta last_upd_delta monthly_forw monthly_forw_fee is_sink alias_or_id");
 
     for (_, l1, _) in lines.iter() {
         println!("{l1}");
