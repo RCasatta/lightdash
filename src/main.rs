@@ -225,11 +225,11 @@ fn main() {
             .get(&short_channel_id)
             .unwrap_or(&0u64);
 
-        let is_sink = ((monthly_forw_out as f64 / (monthly_forw_out + monthly_forw_in) as f64)
-            * 100.0) as u64;
+        let is_sink =
+            (monthly_forw_out as f64 / (monthly_forw_out + monthly_forw_in) as f64) * 100.0;
 
         let s = format!(
-            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {monthly_forw:>3} {monthly_forw_fee:>5}sat {is_sink:>3}% {alias_or_id}"
+            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {monthly_forw:>3} {monthly_forw_fee:>5}sat {is_sink:>3.0}% {alias_or_id}"
         );
         lines.push((perc, s, cmd));
     }
