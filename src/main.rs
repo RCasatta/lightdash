@@ -83,6 +83,7 @@ fn main() {
     let mut first = now;
     let mut per_channel_montly_forwards: HashMap<String, u64> = HashMap::new();
     let mut per_channel_montly_fee_sat: HashMap<String, u64> = HashMap::new();
+    let mut per_channel_montly_in_forwards: HashMap<String, u64> = HashMap::new();
 
     for s in settled.iter() {
         let d = s.resolved_time;
@@ -93,6 +94,9 @@ fn main() {
             if days_elapsed < 30 {
                 *per_channel_montly_forwards
                     .entry(s.out_channel.to_string())
+                    .or_default() += 1;
+                *per_channel_montly_in_forwards
+                    .entry(s.in_channel.to_string())
                     .or_default() += 1;
                 *per_channel_montly_fee_sat
                     .entry(s.out_channel.to_string())
@@ -198,21 +202,28 @@ fn main() {
 
         // calc_slingjobs(&short_channel_id, &jobs, out_fee, perc_float, amount);
 
-        let monthly_forw = per_channel_montly_forwards
+        let monthly_forw = *per_channel_montly_forwards
             .get(&short_channel_id)
             .unwrap_or(&0u64);
 
-        let monthly_forw_fee = per_channel_montly_fee_sat
+        let monthly_forw_fee = *per_channel_montly_fee_sat
             .get(&short_channel_id)
             .unwrap_or(&0u64);
+
+        let monthly_in_forw = *per_channel_montly_forwards
+            .get(&short_channel_id)
+            .unwrap_or(&0u64);
+
+        let is_sink = monthly_forw as f64 / (monthly_forw + monthly_in_forw) as f64;
 
         let s = format!(
-            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {monthly_forw:>3} {monthly_forw_fee:>5}sat {alias_or_id}"
+            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {monthly_forw:>3} {monthly_forw_fee:>5}sat {is_sink:.1}% {alias_or_id}"
         );
         lines.push((perc, s, cmd));
     }
 
     lines.sort_by(|a, b| a.0.cmp(&b.0));
+    println!("min_max our_base_fee our_fee short_channel_id amount perc their_fee their_base_fee last_timestamp_delta last_update_delta monthly_forw monthly_forw_fee is_sink alias_or_id");
 
     for (_, l1, _) in lines.iter() {
         println!("{l1}");
