@@ -83,21 +83,28 @@ fn main() {
     let mut first = now;
     let mut per_channel_montly_forwards: HashMap<String, u64> = HashMap::new();
     let mut per_channel_montly_fee_sat: HashMap<String, u64> = HashMap::new();
-    let mut per_channel_montly_in_forwards: HashMap<String, u64> = HashMap::new();
+
+    let mut per_channel_forwards_in: HashMap<String, u64> = HashMap::new();
+    let mut per_channel_forwards_out: HashMap<String, u64> = HashMap::new();
 
     for s in settled.iter() {
         let d = s.resolved_time;
         first = first.min(d);
         let days_elapsed = now.signed_duration_since(d).num_days();
+        *per_channel_forwards_in
+            .entry(s.in_channel.to_string())
+            .or_default() += 1;
+        *per_channel_forwards_out
+            .entry(s.out_channel.to_string())
+            .or_default() += 1;
+
         if days_elapsed < 365 {
             last_year += 1.0;
             if days_elapsed < 30 {
                 *per_channel_montly_forwards
                     .entry(s.out_channel.to_string())
                     .or_default() += 1;
-                *per_channel_montly_in_forwards
-                    .entry(s.in_channel.to_string())
-                    .or_default() += 1;
+
                 *per_channel_montly_fee_sat
                     .entry(s.out_channel.to_string())
                     .or_default() += s.fee_sat;
@@ -210,11 +217,16 @@ fn main() {
             .get(&short_channel_id)
             .unwrap_or(&0u64);
 
-        let monthly_in_forw = *per_channel_montly_in_forwards
+        let monthly_forw_in = *per_channel_forwards_in
             .get(&short_channel_id)
             .unwrap_or(&0u64);
 
-        let is_sink = monthly_forw as f64 / (monthly_forw + monthly_in_forw) as f64;
+        let monthly_forw_out = *per_channel_forwards_out
+            .get(&short_channel_id)
+            .unwrap_or(&0u64);
+
+        let is_sink =
+            (monthly_forw_out as f64 / (monthly_forw_out + monthly_forw_in) as f64) * 100.0;
 
         let s = format!(
             "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {monthly_forw:>3} {monthly_forw_fee:>5}sat {is_sink:.1}% {alias_or_id}"
