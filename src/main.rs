@@ -81,8 +81,9 @@ fn main() {
     let mut last_month = 0f64;
     let mut last_week = 0f64;
     let mut first = now;
-    let mut per_channel_montly_forwards: HashMap<String, u64> = HashMap::new();
-    let mut per_channel_montly_fee_sat: HashMap<String, u64> = HashMap::new();
+
+    let mut per_channel_ever_forwards: HashMap<String, u64> = HashMap::new();
+    let mut per_channel_ever_fee_sat: HashMap<String, u64> = HashMap::new();
 
     let mut per_channel_forwards_in: HashMap<String, u64> = HashMap::new();
     let mut per_channel_forwards_out: HashMap<String, u64> = HashMap::new();
@@ -98,17 +99,16 @@ fn main() {
             .entry(s.out_channel.to_string())
             .or_default() += 1;
 
+        *per_channel_ever_forwards
+            .entry(s.out_channel.to_string())
+            .or_default() += 1;
+        *per_channel_ever_fee_sat
+            .entry(s.out_channel.to_string())
+            .or_default() += s.fee_sat;
+
         if days_elapsed < 365 {
             last_year += 1.0;
             if days_elapsed < 30 {
-                *per_channel_montly_forwards
-                    .entry(s.out_channel.to_string())
-                    .or_default() += 1;
-
-                *per_channel_montly_fee_sat
-                    .entry(s.out_channel.to_string())
-                    .or_default() += s.fee_sat;
-
                 last_month += 1.0;
                 if days_elapsed < 7 {
                     last_week += 1.0;
@@ -209,11 +209,11 @@ fn main() {
 
         // calc_slingjobs(&short_channel_id, &jobs, out_fee, perc_float, amount);
 
-        let monthly_forw = *per_channel_montly_forwards
+        let ever_forw = *per_channel_ever_forwards
             .get(&short_channel_id)
             .unwrap_or(&0u64);
 
-        let monthly_forw_fee = *per_channel_montly_fee_sat
+        let ever_forw_fee = *per_channel_ever_fee_sat
             .get(&short_channel_id)
             .unwrap_or(&0u64);
 
@@ -229,7 +229,7 @@ fn main() {
             (monthly_forw_out as f64 / (monthly_forw_out + monthly_forw_in) as f64) * 100.0;
 
         let s = format!(
-            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {monthly_forw:>3} {monthly_forw_fee:>5}sat {is_sink:>3.0}% {alias_or_id}"
+            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {ever_forw:>3} {ever_forw_fee:>5}sat {is_sink:>3.0}% {alias_or_id}"
         );
         lines.push((perc, s, cmd));
     }
