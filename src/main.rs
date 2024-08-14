@@ -334,9 +334,10 @@ fn calc_setchannel(
 
     let current_ppm = our.map(|e| e.fee_per_millionth).unwrap_or(min_ppm);
 
-    let did_forward_last_24h = did_forward(short_channel_id, &settled_24h);
+    let forwards_last_24h = did_forward(short_channel_id, &settled_24h);
+    let did_forwards_last_24h = !forwards_last_24h.is_empty();
     let step = (current_ppm as f64 * STEP_PERC) as u64;
-    let new_ppm = if did_forward_last_24h {
+    let new_ppm = if did_forwards_last_24h {
         current_ppm.saturating_add(step)
     } else {
         current_ppm.saturating_sub(step)
@@ -364,7 +365,7 @@ fn calc_setchannel(
         }
 
         Some(format!(
-            "`{cmd} {args}` current was:{current_ppm} did_forward_last_24h:{did_forward_last_24h} perc:{perc:.2} min:{min_ppm}"
+            "`{cmd} {args}` was:{current_ppm} perc:{perc:.2} min:{min_ppm} forward_last_24h:{forwards_last_24h:?}"
         ))
     } else {
         None
@@ -385,13 +386,14 @@ fn filter_forwards(
         .collect()
 }
 
-fn did_forward(short_channel_id: &str, forwards: &[SettledForward]) -> bool {
-    for f in forwards {
-        if &f.out_channel == short_channel_id {
-            return true;
-        }
-    }
-    false
+fn did_forward<'a>(
+    short_channel_id: &str,
+    forwards: &'a [SettledForward],
+) -> Vec<&'a SettledForward> {
+    forwards
+        .iter()
+        .filter(|f| f.out_channel == short_channel_id)
+        .collect()
 }
 
 pub fn cut_days(d: i64) -> String {

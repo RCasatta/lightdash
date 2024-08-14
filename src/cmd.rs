@@ -212,7 +212,7 @@ pub struct Forward {
     pub resolved_time: Option<f64>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SettledForward {
     pub in_channel: String,
     pub out_channel: String,
