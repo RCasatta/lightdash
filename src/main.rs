@@ -277,7 +277,7 @@ fn calc_routes(nodes_by_id: HashMap<&String, &Node>, peers_ids: HashSet<&String>
         }
     }
     let mut counters_vec: Vec<_> = counters.into_iter().filter(|e| e.1 > 2).collect();
-    counters_vec.sort_by(|a, b| a.1.cmp(&b.1));
+    counters_vec.sort_by(|a, b| b.1.cmp(&a.1));
 
     let average_hops = hop_sum as f64 / total as f64;
     println!("\nNode most present in random routes (average hops:{average_hops:.2}):");
