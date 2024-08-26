@@ -1,5 +1,4 @@
 use chrono::{DateTime, Utc};
-use rand::prelude::SliceRandom;
 use std::collections::{HashMap, HashSet};
 
 /// Compute the minimum ppm of the channel according to the percentual owned by us
@@ -75,8 +74,14 @@ fn main() {
     let settled_24h = filter_forwards(&settled, 24, &now);
 
     // let jobs = sling_jobsettings();
+    let forwards_perc = (settled.len() as f64 / total_forwards as f64) * 100.0;
 
-    println!("forwards: {}/{} ", settled.len(), total_forwards);
+    println!(
+        "forwards: {}/{} {:.1}%",
+        settled.len(),
+        total_forwards,
+        forwards_perc
+    );
     let mut last_year = 0f64;
     let mut last_month = 0f64;
     let mut last_week = 0f64;
@@ -116,6 +121,12 @@ fn main() {
             }
         }
     }
+
+    if std::env::var("ONLY_ROUTES").is_ok() {
+        calc_routes(nodes_by_id, peers_ids);
+        return;
+    }
+
     let el = now.signed_duration_since(first).num_days();
     println!(
         "settled frequency ever:{:.2} year:{:.2} month:{:.2} week:{:.2}",
@@ -246,27 +257,17 @@ fn main() {
             println!("{l}");
         }
     }
+}
 
-    // getroute
-    let nodes_ids: Vec<_> = nodes_by_id
-        .keys()
-        .filter(|n| {
-            channels_per_node
-                .get(&n.to_string())
-                .cloned()
-                .unwrap_or(0u64)
-                > 1
-        })
-        .collect();
-    let mut rng = rand::thread_rng();
+fn calc_routes(nodes_by_id: HashMap<&String, &Node>, peers_ids: HashSet<&String>) {
     let mut counters = HashMap::new();
     let mut hop_sum = 0usize;
-    let total = 1000;
-    for _ in 0..total {
-        let id = nodes_ids.choose(&mut rng).unwrap();
+    let mut total = 0;
+    for id in nodes_by_id.keys() {
         if let Some(route) = get_route(id) {
             let mut nodes = route.route;
             hop_sum += nodes.len();
+            total += 1;
             nodes.pop(); // remove the random destination
             for n in nodes.iter() {
                 if !peers_ids.contains(&n.id) {
@@ -275,7 +276,7 @@ fn main() {
             }
         }
     }
-    let mut counters_vec: Vec<_> = counters.into_iter().filter(|e| e.1 > 5).collect();
+    let mut counters_vec: Vec<_> = counters.into_iter().filter(|e| e.1 > 2).collect();
     counters_vec.sort_by(|a, b| a.1.cmp(&b.1));
 
     let average_hops = hop_sum as f64 / total as f64;
@@ -288,7 +289,7 @@ fn main() {
             .map(|n| n.alias.clone())
             .flatten()
             .unwrap_or("".to_string());
-        println!("{id} {count:>5} {alias:?}");
+        println!("{id} {count:>5} {alias}");
     }
 }
 
