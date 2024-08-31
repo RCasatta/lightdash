@@ -314,9 +314,9 @@ fn calc_slingjobs(scid: &str, is_sink: f64, perc_us: f64) -> Option<String> {
         return None;
     };
 
-    println!("{perc_us} {is_sink} {dir}");
+    println!("");
 
-    Some(format!("`lightning-cli sling-job -k scid={scid} amount={amount} maxppm={maxppm} outppm={out_ppm} direction={dir}`"))
+    Some(format!("`lightning-cli sling-job -k scid={scid} amount={amount} maxppm={maxppm} outppm={out_ppm} direction={dir}` perc_us:{perc_us:.2} is_sink:{is_sink:.2} "))
 }
 
 fn calc_setchannel(
