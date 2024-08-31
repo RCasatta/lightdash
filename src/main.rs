@@ -266,8 +266,14 @@ fn main() {
         }
     }
 
-    for l in sling_lines.iter() {
-        println!("{l}");
+    for (cmd, details) in sling_lines.iter() {
+        println!("`{cmd}` {details}");
+        let execute = std::env::var("EXECUTE_SLING_JOBS").is_ok();
+        if execute {
+            let split: Vec<&str> = cmd.split(' ').collect();
+            let result = cmd_result(split[0], &split[1..]);
+            println!("{result}");
+        }
     }
 }
 
@@ -311,7 +317,7 @@ fn calc_slingjobs(
     is_sink: f64,
     perc_us: f64,
     ever_forward_in_out: u64,
-) -> Option<String> {
+) -> Option<(String, String)> {
     let maxppm = 100;
     let amount = 100000;
     let out_ppm = 1000;
@@ -324,9 +330,9 @@ fn calc_slingjobs(
         return None;
     };
 
-    println!("");
-
-    Some(format!("`lightning-cli sling-job -k scid={scid} amount={amount} maxppm={maxppm} outppm={out_ppm} direction={dir}` perc_us:{perc_us:.2} is_sink:{is_sink:.2} {ever_forward_in_out}"))
+    let cmd = format!("lightning-cli sling-job -k scid={scid} amount={amount} maxppm={maxppm} outppm={out_ppm} direction={dir}");
+    let details = format!("perc_us:{perc_us:.2} is_sink:{is_sink:.2} {ever_forward_in_out}");
+    Some((cmd, details))
 }
 
 fn calc_setchannel(
