@@ -174,6 +174,7 @@ fn main() {
     );
 
     let mut lines = vec![];
+    let mut sling_lines = vec![];
 
     for fund in normal_channels {
         let perc = fund.perc();
@@ -218,8 +219,6 @@ fn main() {
 
         let (_new_fee, cmd) = calc_setchannel(&short_channel_id, &fund, our, &settled_24h);
 
-        // calc_slingjobs(&short_channel_id, &jobs, out_fee, perc_float, amount);
-
         let ever_forw = *per_channel_ever_forwards
             .get(&short_channel_id)
             .unwrap_or(&0u64);
@@ -238,6 +237,10 @@ fn main() {
 
         let is_sink =
             (monthly_forw_out as f64 / (monthly_forw_out + monthly_forw_in) as f64) * 100.0;
+
+        if let Some(l) = calc_slingjobs(&short_channel_id, is_sink, fund.perc_float()) {
+            sling_lines.push(l);
+        }
 
         let s = format!(
             "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {ever_forw:>3} {ever_forw_fee:>5}sat {is_sink:>3.0}% {alias_or_id}"
@@ -294,30 +297,20 @@ fn calc_routes(nodes_by_id: HashMap<&String, &Node>, peers_ids: HashSet<&String>
 }
 
 // lightning-cli sling-job -k scid=848864x399x0 direction=push amount=1000 maxppm=500 outppm=200 depleteuptoamount=100000
-// fn _calc_slingjobs(
-//     scid: &str,
-//     jobs: &HashMap<String, JobSetting>,
-//     calc_fee: u64,
-//     perc: f64,
-//     _amount: u64,
-// ) {
-//     let current = jobs.get(scid);
-//     let maxppm = calc_fee - calc_fee / 4; // maxppm fee for rebalance 25% less the fee we want on the channel
-//     let dir = if perc < 0.4 {
-//         "pull"
-//     } else if perc > 0.6 {
-//         "push"
-//     } else {
-//         return;
-//     };
-//     if let Some(c) = current {
-//         if c.maxppm == calc_fee {
-//             return;
-//         }
-//     }
+fn calc_slingjobs(scid: &str, is_sink: f64, perc_us: f64) -> Option<String> {
+    let maxppm = 100;
+    let amount = 100000;
+    let out_ppm = 1000;
+    let dir = if perc_us < 0.4 && is_sink > 0.8 {
+        "pull"
+    } else if perc_us > 0.6 && is_sink < 0.2 {
+        "push"
+    } else {
+        return None;
+    };
 
-//     println!("`lightning-cli sling-job -k scid={scid} amount=1000 depleteuptoamount=100000 maxppm={maxppm} outppm={maxppm} direction={dir}`",);
-// }
+    Some(format!("`lightning-cli sling-job -k scid={scid} amount={amount} maxppm={maxppm} outppm={out_ppm} direction={dir}`"))
+}
 
 fn calc_setchannel(
     short_channel_id: &str,
