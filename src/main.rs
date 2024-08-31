@@ -238,7 +238,7 @@ fn main() {
         let is_sink =
             (monthly_forw_out as f64 / (monthly_forw_out + monthly_forw_in) as f64) * 100.0;
 
-        if let Some(l) = calc_slingjobs(&short_channel_id, is_sink, fund.perc_float()) {
+        if let Some(l) = calc_slingjobs(&short_channel_id, is_sink / 100.0, fund.perc_float()) {
             sling_lines.push(l);
         }
 
@@ -305,6 +305,7 @@ fn calc_slingjobs(scid: &str, is_sink: f64, perc_us: f64) -> Option<String> {
     let maxppm = 100;
     let amount = 100000;
     let out_ppm = 1000;
+
     let dir = if perc_us < 0.4 && is_sink > 0.8 {
         "pull"
     } else if perc_us > 0.6 && is_sink < 0.2 {
@@ -312,6 +313,8 @@ fn calc_slingjobs(scid: &str, is_sink: f64, perc_us: f64) -> Option<String> {
     } else {
         return None;
     };
+
+    println!("{perc_us} {is_sink} {dir}");
 
     Some(format!("`lightning-cli sling-job -k scid={scid} amount={amount} maxppm={maxppm} outppm={out_ppm} direction={dir}`"))
 }
