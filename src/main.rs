@@ -227,18 +227,23 @@ fn main() {
             .get(&short_channel_id)
             .unwrap_or(&0u64);
 
-        let monthly_forw_in = *per_channel_forwards_in
+        let ever_forw_in = *per_channel_forwards_in
             .get(&short_channel_id)
             .unwrap_or(&0u64);
 
-        let monthly_forw_out = *per_channel_forwards_out
+        let ever_forw_out = *per_channel_forwards_out
             .get(&short_channel_id)
             .unwrap_or(&0u64);
 
-        let is_sink =
-            (monthly_forw_out as f64 / (monthly_forw_out + monthly_forw_in) as f64) * 100.0;
+        let ever_forward_in_out = ever_forw_out + ever_forw_in;
+        let is_sink = (ever_forw_out as f64 / ever_forward_in_out as f64) * 100.0;
 
-        if let Some(l) = calc_slingjobs(&short_channel_id, is_sink / 100.0, fund.perc_float()) {
+        if let Some(l) = calc_slingjobs(
+            &short_channel_id,
+            is_sink / 100.0,
+            fund.perc_float(),
+            ever_forward_in_out,
+        ) {
             sling_lines.push(l);
         }
 
@@ -301,7 +306,12 @@ fn calc_routes(nodes_by_id: HashMap<&String, &Node>, peers_ids: HashSet<&String>
 }
 
 // lightning-cli sling-job -k scid=848864x399x0 direction=push amount=1000 maxppm=500 outppm=200 depleteuptoamount=100000
-fn calc_slingjobs(scid: &str, is_sink: f64, perc_us: f64) -> Option<String> {
+fn calc_slingjobs(
+    scid: &str,
+    is_sink: f64,
+    perc_us: f64,
+    ever_forward_in_out: u64,
+) -> Option<String> {
     let maxppm = 100;
     let amount = 100000;
     let out_ppm = 1000;
@@ -316,7 +326,7 @@ fn calc_slingjobs(scid: &str, is_sink: f64, perc_us: f64) -> Option<String> {
 
     println!("");
 
-    Some(format!("`lightning-cli sling-job -k scid={scid} amount={amount} maxppm={maxppm} outppm={out_ppm} direction={dir}` perc_us:{perc_us:.2} is_sink:{is_sink:.2} "))
+    Some(format!("`lightning-cli sling-job -k scid={scid} amount={amount} maxppm={maxppm} outppm={out_ppm} direction={dir}` perc_us:{perc_us:.2} is_sink:{is_sink:.2} {ever_forward_in_out}"))
 }
 
 fn calc_setchannel(
