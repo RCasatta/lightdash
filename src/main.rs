@@ -260,6 +260,10 @@ fn main() {
             println!("{l}");
         }
     }
+
+    for l in sling_lines.iter() {
+        println!("{l}");
+    }
 }
 
 fn calc_routes(nodes_by_id: HashMap<&String, &Node>, peers_ids: HashSet<&String>) {
@@ -359,7 +363,8 @@ fn calc_setchannel(
         }
 
         Some(format!(
-            "`{cmd} {args}` was:{current_ppm} perc:{perc:.2} min:{min_ppm} forward_last_24h:{forwards_last_24h:?}"
+            "`{cmd} {args}` was:{current_ppm} perc:{perc:.2} min:{min_ppm} forward_last_24h:{}",
+            forwards_last_24h.len()
         ))
     } else {
         None
