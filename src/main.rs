@@ -272,7 +272,6 @@ fn main() {
         if execute {
             let split: Vec<&str> = cmd.split(' ').collect();
             let result = cmd_result(split[0], &split[1..]);
-            println!("{result}");
         }
     }
 }
