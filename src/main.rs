@@ -20,6 +20,18 @@ mod cmd;
 
 use cmd::*;
 
+#[derive(Default)]
+struct ChannelMeta {
+    count: u64,
+    fee_sum: u64,
+}
+
+impl ChannelMeta {
+    pub fn avg_fee(&self) -> f64 {
+        self.fee_sum as f64 / self.count as f64
+    }
+}
+
 fn main() {
     let now = Utc::now();
     println!("{}", now);
@@ -51,9 +63,12 @@ fn main() {
         .map(|e| (&e.nodeid, e))
         .collect();
 
-    let mut channels_per_node = HashMap::new();
+    let mut chan_meta_per_node = HashMap::new();
+
     for c in channels.channels.iter() {
-        *channels_per_node.entry(&c.source).or_insert(0u64) += 1;
+        let meta: &mut ChannelMeta = chan_meta_per_node.entry(&c.source).or_default();
+        meta.count += 1;
+        meta.fee_sum += c.fee_per_millionth;
     }
 
     let funds = list_funds();
@@ -123,7 +138,7 @@ fn main() {
     }
 
     if std::env::var("ONLY_ROUTES").is_ok() {
-        calc_routes(nodes_by_id, peers_ids);
+        calc_routes(nodes_by_id, peers_ids, &chan_meta_per_node);
         return;
     }
 
@@ -276,7 +291,11 @@ fn main() {
     }
 }
 
-fn calc_routes(nodes_by_id: HashMap<&String, &Node>, peers_ids: HashSet<&String>) {
+fn calc_routes(
+    nodes_by_id: HashMap<&String, &Node>,
+    peers_ids: HashSet<&String>,
+    chan_meta: &HashMap<&String, ChannelMeta>,
+) {
     let mut counters = HashMap::new();
     let mut hop_sum = 0usize;
     let mut total = 0;
@@ -306,7 +325,8 @@ fn calc_routes(nodes_by_id: HashMap<&String, &Node>, peers_ids: HashSet<&String>
             .map(|n| n.alias.clone())
             .flatten()
             .unwrap_or("".to_string());
-        println!("{id} {count:>5} {alias}");
+        let avg_fee = chan_meta.get(&c.0).unwrap().avg_fee();
+        println!("{id} {count:>5} avg_fee:{avg_fee:>6.1} {alias}");
     }
 }
 
