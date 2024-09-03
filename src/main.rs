@@ -340,9 +340,9 @@ fn calc_slingjobs(
     alias: &str,
 ) -> Option<(String, String)> {
     let amount = 100000;
-    let out_ppm = 1000;
+    let maxppm = 100;
 
-    let (dir, maxppm, target) = if perc_us < 0.25 && is_sink > 0.8 {
+    let (dir, out_ppm, target) = if perc_us < 0.25 && is_sink > 0.8 {
         ("pull", 1100, 0.4)
     } else if perc_us > 0.75 && is_sink < 0.2 {
         ("push", 900, 0.6)
