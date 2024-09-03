@@ -258,6 +258,7 @@ fn main() {
             is_sink / 100.0,
             fund.perc_float(),
             ever_forward_in_out,
+            &alias_or_id,
         ) {
             sling_lines.push(l);
         }
@@ -336,6 +337,7 @@ fn calc_slingjobs(
     is_sink: f64,
     perc_us: f64,
     ever_forward_in_out: u64,
+    alias: &str,
 ) -> Option<(String, String)> {
     let amount = 100000;
     let out_ppm = 1000;
@@ -349,7 +351,8 @@ fn calc_slingjobs(
     };
 
     let cmd = format!("lightning-cli sling-job -k scid={scid} amount={amount} maxppm={maxppm} outppm={out_ppm} direction={dir} target={target}");
-    let details = format!("perc_us:{perc_us:.2} is_sink:{is_sink:.2} {ever_forward_in_out}");
+    let details =
+        format!("perc_us:{perc_us:.2} is_sink:{is_sink:.2} {ever_forward_in_out} {alias}");
     Some((cmd, details))
 }
 
