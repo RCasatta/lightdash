@@ -286,7 +286,7 @@ fn main() {
         let execute = std::env::var("EXECUTE_SLING_JOBS").is_ok();
         if execute {
             let split: Vec<&str> = cmd.split(' ').collect();
-            let result = cmd_result(split[0], &split[1..]);
+            let _result = cmd_result(split[0], &split[1..]);
         }
     }
 }
@@ -337,19 +337,18 @@ fn calc_slingjobs(
     perc_us: f64,
     ever_forward_in_out: u64,
 ) -> Option<(String, String)> {
-    let maxppm = 100;
     let amount = 100000;
     let out_ppm = 1000;
 
-    let dir = if perc_us < 0.4 && is_sink > 0.8 {
-        "pull"
-    } else if perc_us > 0.6 && is_sink < 0.2 {
-        "push"
+    let (dir, maxppm, target) = if perc_us < 0.25 && is_sink > 0.8 {
+        ("pull", 1100, 0.4)
+    } else if perc_us > 0.75 && is_sink < 0.2 {
+        ("push", 900, 0.6)
     } else {
         return None;
     };
 
-    let cmd = format!("lightning-cli sling-job -k scid={scid} amount={amount} maxppm={maxppm} outppm={out_ppm} direction={dir}");
+    let cmd = format!("lightning-cli sling-job -k scid={scid} amount={amount} maxppm={maxppm} outppm={out_ppm} direction={dir} target={target}");
     let details = format!("perc_us:{perc_us:.2} is_sink:{is_sink:.2} {ever_forward_in_out}");
     Some((cmd, details))
 }
