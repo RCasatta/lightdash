@@ -14,7 +14,7 @@ fn min_ppm(perc: f64) -> u64 {
     }
 }
 
-const STEP_PERC: f64 = 0.05;
+const STEP_PERC: f64 = 0.06;
 
 mod cmd;
 
@@ -383,13 +383,7 @@ fn calc_setchannel(
 
     let new_ppm = new_ppm.max(min_ppm);
 
-    // let calc_fee = (((1.0 - perc) + 0.5) * (network_average as f64)) as u64;
-    // let max_htlc = amount / 2 + 100;
-    // let their_fee = their.map(|e| e.fee_per_millionth).unwrap_or(calc_fee);
-    // let adj_calc_fee = (calc_fee + their_fee) / 2;
-    // let final_fee = calc_fee.max(100);
-    // let our_fee = our.map(|e| e.fee_per_millionth).unwrap_or(final_fee);
-    // let our_amount = our.map(|e| e).unwrap_or(final_fee);
+    let truncated_min = min_ppm == new_ppm;
 
     let result = if current_ppm != new_ppm {
         let cmd = "lightning-cli";
@@ -403,7 +397,7 @@ fn calc_setchannel(
         }
 
         Some(format!(
-            "`{cmd} {args}` was:{current_ppm} perc:{perc:.2} min:{min_ppm} forward_last_24h:{}",
+            "`{cmd} {args}` was:{current_ppm} perc:{perc:.2} min:{min_ppm} forward_last_24h:{} truncated_min:{truncated_min}",
             forwards_last_24h.len()
         ))
     } else {
