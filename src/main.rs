@@ -232,7 +232,8 @@ fn main() {
         let short_channel_id = fund.short_channel_id();
         let alias_or_id = fund.alias_or_id(&nodes_by_id);
 
-        let (_new_fee, cmd) = calc_setchannel(&short_channel_id, &fund, our, &settled_24h);
+        let (_new_fee, cmd) =
+            calc_setchannel(&short_channel_id, &alias_or_id, &fund, our, &settled_24h);
 
         let ever_forw = *per_channel_ever_forwards
             .get(&short_channel_id)
@@ -358,6 +359,7 @@ fn calc_slingjobs(
 
 fn calc_setchannel(
     short_channel_id: &str,
+    alias: &str,
     fund: &Fund,
     our: Option<&&Channel>,
     settled_24h: &[SettledForward],
@@ -397,7 +399,7 @@ fn calc_setchannel(
         }
 
         Some(format!(
-            "`{cmd} {args}` was:{current_ppm} perc:{perc:.2} min:{min_ppm} forward_last_24h:{} truncated_min:{truncated_min}",
+            "`{cmd} {args}` was:{current_ppm} perc:{perc:.2} min:{min_ppm} forward_last_24h:{} truncated_min:{truncated_min} {alias}",
             forwards_last_24h.len()
         ))
     } else {
