@@ -191,8 +191,11 @@ fn main() {
     let mut lines = vec![];
     let mut sling_lines = vec![];
 
+    let mut perces = vec![];
+
     for fund in normal_channels {
         let perc = fund.perc();
+        perces.push(fund.perc_float());
         let short_channel_id = fund.short_channel_id();
         let our = channels_by_id.get(&(&short_channel_id, &info.id));
         let our_fee = our
@@ -269,6 +272,15 @@ fn main() {
         );
         lines.push((perc, s, cmd));
     }
+
+    let sum_perces: f64 = perces.iter().sum();
+    let mean_perces = sum_perces / perces.len() as f64;
+    let quad_diff_perces: f64 = perces
+        .iter()
+        .map(|e| (mean_perces - e) * (mean_perces - e))
+        .sum();
+    let variance = quad_diff_perces / (perces.len() as f64 - 1.0);
+    println!("mean_perces:{mean_perces:.1} variamce:{variance:.1}");
 
     lines.sort_by(|a, b| a.0.cmp(&b.0));
     println!("min_max our_base_fee our_fee scid amount perc their_fee their_base_fee last_tstamp_delta last_upd_delta monthly_forw monthly_forw_fee is_sink alias_or_id");
