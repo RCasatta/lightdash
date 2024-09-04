@@ -280,7 +280,11 @@ fn main() {
         .map(|e| (mean_perces - e) * (mean_perces - e))
         .sum();
     let variance = quad_diff_perces / (perces.len() as f64 - 1.0);
-    println!("mean_perces:{mean_perces:.1} variamce:{variance:.1}");
+    println!(
+        "mean_perces:{:.1} variance:{:.1}",
+        mean_perces * 100.0,
+        variance * 100.0
+    );
 
     lines.sort_by(|a, b| a.0.cmp(&b.0));
     println!("min_max our_base_fee our_fee scid amount perc their_fee their_base_fee last_tstamp_delta last_upd_delta monthly_forw monthly_forw_fee is_sink alias_or_id");
