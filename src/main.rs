@@ -392,7 +392,9 @@ fn calc_setchannel(
         let args = format!("setchannel {short_channel_id} 0 {new_ppm} 10sat {max_htlc_sat}");
 
         let execute = std::env::var("EXECUTE").is_ok();
-        if execute {
+        if execute | truncated_min {
+            // execute is true once a day
+            // but we need to trim for min to have faster reaction on channel depletion
             let splitted_args: Vec<&str> = args.split(' ').collect();
             let result = cmd_result(cmd, &splitted_args);
             println!("{result}");
