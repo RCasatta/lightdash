@@ -1,11 +1,12 @@
 use chrono::{DateTime, Utc};
 use std::collections::{HashMap, HashSet};
 
+const PPM_MIN: u64 = 100; // minimum betwee 100% and 50%
+const PPM_MAX: u64 = 2000; // when channel 0%, between 0% and 50% increase linearly
+
 /// Compute the minimum ppm of the channel according to the percentual owned by us
 /// The intention is to signal via an high fee the channel depletion
 fn min_ppm(perc: f64) -> u64 {
-    const PPM_MIN: u64 = 100; // minimum betwee 100% and 50%
-    const PPM_MAX: u64 = 2000; // when channel 0%, between 0% and 50% increase linearly
     let delta = (PPM_MAX - PPM_MIN) as f64;
     if perc > 0.5 {
         PPM_MIN
@@ -401,7 +402,8 @@ fn calc_setchannel(
 
     let new_ppm = new_ppm.max(min_ppm);
 
-    let truncated_min = min_ppm == new_ppm;
+    // Truncated by the min, however if it's lower than the PPM_MIN it has been manually set and we don't want to move it
+    let truncated_min = (min_ppm == new_ppm) && (current_ppm > PPM_MIN);
 
     let result = if current_ppm != new_ppm {
         let cmd = "lightning-cli";
