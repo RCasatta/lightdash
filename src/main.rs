@@ -288,13 +288,13 @@ fn main() {
 
         // 100% is sink, 0% is source
         // the .1 is so that it's ininfluent at regime, but gives 50% for a node that didn't forward yet
-        let is_sink = ((0.1 + ever_forw_out as f64) / (0.1 + ever_forward_in_out as f64)) * 100.0;
+        let is_sink = (0.1 + ever_forw_out as f64) / (0.1 + ever_forward_in_out as f64);
 
         let perc_adj = (fund.perc_float() - (is_sink - 0.5)) * 100.0;
 
         if let Some(l) = calc_slingjobs(
             &short_channel_id,
-            is_sink / 100.0,
+            is_sink,
             fund.perc_float(),
             ever_forward_in_out,
             &alias_or_id,
@@ -402,9 +402,11 @@ fn calc_slingjobs(
         return None;
     };
 
+    let is_sink_perc = (is_sink * 100.0) as u32;
+
     let cmd = format!("lightning-cli sling-job -k scid={scid} amount={amount} maxppm={maxppm} outppm={out_ppm} direction={dir} target={target}");
     let details =
-        format!("perc_us:{perc_us:.2} is_sink:{is_sink:.2} {ever_forward_in_out} {alias}");
+        format!("perc_us:{perc_us:.2} is_sink:{is_sink_perc}% {ever_forward_in_out} {alias}");
     Some((cmd, details))
 }
 
