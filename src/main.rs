@@ -292,11 +292,13 @@ fn main() {
         let is_sink_perc = (is_sink * 100.0) as u32;
 
         if let Some(l) = calc_slingjobs(
-            &short_channel_id,
+            short_channel_id.clone(),
             is_sink,
             fund.perc_float(),
             ever_forward_in_out,
             &alias_or_id,
+            &pull_in,
+            &push_out,
         ) {
             sling_lines.push(l);
         }
@@ -392,26 +394,29 @@ fn calc_routes(
 
 // lightning-cli sling-job -k scid=848864x399x0 direction=push amount=1000 maxppm=500 outppm=200 depleteuptoamount=100000
 fn calc_slingjobs(
-    scid: &str,
+    scid: String,
     is_sink: f64,
     perc_us: f64,
     ever_forward_in_out: u64,
     alias: &str,
+    pull_in: &[String],
+    push_out: &[String],
 ) -> Option<(String, String)> {
     let amount = 100000;
     let maxppm = 100;
+    let target = 0.5;
 
-    let (dir, out_ppm, target) = if perc_us < 0.25 && is_sink > 0.8 {
-        ("pull", 600, 0.5)
-    } else if perc_us > 0.75 && is_sink < 0.2 {
-        ("push", 1400, 0.5)
+    let (dir, candidates) = if pull_in.contains(&scid) {
+        ("pull", push_out)
+    } else if push_out.contains(&scid) {
+        ("push", pull_in)
     } else {
         return None;
     };
 
     let is_sink_perc = (is_sink * 100.0) as u32;
 
-    let cmd = format!("lightning-cli sling-job -k scid={scid} amount={amount} maxppm={maxppm} outppm={out_ppm} direction={dir} target={target}");
+    let cmd = format!("lightning-cli sling-job -k scid={scid} amount={amount} maxppm={maxppm} direction={dir} candidates={candidates:?} target={target}");
     let details =
         format!("perc_us:{perc_us:.2} is_sink:{is_sink_perc}% {ever_forward_in_out} {alias}");
     Some((cmd, details))
