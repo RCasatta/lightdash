@@ -216,12 +216,9 @@ fn main() {
         // the .1 is so that it's ininfluent at regime, but gives 50% for a node that didn't forward yet
         let is_sink = (0.1 + ever_forw_out as f64) / (0.1 + ever_forward_in_out as f64);
 
-        // We don't want to rebalance channel that are naturally going there
-        let perc_adj = fund.perc_float() - (is_sink - 0.5);
-
-        if perc < 0.3 && perc_adj < 0.3 {
+        if perc < 0.3 && is_sink > 0.45 {
             pull_in.push(short_channel_id.clone());
-        } else if perc > 0.7 && perc_adj > 0.7 {
+        } else if perc > 0.7 && is_sink < 0.45 {
             push_out.push(short_channel_id.clone());
         }
     }
@@ -294,8 +291,6 @@ fn main() {
         let is_sink = (0.1 + ever_forw_out as f64) / (0.1 + ever_forward_in_out as f64);
         let is_sink_perc = (is_sink * 100.0) as u32;
 
-        let perc_adj = (fund.perc_float() - (is_sink - 0.5)) * 100.0;
-
         if let Some(l) = calc_slingjobs(
             &short_channel_id,
             is_sink,
@@ -315,7 +310,7 @@ fn main() {
         };
 
         let s = format!(
-            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {ever_forw:>3} {ever_forw_fee:>5}sat {is_sink_perc:>3}% {perc_adj:>4.0}% {push_pull} {alias_or_id}"
+            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {ever_forw:>3} {ever_forw_fee:>5}sat {is_sink_perc:>3}% {push_pull:4} {alias_or_id}"
         );
         lines.push((perc, s, cmd));
     }
