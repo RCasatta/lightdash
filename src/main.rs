@@ -194,6 +194,35 @@ fn main() {
 
     let mut perces = vec![];
 
+    // calculate channels needing to pull in sats and channels needing to push outs sats
+    // let pull_in = vec![];
+    // let push_out = vec![];
+    // for fund in normal_channels {
+    //     let perc = fund.perc_float();
+    //     let short_channel_id = fund.short_channel_id();
+
+    //     // code duplicated after, do `ChannelMeta` containinig this extra info
+    //     let ever_forw = *per_channel_ever_forwards
+    //         .get(&short_channel_id)
+    //         .unwrap_or(&0u64);
+
+    //     let ever_forw_in = *per_channel_forwards_in
+    //         .get(&short_channel_id)
+    //         .unwrap_or(&0u64);
+
+    //     let ever_forw_out = *per_channel_forwards_out
+    //         .get(&short_channel_id)
+    //         .unwrap_or(&0u64);
+
+    //     let ever_forward_in_out = ever_forw_out + ever_forw_in;
+
+    //     // 100% is sink, 0% is source
+    //     // the .1 is so that it's ininfluent at regime, but gives 50% for a node that didn't forward yet
+    //     let is_sink = ((0.1 + ever_forw_out as f64) / (0.1 + ever_forward_in_out as f64)) * 100.0;
+
+    //     // if perc < 0.3 and is_sink
+    // }
+
     for fund in normal_channels {
         let perc = fund.perc();
         perces.push(fund.perc_float());
@@ -256,7 +285,12 @@ fn main() {
             .unwrap_or(&0u64);
 
         let ever_forward_in_out = ever_forw_out + ever_forw_in;
-        let is_sink = (ever_forw_out as f64 / ever_forward_in_out as f64) * 100.0;
+
+        // 100% is sink, 0% is source
+        // the .1 is so that it's ininfluent at regime, but gives 50% for a node that didn't forward yet
+        let is_sink = ((0.1 + ever_forw_out as f64) / (0.1 + ever_forward_in_out as f64)) * 100.0;
+
+        let perc_adj = (fund.perc_float() - (is_sink - 0.5)) * 100.0;
 
         if let Some(l) = calc_slingjobs(
             &short_channel_id,
@@ -269,7 +303,7 @@ fn main() {
         }
 
         let s = format!(
-            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {ever_forw:>3} {ever_forw_fee:>5}sat {is_sink:>3.0}% {alias_or_id}"
+            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {ever_forw:>3} {ever_forw_fee:>5}sat {is_sink:>3.0}% {perc_adj:>4.0}% {alias_or_id}"
         );
         lines.push((perc, s, cmd));
     }
@@ -361,9 +395,9 @@ fn calc_slingjobs(
     let maxppm = 100;
 
     let (dir, out_ppm, target) = if perc_us < 0.25 && is_sink > 0.8 {
-        ("pull", 500, 0.4)
+        ("pull", 600, 0.5)
     } else if perc_us > 0.75 && is_sink < 0.2 {
-        ("push", 1500, 0.6)
+        ("push", 1400, 0.5)
     } else {
         return None;
     };
@@ -417,9 +451,10 @@ fn calc_setchannel(
             let result = cmd_result(cmd, &splitted_args);
             println!("{result}");
         }
+        let truncated_min_str = if truncated_min { "truncated_min" } else { "" };
 
         Some(format!(
-            "`{cmd} {args}` was:{current_ppm} perc:{perc:.2} min:{min_ppm} forward_last_24h:{} truncated_min:{truncated_min} {alias}",
+            "`{cmd} {args}` was:{current_ppm} perc:{perc:.2} min:{min_ppm} forward_last_24h:{} {truncated_min_str} {alias}",
             forwards_last_24h.len()
         ))
     } else {
