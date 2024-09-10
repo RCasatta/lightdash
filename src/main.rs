@@ -419,7 +419,7 @@ fn calc_slingjobs(
 
     let is_sink_perc = (is_sink * 100.0) as u32;
 
-    let cmd = format!("lightning-cli sling-job -k scid={scid} amount={amount} maxppm={maxppm} direction={dir} candidates=\"{candidates}\" target={target:.2}");
+    let cmd = format!("lightning-cli sling-job -k scid={scid} amount={amount} maxppm={maxppm} direction={dir} candidates={candidates} target={target:.2}");
     let details =
         format!("perc_us:{perc_us:.2} is_sink:{is_sink_perc}% {ever_forward_in_out} {alias}");
     Some((cmd, details))
