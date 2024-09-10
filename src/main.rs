@@ -195,33 +195,36 @@ fn main() {
     let mut perces = vec![];
 
     // calculate channels needing to pull in sats and channels needing to push outs sats
-    // let pull_in = vec![];
-    // let push_out = vec![];
-    // for fund in normal_channels {
-    //     let perc = fund.perc_float();
-    //     let short_channel_id = fund.short_channel_id();
+    let mut pull_in = vec![];
+    let mut push_out = vec![];
+    for fund in normal_channels.iter() {
+        let perc = fund.perc_float();
+        let short_channel_id = fund.short_channel_id();
 
-    //     // code duplicated after, do `ChannelMeta` containinig this extra info
-    //     let ever_forw = *per_channel_ever_forwards
-    //         .get(&short_channel_id)
-    //         .unwrap_or(&0u64);
+        // code duplicated after, do `ChannelMeta` containinig this extra info
+        let ever_forw_in = *per_channel_forwards_in
+            .get(&short_channel_id)
+            .unwrap_or(&0u64);
 
-    //     let ever_forw_in = *per_channel_forwards_in
-    //         .get(&short_channel_id)
-    //         .unwrap_or(&0u64);
+        let ever_forw_out = *per_channel_forwards_out
+            .get(&short_channel_id)
+            .unwrap_or(&0u64);
 
-    //     let ever_forw_out = *per_channel_forwards_out
-    //         .get(&short_channel_id)
-    //         .unwrap_or(&0u64);
+        let ever_forward_in_out = ever_forw_out + ever_forw_in;
 
-    //     let ever_forward_in_out = ever_forw_out + ever_forw_in;
+        // 100% is sink, 0% is source
+        // the .1 is so that it's ininfluent at regime, but gives 50% for a node that didn't forward yet
+        let is_sink = (0.1 + ever_forw_out as f64) / (0.1 + ever_forward_in_out as f64);
 
-    //     // 100% is sink, 0% is source
-    //     // the .1 is so that it's ininfluent at regime, but gives 50% for a node that didn't forward yet
-    //     let is_sink = ((0.1 + ever_forw_out as f64) / (0.1 + ever_forward_in_out as f64)) * 100.0;
+        // We don't want to rebalance channel that are naturally going there
+        let perc_adj = fund.perc_float() - (is_sink - 0.5);
 
-    //     // if perc < 0.3 and is_sink
-    // }
+        if perc < 0.3 && perc_adj < 0.3 {
+            pull_in.push(short_channel_id.clone());
+        } else if perc > 0.7 && perc_adj > 0.7 {
+            push_out.push(short_channel_id.clone());
+        }
+    }
 
     for fund in normal_channels {
         let perc = fund.perc();
@@ -303,8 +306,16 @@ fn main() {
             sling_lines.push(l);
         }
 
+        let push_pull = if push_out.contains(&short_channel_id) {
+            "push"
+        } else if pull_in.contains(&short_channel_id) {
+            "pull"
+        } else {
+            ""
+        };
+
         let s = format!(
-            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {ever_forw:>3} {ever_forw_fee:>5}sat {is_sink_perc:>3}% {perc_adj:>4.0}% {alias_or_id}"
+            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {ever_forw:>3} {ever_forw_fee:>5}sat {is_sink_perc:>3}% {perc_adj:>4.0}% {push_pull} {alias_or_id}"
         );
         lines.push((perc, s, cmd));
     }
@@ -323,7 +334,7 @@ fn main() {
     );
 
     lines.sort_by(|a, b| a.0.cmp(&b.0));
-    println!("min_max our_base_fee our_fee scid amount perc their_fee their_base_fee last_tstamp_delta last_upd_delta monthly_forw monthly_forw_fee is_sink alias_or_id");
+    println!("min_max our_base_fee our_fee scid amount perc their_fee their_base_fee last_tstamp_delta last_upd_delta monthly_forw monthly_forw_fee is_sink perc_adj push/pull alias_or_id");
 
     for (_, l1, _) in lines.iter() {
         println!("{l1}");
