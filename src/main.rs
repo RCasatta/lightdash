@@ -348,7 +348,8 @@ fn main() {
         let execute = std::env::var("EXECUTE_SLING_JOBS").is_ok();
         if execute {
             let split: Vec<&str> = cmd.split(' ').collect();
-            let _result = cmd_result(split[0], &split[1..]);
+            let result = cmd_result(split[0], &split[1..]);
+            println!("{result}");
         }
     }
 }
