@@ -414,8 +414,8 @@ fn calc_slingjobs(
         return None;
     };
 
-    // let candidates = format!("{candidates:?}").replace(" ", "");
-    let candidates = format!("[\"{}\"]", candidates.join("\",\""));
+    let candidates = format!("{candidates:?}").replace(" ", "");
+    // let candidates = format!("[\"{}\"]", candidates.join("\",\""));
 
     let is_sink_perc = (is_sink * 100.0) as u32;
 
