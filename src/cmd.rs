@@ -76,7 +76,7 @@ pub fn get_route(id: &str) -> Option<GetRoute> {
 }
 
 pub fn cmd_result(cmd: &str, args: &[&str]) -> String {
-    println!("cmd:{cmd} args:{args:?}");
+    // println!("cmd:{cmd} args:{args:?}");
     let data = std::process::Command::new(cmd).args(args).output().unwrap();
     std::str::from_utf8(&data.stdout).unwrap().to_string()
 }

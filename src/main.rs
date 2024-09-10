@@ -465,8 +465,8 @@ fn calc_setchannel(
             // execute is true once a day
             // but we need to trim for min to have faster reaction on channel depletion
             let splitted_args: Vec<&str> = args.split(' ').collect();
-            let result = cmd_result(cmd, &splitted_args);
-            println!("{result}");
+            let _result = cmd_result(cmd, &splitted_args);
+            // println!("{result}");
         }
         let truncated_min_str = if truncated_min { "truncated_min" } else { "" };
 
