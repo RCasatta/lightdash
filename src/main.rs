@@ -218,7 +218,7 @@ fn main() {
 
         if perc < 0.3 && is_sink > 0.45 {
             pull_in.push(short_channel_id.clone());
-        } else if perc > 0.7 && is_sink < 0.45 {
+        } else if perc > 0.7 && is_sink < 0.55 {
             push_out.push(short_channel_id.clone());
         }
     }
