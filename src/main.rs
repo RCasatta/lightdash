@@ -404,12 +404,11 @@ fn calc_slingjobs(
 ) -> Option<(String, String)> {
     let amount = 100000;
     let maxppm = 100;
-    let target = 0.5;
 
-    let (dir, candidates) = if pull_in.contains(&scid) {
-        ("pull", push_out)
+    let (dir, candidates, target) = if pull_in.contains(&scid) {
+        ("pull", push_out, perc_us + 0.05)
     } else if push_out.contains(&scid) {
-        ("push", pull_in)
+        ("push", pull_in, perc_us - 0.05)
     } else {
         return None;
     };
