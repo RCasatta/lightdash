@@ -304,7 +304,7 @@ fn main() {
         }
 
         let s = format!(
-            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {ever_forw:>3} {ever_forw_fee:>5}sat {is_sink:>3}% {perc_adj:>4.0}% {alias_or_id}"
+            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {ever_forw:>3} {ever_forw_fee:>5}sat {is_sink_perc:>3}% {perc_adj:>4.0}% {alias_or_id}"
         );
         lines.push((perc, s, cmd));
     }
