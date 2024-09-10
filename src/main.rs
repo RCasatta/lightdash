@@ -289,6 +289,7 @@ fn main() {
         // 100% is sink, 0% is source
         // the .1 is so that it's ininfluent at regime, but gives 50% for a node that didn't forward yet
         let is_sink = (0.1 + ever_forw_out as f64) / (0.1 + ever_forward_in_out as f64);
+        let is_sink_perc = (is_sink * 100.0) as u32;
 
         let perc_adj = (fund.perc_float() - (is_sink - 0.5)) * 100.0;
 
@@ -303,7 +304,7 @@ fn main() {
         }
 
         let s = format!(
-            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {ever_forw:>3} {ever_forw_fee:>5}sat {is_sink:>3.0}% {perc_adj:>4.0}% {alias_or_id}"
+            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {ever_forw:>3} {ever_forw_fee:>5}sat {is_sink:>3}% {perc_adj:>4.0}% {alias_or_id}"
         );
         lines.push((perc, s, cmd));
     }
