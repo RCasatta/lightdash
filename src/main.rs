@@ -213,12 +213,16 @@ fn main() {
         let ever_forward_in_out = ever_forw_out + ever_forw_in;
 
         // 100% is sink, 0% is source
-        // the .1 is so that it's ininfluent at regime, but gives 50% for a node that didn't forward yet
-        let is_sink = (0.1 + ever_forw_out as f64) / (0.1 + ever_forward_in_out as f64);
+        let is_sink = if ever_forward_in_out == 0 {
+            // Avoid resulting in NaN
+            0.5
+        } else {
+            (ever_forw_out as f64) / (ever_forward_in_out as f64)
+        };
 
-        if perc < 0.3 && is_sink > 0.45 {
+        if perc < 0.3 && is_sink >= 0.5 {
             pull_in.push(short_channel_id.clone());
-        } else if perc > 0.7 && is_sink < 0.55 {
+        } else if perc > 0.7 && is_sink <= 0.5 {
             push_out.push(short_channel_id.clone());
         }
     }
