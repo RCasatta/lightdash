@@ -411,9 +411,9 @@ fn calc_slingjobs(
     let maxppm = 100;
 
     let (dir, candidates, target) = if pull_in.contains(&scid) {
-        ("pull", push_out, perc_us + 0.05)
+        ("pull", push_out, 0.3)
     } else if push_out.contains(&scid) {
-        ("push", pull_in, perc_us - 0.05)
+        ("push", pull_in, 0.7)
     } else {
         return None;
     };
