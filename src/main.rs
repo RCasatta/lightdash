@@ -220,13 +220,14 @@ fn main() {
             (ever_forw_out as f64) / (ever_forward_in_out as f64)
         };
 
-        println!("");
         if perc < 0.3 && is_sink >= 0.5 {
             println!("{short_channel_id} {perc} {is_sink} pull");
             pull_in.push(short_channel_id.clone());
         } else if perc > 0.7 && is_sink <= 0.5 {
             println!("{short_channel_id} {perc} {is_sink} push");
             push_out.push(short_channel_id.clone());
+        } else {
+            println!("{short_channel_id} {perc} {is_sink} nothing");
         }
     }
 
