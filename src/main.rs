@@ -21,15 +21,43 @@ mod cmd;
 
 use cmd::*;
 
+/// Helper struct to compute the average fee of the channels of a node
 #[derive(Default)]
-struct ChannelMeta {
+struct ChannelFee {
     count: u64,
     fee_sum: u64,
 }
 
-impl ChannelMeta {
+impl ChannelFee {
     pub fn avg_fee(&self) -> f64 {
         self.fee_sum as f64 / self.count as f64
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum Rebalance {
+    PushOut,
+    PullIn,
+    Nothing,
+}
+
+struct ChannelMeta {
+    fund: Fund,
+    is_sink: f64,
+    rebalance: Rebalance,
+    alias_or_id: String,
+}
+
+impl ChannelMeta {
+    fn is_sink_perc(&self) -> String {
+        format!("{:.1}%", self.is_sink * 100.0)
+    }
+    // fn is_sink_float(&self) -> f64 {
+    //     self.is_sink
+    // }
+
+    fn alias_or_id(&self) -> String {
+        self.alias_or_id.clone()
     }
 }
 
@@ -67,7 +95,7 @@ fn main() {
     let mut chan_meta_per_node = HashMap::new();
 
     for c in channels.channels.iter() {
-        let meta: &mut ChannelMeta = chan_meta_per_node.entry(&c.source).or_default();
+        let meta: &mut ChannelFee = chan_meta_per_node.entry(&c.source).or_default();
         meta.count += 1;
         meta.fee_sum += c.fee_per_millionth;
     }
@@ -194,14 +222,10 @@ fn main() {
 
     let mut perces = vec![];
 
-    // calculate channels needing to pull in sats and channels needing to push outs sats
-    let mut pull_in = vec![];
-    let mut push_out = vec![];
+    let mut channels = vec![];
     for fund in normal_channels.iter() {
-        let perc = fund.perc_float();
         let short_channel_id = fund.short_channel_id();
 
-        // code duplicated after, do `ChannelMeta` containinig this extra info
         let ever_forw_in = *per_channel_forwards_in
             .get(&short_channel_id)
             .unwrap_or(&0u64);
@@ -219,19 +243,38 @@ fn main() {
         } else {
             (ever_forw_out as f64) / (ever_forward_in_out as f64)
         };
-
-        if perc < 0.3 && is_sink >= 0.5 {
-            println!("{short_channel_id} {perc} {is_sink} pull");
-            pull_in.push(short_channel_id.clone());
+        let perc = fund.perc_float();
+        let rebalance = if perc < 0.3 && is_sink >= 0.5 {
+            Rebalance::PullIn
         } else if perc > 0.7 && is_sink <= 0.5 {
-            println!("{short_channel_id} {perc} {is_sink} push");
-            push_out.push(short_channel_id.clone());
+            Rebalance::PushOut
         } else {
-            println!("{short_channel_id} {perc} {is_sink} nothing");
-        }
-    }
+            Rebalance::Nothing
+        };
 
-    for fund in normal_channels {
+        let alias_or_id = fund.alias_or_id(&nodes_by_id);
+
+        let c = ChannelMeta {
+            fund: fund.clone(),
+            is_sink,
+            rebalance,
+            alias_or_id,
+        };
+        channels.push(c);
+    }
+    let pull_in: Vec<_> = channels
+        .iter()
+        .filter(|e| e.rebalance == Rebalance::PullIn)
+        .map(|e| e.fund.short_channel_id())
+        .collect();
+    let push_out: Vec<_> = channels
+        .iter()
+        .filter(|e| e.rebalance == Rebalance::PushOut)
+        .map(|e| e.fund.short_channel_id())
+        .collect();
+
+    for channel in channels {
+        let fund = &channel.fund;
         let perc = fund.perc();
         perces.push(fund.perc_float());
         let short_channel_id = fund.short_channel_id();
@@ -271,10 +314,14 @@ fn main() {
             .unwrap_or(DateTime::from_timestamp(0, 0).unwrap());
         let last_update_delta = cut_days(now.signed_duration_since(last_update).num_days());
         let short_channel_id = fund.short_channel_id();
-        let alias_or_id = fund.alias_or_id(&nodes_by_id);
 
-        let (_new_fee, cmd) =
-            calc_setchannel(&short_channel_id, &alias_or_id, &fund, our, &settled_24h);
+        let (_new_fee, cmd) = calc_setchannel(
+            &short_channel_id,
+            &channel.alias_or_id(),
+            &fund,
+            our,
+            &settled_24h,
+        );
 
         let ever_forw = *per_channel_ever_forwards
             .get(&short_channel_id)
@@ -304,13 +351,14 @@ fn main() {
             (ever_forw_out as f64) / (ever_forward_in_out as f64)
         };
         let is_sink_perc = (is_sink * 100.0) as u32;
+        let alias_or_id = channel.alias_or_id();
 
         if let Some(l) = calc_slingjobs(
             short_channel_id.clone(),
-            is_sink,
             fund.perc_float(),
             ever_forward_in_out,
             &alias_or_id,
+            &channel,
             &pull_in,
             &push_out,
         ) {
@@ -371,7 +419,7 @@ fn main() {
 fn calc_routes(
     nodes_by_id: HashMap<&String, &Node>,
     peers_ids: HashSet<&String>,
-    chan_meta: &HashMap<&String, ChannelMeta>,
+    chan_meta: &HashMap<&String, ChannelFee>,
 ) {
     let mut counters = HashMap::new();
     let mut hop_sum = 0usize;
@@ -410,32 +458,29 @@ fn calc_routes(
 // lightning-cli sling-job -k scid=848864x399x0 direction=push amount=1000 maxppm=500 outppm=200 depleteuptoamount=100000
 fn calc_slingjobs(
     scid: String,
-    is_sink: f64,
     perc_us: f64,
     ever_forward_in_out: u64,
     alias: &str,
+    channel: &ChannelMeta,
     pull_in: &[String],
     push_out: &[String],
 ) -> Option<(String, String)> {
     let amount = 100000;
     let maxppm = 100;
+    let is_sink_perc = channel.is_sink_perc();
 
-    let (dir, candidates, target) = if pull_in.contains(&scid) {
-        ("pull", push_out, 0.3)
-    } else if push_out.contains(&scid) {
-        ("push", pull_in, 0.7)
-    } else {
-        return None;
+    let (dir, candidates, target) = match channel.rebalance {
+        Rebalance::PushOut => ("pull", push_out, 0.3),
+        Rebalance::PullIn => ("push", pull_in, 0.7),
+        Rebalance::Nothing => return None,
     };
 
     let candidates = format!("{candidates:?}").replace(" ", "");
     // let candidates = format!("[\"{}\"]", candidates.join("\",\""));
 
-    let is_sink_perc = (is_sink * 100.0) as u32;
-
     let cmd = format!("lightning-cli sling-job -k scid={scid} amount={amount} maxppm={maxppm} direction={dir} candidates={candidates} target={target:.2}");
     let details =
-        format!("perc_us:{perc_us:.2} is_sink:{is_sink_perc}% {ever_forward_in_out} {alias}");
+        format!("perc_us:{perc_us:.2} is_sink:{is_sink_perc} {ever_forward_in_out} {alias}");
     Some((cmd, details))
 }
 

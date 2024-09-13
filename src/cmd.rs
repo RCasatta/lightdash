@@ -159,7 +159,7 @@ pub struct ListFunds {
     pub channels: Vec<Fund>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Fund {
     pub peer_id: String,
     pub connected: bool,
