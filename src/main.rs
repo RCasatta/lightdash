@@ -220,9 +220,12 @@ fn main() {
             (ever_forw_out as f64) / (ever_forward_in_out as f64)
         };
 
+        println!("");
         if perc < 0.3 && is_sink >= 0.5 {
+            println!("{short_channel_id} {perc} {is_sink} pull");
             pull_in.push(short_channel_id.clone());
         } else if perc > 0.7 && is_sink <= 0.5 {
+            println!("{short_channel_id} {perc} {is_sink} push");
             push_out.push(short_channel_id.clone());
         }
     }
@@ -335,7 +338,7 @@ fn main() {
     );
 
     lines.sort_by(|a, b| a.0.cmp(&b.0));
-    println!("min_max our_base_fee our_fee scid amount perc their_fee their_base_fee last_tstamp_delta last_upd_delta monthly_forw monthly_forw_fee is_sink perc_adj push/pull alias_or_id");
+    println!("min_max our_base_fee our_fee scid amount perc their_fee their_base_fee last_tstamp_delta last_upd_delta monthly_forw monthly_forw_fee is_sink push/pull alias_or_id");
 
     for (_, l1, _) in lines.iter() {
         println!("{l1}");
