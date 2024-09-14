@@ -470,8 +470,8 @@ fn calc_slingjobs(
     let is_sink_perc = channel.is_sink_perc();
 
     let (dir, candidates, target) = match channel.rebalance {
-        Rebalance::PushOut => ("pull", push_out, 0.3),
-        Rebalance::PullIn => ("push", pull_in, 0.7),
+        Rebalance::PullIn => ("pull", push_out, 0.3),
+        Rebalance::PushOut => ("push", pull_in, 0.7),
         Rebalance::Nothing => return None,
     };
 
