@@ -15,7 +15,7 @@ fn min_ppm(perc: f64) -> u64 {
     }
 }
 
-const STEP_PERC: f64 = 0.06;
+const STEP_PERC: f64 = 0.08;
 
 mod cmd;
 
