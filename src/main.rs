@@ -44,6 +44,7 @@ enum Rebalance {
 struct ChannelMeta {
     fund: Fund,
     is_sink: f64,
+    is_sink_last_month: f64,
     rebalance: Rebalance,
     alias_or_id: String,
 }
@@ -52,9 +53,9 @@ impl ChannelMeta {
     fn is_sink_perc(&self) -> String {
         format!("{:.1}%", self.is_sink * 100.0)
     }
-    // fn is_sink_float(&self) -> f64 {
-    //     self.is_sink
-    // }
+    fn is_sink_last_month_perc(&self) -> String {
+        format!("{:.1}%", self.is_sink_last_month * 100.0)
+    }
 
     fn alias_or_id(&self) -> String {
         self.alias_or_id.clone()
@@ -137,6 +138,9 @@ fn main() {
     let mut per_channel_forwards_in: HashMap<String, u64> = HashMap::new();
     let mut per_channel_forwards_out: HashMap<String, u64> = HashMap::new();
 
+    let mut per_channel_forwards_in_last_month: HashMap<String, u64> = HashMap::new();
+    let mut per_channel_forwards_out_last_month: HashMap<String, u64> = HashMap::new();
+
     for s in settled.iter() {
         let d = s.resolved_time;
         first = first.min(d);
@@ -159,6 +163,14 @@ fn main() {
             last_year += 1.0;
             if days_elapsed < 30 {
                 last_month += 1.0;
+
+                *per_channel_forwards_in_last_month
+                    .entry(s.in_channel.to_string())
+                    .or_default() += 1;
+                *per_channel_forwards_out_last_month
+                    .entry(s.out_channel.to_string())
+                    .or_default() += 1;
+
                 if days_elapsed < 7 {
                     last_week += 1.0;
                 }
@@ -223,6 +235,8 @@ fn main() {
     let mut perces = vec![];
 
     let mut channels = vec![];
+
+    // Compute ChannelMeta
     for fund in normal_channels.iter() {
         let short_channel_id = fund.short_channel_id();
 
@@ -243,6 +257,25 @@ fn main() {
         } else {
             (ever_forw_out as f64) / (ever_forward_in_out as f64)
         };
+
+        let last_month_forw_in = *per_channel_forwards_in_last_month
+            .get(&short_channel_id)
+            .unwrap_or(&0u64);
+
+        let last_month_forw_out = *per_channel_forwards_out_last_month
+            .get(&short_channel_id)
+            .unwrap_or(&0u64);
+
+        let last_month_forward_in_out = last_month_forw_out + last_month_forw_in;
+
+        // 100% is sink, 0% is source
+        let is_sink_last_month = if last_month_forward_in_out == 0 {
+            // Avoid resulting in NaN
+            0.5
+        } else {
+            (last_month_forw_out as f64) / (last_month_forward_in_out as f64)
+        };
+
         let perc = fund.perc_float();
         let rebalance = if perc < 0.3 && is_sink >= 0.5 {
             Rebalance::PullIn
@@ -259,6 +292,7 @@ fn main() {
             is_sink,
             rebalance,
             alias_or_id,
+            is_sink_last_month,
         };
         channels.push(c);
     }
@@ -341,16 +375,8 @@ fn main() {
 
         let ever_forward_in_out = ever_forw_out + ever_forw_in;
 
-        // 100% is sink, 0% is source
-        // the .1 is so that it's ininfluent at regime, but gives 50% for a node that didn't forward yet
-        // 100% is sink, 0% is source
-        let is_sink = if ever_forward_in_out == 0 {
-            // Avoid resulting in NaN
-            0.5
-        } else {
-            (ever_forw_out as f64) / (ever_forward_in_out as f64)
-        };
-        let is_sink_perc = (is_sink * 100.0) as u32;
+        let is_sink_perc = channel.is_sink_perc();
+        let is_sink_last_month_perc = channel.is_sink_last_month_perc();
         let alias_or_id = channel.alias_or_id();
 
         if let Some(l) = calc_slingjobs(
@@ -374,7 +400,7 @@ fn main() {
         };
 
         let s = format!(
-            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {ever_forw:>3} {ever_forw_fee:>5}sat {is_sink_perc:>3}% {push_pull:4} {alias_or_id}"
+            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {ever_forw:>3} {ever_forw_fee:>5}sat {is_sink_perc:>4} {is_sink_last_month_perc:>4}  {push_pull:4} {alias_or_id}"
         );
         lines.push((perc, s, cmd));
     }
