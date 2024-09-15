@@ -306,6 +306,7 @@ fn main() {
         .filter(|e| e.rebalance == Rebalance::PushOut)
         .map(|e| e.fund.short_channel_id())
         .collect();
+    println!("pull_in:{} push_out:{}", pull_in.len(), push_out.len());
 
     for channel in channels {
         let fund = &channel.fund;
