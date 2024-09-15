@@ -51,10 +51,10 @@ struct ChannelMeta {
 
 impl ChannelMeta {
     fn is_sink_perc(&self) -> String {
-        format!("{:.1}%", self.is_sink * 100.0)
+        format!("{:.0}%", self.is_sink * 100.0)
     }
     fn is_sink_last_month_perc(&self) -> String {
-        format!("{:.1}%", self.is_sink_last_month * 100.0)
+        format!("{:.0}%", self.is_sink_last_month * 100.0)
     }
 
     fn alias_or_id(&self) -> String {
@@ -277,9 +277,9 @@ fn main() {
         };
 
         let perc = fund.perc_float();
-        let rebalance = if perc < 0.3 && is_sink >= 0.5 {
+        let rebalance = if perc < 0.3 && is_sink_last_month >= 0.5 {
             Rebalance::PullIn
-        } else if perc > 0.7 && is_sink <= 0.5 {
+        } else if perc > 0.7 && is_sink_last_month <= 0.5 {
             Rebalance::PushOut
         } else {
             Rebalance::Nothing
