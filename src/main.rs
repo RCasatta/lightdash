@@ -529,7 +529,7 @@ fn calc_setchannel(
     let perc = fund.perc_float();
     // let amount = fund.amount_msat;
     // let our_amount = fund.our_amount_msat;
-    let max_htlc_sat = fund.amount_msat / 1000;
+    let max_htlc_sat = ((fund.amount_msat as f64 / 1000.0) * 0.7) as u64; // we aim for 70% in rebalance
     let max_htlc_sat = format!("{max_htlc_sat}sat");
 
     let min_ppm = min_ppm(perc);
