@@ -432,14 +432,22 @@ fn main() {
         }
     }
 
+    let execute_sling = std::env::var("EXECUTE_SLING_JOBS").is_ok();
+    if execute_sling {
+        let result = cmd_result("lightning-cli", &["sling-deletejob", "all"]);
+        println!("{result}");
+    }
     for (cmd, details) in sling_lines.iter() {
         println!("`{cmd}` {details}");
-        let execute = std::env::var("EXECUTE_SLING_JOBS").is_ok();
-        if execute {
+        if execute_sling {
             let split: Vec<&str> = cmd.split(' ').collect();
             let result = cmd_result(split[0], &split[1..]);
             println!("{result}");
         }
+    }
+    if execute_sling {
+        let result = cmd_result("lightning-cli", &["sling-go"]);
+        println!("{result}");
     }
 }
 
