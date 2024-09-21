@@ -547,8 +547,7 @@ fn calc_setchannel(
 
     let new_ppm = new_ppm.max(min_ppm);
 
-    // Truncated by the min, however if it's lower than the PPM_MIN it has been manually set and we don't want to move it
-    let truncated_min = (min_ppm == new_ppm) && (current_ppm > PPM_MIN);
+    let truncated_min = min_ppm == new_ppm;
 
     let result = if current_ppm != new_ppm {
         let cmd = "lightning-cli";
