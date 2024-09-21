@@ -174,10 +174,12 @@ pub struct Fund {
 
 impl Fund {
     pub fn perc(&self) -> u64 {
-        ((self.our_amount_msat as f64 / self.amount_msat as f64) * 100.0).floor() as u64
+        (self.perc_float() * 100.0).floor() as u64
     }
     pub fn perc_float(&self) -> f64 {
-        self.our_amount_msat as f64 / self.amount_msat as f64
+        (self.our_amount_msat as f64 / self.amount_msat as f64)
+            .min(1.0)
+            .max(0.0)
     }
 
     pub fn short_channel_id(&self) -> String {
