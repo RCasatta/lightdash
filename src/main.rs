@@ -134,6 +134,7 @@ fn main() {
 
     let mut per_channel_ever_forwards: HashMap<String, u64> = HashMap::new();
     let mut per_channel_ever_fee_sat: HashMap<String, u64> = HashMap::new();
+    let mut per_channel_ever_incoming_fee_sat: HashMap<String, i64> = HashMap::new();
 
     let mut per_channel_forwards_in: HashMap<String, u64> = HashMap::new();
     let mut per_channel_forwards_out: HashMap<String, u64> = HashMap::new();
@@ -158,6 +159,9 @@ fn main() {
         *per_channel_ever_fee_sat
             .entry(s.out_channel.to_string())
             .or_default() += s.fee_sat;
+        *per_channel_ever_incoming_fee_sat
+            .entry(s.in_channel.to_string())
+            .or_default() -= s.fee_sat as i64;
 
         if days_elapsed < 365 {
             last_year += 1.0;
@@ -366,6 +370,10 @@ fn main() {
             .get(&short_channel_id)
             .unwrap_or(&0u64);
 
+        let ever_forw_fee_incom = *per_channel_ever_incoming_fee_sat
+            .get(&short_channel_id)
+            .unwrap_or(&0i64);
+
         let ever_forw_in = *per_channel_forwards_in
             .get(&short_channel_id)
             .unwrap_or(&0u64);
@@ -401,7 +409,7 @@ fn main() {
         };
 
         let s = format!(
-            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {ever_forw:>3} {ever_forw_fee:>5}sat {is_sink_perc:>4} {is_sink_last_month_perc:>4}  {push_pull:4} {alias_or_id}"
+            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {ever_forw:>3} {ever_forw_fee:>5}sat {ever_forw_fee_incom:>5}sat {is_sink_perc:>4} {is_sink_last_month_perc:>4}  {push_pull:4} {alias_or_id}"
         );
         lines.push((perc, s, cmd));
     }
