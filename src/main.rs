@@ -47,6 +47,7 @@ struct ChannelMeta {
     is_sink_last_month: f64,
     rebalance: Rebalance,
     alias_or_id: String,
+    block_born: u64,
 }
 
 impl ChannelMeta {
@@ -67,6 +68,7 @@ fn main() {
     println!("{}", now);
     let info = get_info();
     println!("my id:{}", info.id);
+    let current_block = info.blockheight;
 
     let channels = list_channels();
     let nodes = list_nodes();
@@ -297,6 +299,7 @@ fn main() {
             rebalance,
             alias_or_id,
             is_sink_last_month,
+            block_born: fund.block_born().unwrap_or(0),
         };
         channels.push(c);
     }
@@ -374,6 +377,12 @@ fn main() {
             .get(&short_channel_id)
             .unwrap_or(&0i64);
 
+        let ever_forw_in_out = ever_forw_fee + ever_forw_fee_incom.abs() as u64;
+
+        // gain is millisat "gained" per block, a millisat is gained is it an effective fee from outgoing forward, but also if it's an ineffective fee as incoming forward.
+        let gain = ((ever_forw_in_out as f64 / (current_block - channel.block_born) as f64)
+            * 1000.0) as u64;
+
         let ever_forw_in = *per_channel_forwards_in
             .get(&short_channel_id)
             .unwrap_or(&0u64);
@@ -409,7 +418,7 @@ fn main() {
         };
 
         let s = format!(
-            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {ever_forw:>3} {ever_forw_fee:>5}sat {ever_forw_fee_incom:>5}sat {is_sink_perc:>4} {is_sink_last_month_perc:>4}  {push_pull:4} {alias_or_id}"
+            "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {ever_forw:>3} {ever_forw_fee:>5}s {ever_forw_fee_incom:>5}s {gain}g {is_sink_perc:>4} {is_sink_last_month_perc:>4}  {push_pull:4}  {alias_or_id}"
         );
         lines.push((perc, s, cmd));
     }

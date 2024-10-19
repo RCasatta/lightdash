@@ -94,6 +94,7 @@ pub fn cmd_result(cmd: &str, args: &[&str]) -> String {
 #[derive(Deserialize, Debug)]
 pub struct GetInfo {
     pub id: String,
+    pub blockheight: u64,
 }
 
 #[derive(Deserialize, Debug)]
@@ -195,6 +196,15 @@ impl Fund {
             )),
             24,
         )
+    }
+
+    pub fn block_born(&self) -> Option<u64> {
+        self.short_channel_id
+            .as_ref()?
+            .split("x")
+            .next()?
+            .parse()
+            .ok()
     }
 }
 
