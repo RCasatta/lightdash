@@ -511,12 +511,11 @@ fn calc_routes(
             .map(|n| n.alias.clone())
             .flatten()
             .unwrap_or("".to_string());
-        let avg_fee = chan_meta.get(&c.0).unwrap().avg_fee();
-        let fee_diversity = chan_meta
-            .get(&c.0)
-            .map(|cf| format!("{:.3}", cf.fee_diversity()))
-            .unwrap_or_default();
-        println!("{id} {count:>5} avg_fee:{avg_fee:>6.1} fee_div:{fee_diversity:>6} {alias}");
+        let chan_info = chan_meta.get(&c.0).unwrap();
+        let avg_fee = chan_info.avg_fee();
+        let fee_diversity = format!("{:.3}", chan_info.fee_diversity());
+        let num_chans = chan_info.count;
+        println!("{id} {count:>5} avg:{avg_fee:>6.1} dvr:{fee_diversity:>6} chans:{num_chans:>4} {alias}");
     }
 }
 
