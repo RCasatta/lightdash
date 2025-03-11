@@ -26,11 +26,19 @@ use cmd::*;
 struct ChannelFee {
     count: u64,
     fee_sum: u64,
+    fee_rates: HashSet<u64>,
 }
 
 impl ChannelFee {
     pub fn avg_fee(&self) -> f64 {
         self.fee_sum as f64 / self.count as f64
+    }
+
+    pub fn fee_diversity(&self) -> f64 {
+        if self.count == 0 {
+            return 0.0;
+        }
+        self.fee_rates.len() as f64 / self.count as f64
     }
 }
 
@@ -101,6 +109,7 @@ fn main() {
         let meta: &mut ChannelFee = chan_meta_per_node.entry(&c.source).or_default();
         meta.count += 1;
         meta.fee_sum += c.fee_per_millionth;
+        meta.fee_rates.insert(c.fee_per_millionth);
     }
 
     let funds = list_funds();
@@ -503,7 +512,11 @@ fn calc_routes(
             .flatten()
             .unwrap_or("".to_string());
         let avg_fee = chan_meta.get(&c.0).unwrap().avg_fee();
-        println!("{id} {count:>5} avg_fee:{avg_fee:>6.1} {alias}");
+        let fee_diversity = chan_meta
+            .get(&c.0)
+            .map(|cf| format!("{:.3}", cf.fee_diversity()))
+            .unwrap_or_default();
+        println!("{id} {count:>5} avg_fee:{avg_fee:>6.1} fee_div:{fee_diversity:>6} {alias}");
     }
 }
 
