@@ -1,16 +1,18 @@
 use chrono::{DateTime, Utc};
 use std::collections::{HashMap, HashSet};
 
-const PPM_MIN: u64 = 100; // minimum betwee 100% and 50%
+const PPM_MIN: u64 = 50; // minimum between 100% and 50%
 const PPM_MAX: u64 = 2000; // when channel 0%, between 0% and 50% increase linearly
+const SLING_AMOUNT: u64 = 50000; // amount used for rebalancing
+const MIN_HTLC: u64 = 100; // minimum htlc amount in sats
 
 /// Compute the minimum ppm of the channel according to the percentual owned by us
 /// The intention is to signal via an high fee the channel depletion
 fn min_ppm(perc: f64) -> u64 {
-    let delta = (PPM_MAX - PPM_MIN) as f64;
     if perc > 0.5 {
         PPM_MIN
     } else {
+        let delta = (PPM_MAX - PPM_MIN) as f64;
         ((PPM_MAX as f64) + (2.0 * perc * -delta)) as u64 // since perc>0 this is positive
     }
 }
@@ -529,8 +531,8 @@ fn calc_slingjobs(
     pull_in: &[String],
     push_out: &[String],
 ) -> Option<(String, String)> {
-    let amount = 100000;
-    let maxppm = 100;
+    let amount = SLING_AMOUNT;
+    let maxppm = PPM_MIN;
     let is_sink_perc = channel.is_sink_perc();
 
     let (dir, candidates, target) = match channel.rebalance {
@@ -580,7 +582,8 @@ fn calc_setchannel(
 
     let result = if current_ppm != new_ppm {
         let cmd = "lightning-cli";
-        let args = format!("setchannel {short_channel_id} 0 {new_ppm} 10sat {max_htlc_sat}");
+        let args =
+            format!("setchannel {short_channel_id} 0 {new_ppm} {MIN_HTLC}sat {max_htlc_sat}");
 
         let execute = std::env::var("EXECUTE").is_ok();
         if execute | truncated_min {
