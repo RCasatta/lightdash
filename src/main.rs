@@ -487,6 +487,13 @@ fn calc_routes(
     let mut hop_sum = 0usize;
     let mut total = 0;
     for id in nodes_by_id.keys() {
+        // Skip nodes that have less than 2 channels
+        if chan_meta
+            .get(id)
+            .map_or(true, |chan_info| chan_info.count < 2)
+        {
+            continue;
+        }
         if let Some(route) = get_route(id) {
             let mut nodes = route.route;
             hop_sum += nodes.len();
