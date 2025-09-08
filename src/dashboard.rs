@@ -292,11 +292,7 @@ fn create_peer_pages(
                             @if let Some(scid) = &channel.short_channel_id {
                                 div class="info-item" {
                                     span class="label" { "Short Channel ID: " }
-                                    span class="value" {
-                                        a href={(format!("https://mempool.space/lightning/channel/{}", scid))} target="_blank" {
-                                            (scid)
-                                        }
-                                    }
+                                    span class="value" { (scid) }
                                 }
                             }
 
@@ -310,11 +306,7 @@ fn create_peer_pages(
                             @if let Some(channel_id) = &channel.channel_id {
                                 div class="info-item" {
                                     span class="label" { "Channel ID: " }
-                                    span class="value" {
-                                        a href={(format!("https://mempool.space/lightning/channel/{}", channel_id))} target="_blank" {
-                                            (channel_id)
-                                        }
-                                    }
+                                    span class="value" { (channel_id) }
                                 }
                             }
 
@@ -459,21 +451,13 @@ fn create_channel_pages(
 
                 div class="info-item" {
                     span class="label" { "Channel ID: " }
-                    span class="value" {
-                        a href={(format!("https://mempool.space/lightning/channel/{}", channel.channel_id))} target="_blank" {
-                            (channel.channel_id)
-                        }
-                    }
+                    span class="value" { (channel.channel_id) }
                 }
 
                 @if let Some(scid) = &channel.short_channel_id {
                     div class="info-item" {
                         span class="label" { "Short Channel ID: " }
-                        span class="value" {
-                            a href={(format!("https://mempool.space/lightning/channel/{}", scid))} target="_blank" {
-                                (scid)
-                            }
-                        }
+                        span class="value" { (scid) }
                     }
                 }
 
