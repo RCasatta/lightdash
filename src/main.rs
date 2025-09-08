@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use clap::{Parser, Subcommand};
 use std::collections::{HashMap, HashSet};
 
 const PPM_MIN: u64 = 50; // minimum between 100% and 50%
@@ -6,6 +7,30 @@ const PPM_MAX: u64 = 2000; // when channel 0%, between 0% and 50% increase linea
 const SLING_AMOUNT: u64 = 50000; // amount used for rebalancing
 const MIN_HTLC: u64 = 100; // minimum htlc amount in sats
 const STEP_PERC: f64 = 0.08; // percentage change when channel is doing routing (+) in the last 24 hours or not doing it (-)
+
+#[derive(Parser)]
+#[command(name = "lightdash")]
+#[command(about = "Lightning Network channel management dashboard")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Display the main dashboard
+    Dashboard {
+        /// Directory for dashboard files
+        #[arg(short, long)]
+        directory: Option<String>,
+    },
+    /// Calculate and display routing information
+    Routes,
+    /// Execute sling jobs for rebalancing
+    Sling,
+    /// Execute fee adjustments
+    Fees,
+}
 
 /// Compute the minimum ppm of the channel according to the percentual owned by us
 /// The intention is to signal via an high fee the channel depletion
@@ -73,6 +98,29 @@ impl ChannelMeta {
 }
 
 fn main() {
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Dashboard { directory } => {
+            // Handle directory argument if provided
+            if let Some(dir) = directory {
+                println!("Dashboard directory: {}", dir);
+            }
+            run_dashboard();
+        }
+        Commands::Routes => {
+            run_routes();
+        }
+        Commands::Sling => {
+            run_sling();
+        }
+        Commands::Fees => {
+            run_fees();
+        }
+    }
+}
+
+fn run_dashboard() {
     let now = Utc::now();
     println!("{}", now);
     let info = get_info();
@@ -90,7 +138,7 @@ fn main() {
         peers.peers.len(),
     );
 
-    let peers_ids: HashSet<_> = peers
+    let _peers_ids: HashSet<_> = peers
         .peers
         .iter()
         .filter(|e| e.num_channels > 0)
@@ -192,11 +240,6 @@ fn main() {
                 }
             }
         }
-    }
-
-    if std::env::var("ONLY_ROUTES").is_ok() {
-        calc_routes(nodes_by_id, peers_ids, &chan_meta_per_node);
-        return;
     }
 
     let el = now.signed_duration_since(first).num_days();
@@ -459,22 +502,287 @@ fn main() {
         }
     }
 
-    let execute_sling = std::env::var("EXECUTE_SLING_JOBS").is_ok();
-    if execute_sling {
-        let result = cmd_result("lightning-cli", &["sling-deletejob", "all"]);
-        println!("{result}");
-    }
+    // Display sling jobs without executing
     for (cmd, details) in sling_lines.iter() {
         println!("`{cmd}` {details}");
-        if execute_sling {
-            let split: Vec<&str> = cmd.split(' ').collect();
-            let result = cmd_result(split[0], &split[1..]);
-            println!("{result}");
+    }
+}
+
+fn run_routes() {
+    let nodes = list_nodes();
+    let peers = list_peers();
+
+    let _peers_ids: HashSet<_> = peers
+        .peers
+        .iter()
+        .filter(|e| e.num_channels > 0)
+        .map(|e| &e.id)
+        .collect();
+
+    let nodes_by_id: HashMap<_, _> = nodes
+        .nodes
+        .iter()
+        .filter(|e| e.alias.is_some())
+        .map(|e| (&e.nodeid, e))
+        .collect();
+
+    let channels = list_channels();
+    let mut chan_meta_per_node = HashMap::new();
+
+    for c in channels.channels.iter() {
+        let meta: &mut ChannelFee = chan_meta_per_node.entry(&c.source).or_default();
+        meta.count += 1;
+        meta.fee_sum += c.fee_per_millionth;
+        meta.fee_rates.insert(c.fee_per_millionth);
+    }
+
+    calc_routes(nodes_by_id, _peers_ids, &chan_meta_per_node);
+}
+
+fn run_sling() {
+    let now = Utc::now();
+    println!("{}", now);
+    let info = get_info();
+    let _current_block = info.blockheight;
+
+    let channels = list_channels();
+    let nodes = list_nodes();
+    let peers = list_peers();
+
+    let _peers_ids: HashSet<_> = peers
+        .peers
+        .iter()
+        .filter(|e| e.num_channels > 0)
+        .map(|e| &e.id)
+        .collect();
+
+    let nodes_by_id: HashMap<_, _> = nodes
+        .nodes
+        .iter()
+        .filter(|e| e.alias.is_some())
+        .map(|e| (&e.nodeid, e))
+        .collect();
+
+    let mut chan_meta_per_node = HashMap::new();
+
+    for c in channels.channels.iter() {
+        let meta: &mut ChannelFee = chan_meta_per_node.entry(&c.source).or_default();
+        meta.count += 1;
+        meta.fee_sum += c.fee_per_millionth;
+        meta.fee_rates.insert(c.fee_per_millionth);
+    }
+
+    let funds = list_funds();
+    let normal_channels: Vec<_> = funds
+        .channels
+        .into_iter()
+        .filter(|c| c.state == "CHANNELD_NORMAL")
+        .collect();
+
+    let forwards = list_forwards();
+    let settled: Vec<_> = forwards
+        .forwards
+        .into_iter()
+        .filter(|e| e.status == "settled")
+        .map(|e| SettledForward::try_from(e).unwrap())
+        .collect();
+
+    let mut per_channel_forwards_in: HashMap<String, u64> = HashMap::new();
+    let mut per_channel_forwards_out: HashMap<String, u64> = HashMap::new();
+    let mut per_channel_forwards_in_last_month: HashMap<String, u64> = HashMap::new();
+    let mut per_channel_forwards_out_last_month: HashMap<String, u64> = HashMap::new();
+
+    for s in settled.iter() {
+        let days_elapsed = now.signed_duration_since(s.resolved_time).num_days();
+        *per_channel_forwards_in
+            .entry(s.in_channel.to_string())
+            .or_default() += 1;
+        *per_channel_forwards_out
+            .entry(s.out_channel.to_string())
+            .or_default() += 1;
+
+        if days_elapsed < 30 {
+            *per_channel_forwards_in_last_month
+                .entry(s.in_channel.to_string())
+                .or_default() += 1;
+            *per_channel_forwards_out_last_month
+                .entry(s.out_channel.to_string())
+                .or_default() += 1;
         }
     }
-    if execute_sling {
-        let result = cmd_result("lightning-cli", &["sling-go"]);
+
+    let mut channels = vec![];
+
+    // Compute ChannelMeta
+    for fund in normal_channels.iter() {
+        let short_channel_id = fund.short_channel_id();
+
+        let ever_forw_in = *per_channel_forwards_in
+            .get(&short_channel_id)
+            .unwrap_or(&0u64);
+
+        let ever_forw_out = *per_channel_forwards_out
+            .get(&short_channel_id)
+            .unwrap_or(&0u64);
+
+        let ever_forward_in_out = ever_forw_out + ever_forw_in;
+
+        // 100% is sink, 0% is source
+        let is_sink = if ever_forward_in_out == 0 {
+            // Avoid resulting in NaN
+            0.5
+        } else {
+            (ever_forw_out as f64) / (ever_forward_in_out as f64)
+        };
+
+        let last_month_forw_in = *per_channel_forwards_in_last_month
+            .get(&short_channel_id)
+            .unwrap_or(&0u64);
+
+        let last_month_forw_out = *per_channel_forwards_out_last_month
+            .get(&short_channel_id)
+            .unwrap_or(&0u64);
+
+        let last_month_forward_in_out = last_month_forw_out + last_month_forw_in;
+
+        // 100% is sink, 0% is source
+        let is_sink_last_month = if last_month_forward_in_out == 0 {
+            // Avoid resulting in NaN
+            0.5
+        } else {
+            (last_month_forw_out as f64) / (last_month_forward_in_out as f64)
+        };
+
+        let perc = fund.perc_float();
+        let rebalance = if perc < 0.3 && is_sink_last_month >= 0.5 {
+            Rebalance::PullIn
+        } else if perc > 0.7 && is_sink_last_month <= 0.5 {
+            Rebalance::PushOut
+        } else {
+            Rebalance::Nothing
+        };
+
+        let alias_or_id = fund.alias_or_id(&nodes_by_id);
+
+        let c = ChannelMeta {
+            fund: fund.clone(),
+            is_sink,
+            rebalance,
+            alias_or_id,
+            is_sink_last_month,
+            block_born: fund.block_born().unwrap_or(0),
+        };
+        channels.push(c);
+    }
+
+    let pull_in: Vec<_> = channels
+        .iter()
+        .filter(|e| e.rebalance == Rebalance::PullIn)
+        .map(|e| e.fund.short_channel_id())
+        .collect();
+    let push_out: Vec<_> = channels
+        .iter()
+        .filter(|e| e.rebalance == Rebalance::PushOut)
+        .map(|e| e.fund.short_channel_id())
+        .collect();
+
+    let mut sling_lines = vec![];
+
+    for channel in channels {
+        let fund = &channel.fund;
+        let short_channel_id = fund.short_channel_id();
+
+        let ever_forw_in = *per_channel_forwards_in
+            .get(&short_channel_id)
+            .unwrap_or(&0u64);
+
+        let ever_forw_out = *per_channel_forwards_out
+            .get(&short_channel_id)
+            .unwrap_or(&0u64);
+
+        let ever_forward_in_out = ever_forw_out + ever_forw_in;
+        let alias_or_id = channel.alias_or_id();
+
+        if let Some(l) = calc_slingjobs(
+            short_channel_id.clone(),
+            fund.perc_float(),
+            ever_forward_in_out,
+            &alias_or_id,
+            &channel,
+            &pull_in,
+            &push_out,
+        ) {
+            sling_lines.push(l);
+        }
+    }
+
+    // Execute sling jobs
+    let result = cmd_result("lightning-cli", &["sling-deletejob", "all"]);
+    println!("{result}");
+    for (cmd, details) in sling_lines.iter() {
+        println!("`{cmd}` {details}");
+        let split: Vec<&str> = cmd.split(' ').collect();
+        let result = cmd_result(split[0], &split[1..]);
         println!("{result}");
+    }
+    let result = cmd_result("lightning-cli", &["sling-go"]);
+    println!("{result}");
+}
+
+fn run_fees() {
+    let now = Utc::now();
+    println!("{}", now);
+    let info = get_info();
+
+    let channels = list_channels();
+    let nodes = list_nodes();
+
+    let nodes_by_id: HashMap<_, _> = nodes
+        .nodes
+        .iter()
+        .filter(|e| e.alias.is_some())
+        .map(|e| (&e.nodeid, e))
+        .collect();
+
+    let funds = list_funds();
+    let normal_channels: Vec<_> = funds
+        .channels
+        .into_iter()
+        .filter(|c| c.state == "CHANNELD_NORMAL")
+        .collect();
+
+    let forwards = list_forwards();
+    let settled: Vec<_> = forwards
+        .forwards
+        .into_iter()
+        .filter(|e| e.status == "settled")
+        .map(|e| SettledForward::try_from(e).unwrap())
+        .collect();
+    let settled_24h = filter_forwards(&settled, 24, &now);
+
+    let channels_by_id: HashMap<_, _> = channels
+        .channels
+        .iter()
+        .map(|e| ((&e.short_channel_id, &e.source), e))
+        .collect();
+
+    let mut lines = vec![];
+
+    for fund in normal_channels.iter() {
+        let short_channel_id = fund.short_channel_id();
+        let our = channels_by_id.get(&(&short_channel_id, &info.id));
+        let alias_or_id = fund.alias_or_id(&nodes_by_id);
+
+        let (_new_fee, cmd) =
+            calc_setchannel(&short_channel_id, &alias_or_id, &fund, our, &settled_24h);
+
+        lines.push(cmd);
+    }
+
+    for cmd in lines {
+        if let Some(c) = cmd {
+            println!("{c}");
+        }
     }
 }
 
@@ -591,14 +899,10 @@ fn calc_setchannel(
         let args =
             format!("setchannel {short_channel_id} 0 {new_ppm} {MIN_HTLC}sat {max_htlc_sat}");
 
-        let execute = std::env::var("EXECUTE").is_ok();
-        if execute | truncated_min {
-            // execute is true once a day
-            // but we need to trim for min to have faster reaction on channel depletion
-            let splitted_args: Vec<&str> = args.split(' ').collect();
-            let _result = cmd_result(cmd, &splitted_args);
-            // println!("{result}");
-        }
+        // Always execute fee adjustments
+        let splitted_args: Vec<&str> = args.split(' ').collect();
+        let _result = cmd_result(cmd, &splitted_args);
+        // println!("{result}");
         let truncated_min_str = if truncated_min { "truncated_min" } else { "" };
 
         Some(format!(
