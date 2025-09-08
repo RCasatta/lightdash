@@ -176,7 +176,11 @@ fn create_peer_pages(
 
                     div class="info-item" {
                         span class="label" { "ID: " }
-                        span class="value" { (&peer.id) }
+                        span class="value" {
+                            a href={(format!("https://mempool.space/lightning/node/{}", peer.id))} target="_blank" {
+                                (&peer.id)
+                            }
+                        }
                     }
 
                     div class="info-item" {
@@ -226,7 +230,11 @@ fn create_peer_pages(
 
                 div class="info-item" {
                     span class="label" { "Peer ID: " }
-                    span class="value" { (peer.id) }
+                    span class="value" {
+                        a href={(format!("https://mempool.space/lightning/node/{}", peer.id))} target="_blank" {
+                            (peer.id)
+                        }
+                    }
                 }
 
                 div class="info-item" {
@@ -284,7 +292,11 @@ fn create_peer_pages(
                             @if let Some(scid) = &channel.short_channel_id {
                                 div class="info-item" {
                                     span class="label" { "Short Channel ID: " }
-                                    span class="value" { (scid) }
+                                    span class="value" {
+                                        a href={(format!("https://mempool.space/lightning/channel/{}", scid))} target="_blank" {
+                                            (scid)
+                                        }
+                                    }
                                 }
                             }
 
@@ -298,7 +310,11 @@ fn create_peer_pages(
                             @if let Some(channel_id) = &channel.channel_id {
                                 div class="info-item" {
                                     span class="label" { "Channel ID: " }
-                                    span class="value" { (channel_id) }
+                                    span class="value" {
+                                        a href={(format!("https://mempool.space/lightning/channel/{}", channel_id))} target="_blank" {
+                                            (channel_id)
+                                        }
+                                    }
                                 }
                             }
 
@@ -443,19 +459,31 @@ fn create_channel_pages(
 
                 div class="info-item" {
                     span class="label" { "Channel ID: " }
-                    span class="value" { (channel.channel_id) }
+                    span class="value" {
+                        a href={(format!("https://mempool.space/lightning/channel/{}", channel.channel_id))} target="_blank" {
+                            (channel.channel_id)
+                        }
+                    }
                 }
 
                 @if let Some(scid) = &channel.short_channel_id {
                     div class="info-item" {
                         span class="label" { "Short Channel ID: " }
-                        span class="value" { (scid) }
+                        span class="value" {
+                            a href={(format!("https://mempool.space/lightning/channel/{}", scid))} target="_blank" {
+                                (scid)
+                            }
+                        }
                     }
                 }
 
                 div class="info-item" {
                     span class="label" { "Peer ID: " }
-                    span class="value" { (channel.peer_id) }
+                    span class="value" {
+                        a href={(format!("https://mempool.space/lightning/node/{}", channel.peer_id))} target="_blank" {
+                            (channel.peer_id)
+                        }
+                    }
                 }
 
                 @if let Some(node_info) = nodes_by_id.get(&channel.peer_id) {
