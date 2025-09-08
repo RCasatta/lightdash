@@ -118,7 +118,24 @@ pub struct ListPeers {
 #[derive(Deserialize, Debug)]
 pub struct Peer {
     pub id: String,
+    pub connected: bool,
     pub num_channels: u64,
+    pub features: String,
+    #[serde(default)]
+    pub channels: Vec<PeerChannel>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct PeerChannel {
+    pub state: String,
+    #[serde(default)]
+    pub short_channel_id: Option<String>,
+    #[serde(default)]
+    pub direction: Option<u64>,
+    #[serde(default)]
+    pub channel_id: Option<String>,
+    #[serde(default)]
+    pub funding_txid: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]

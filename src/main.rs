@@ -20,8 +20,7 @@ enum Commands {
     /// Display the main dashboard
     Dashboard {
         /// Directory for dashboard files
-        #[arg(short, long)]
-        directory: Option<String>,
+        directory: String,
     },
     /// Calculate and display routing information
     Routes,
@@ -36,11 +35,8 @@ fn main() {
 
     match cli.command {
         Commands::Dashboard { directory } => {
-            // Handle directory argument if provided
-            if let Some(dir) = directory {
-                println!("Dashboard directory: {}", dir);
-            }
-            dashboard::run_dashboard();
+            println!("Dashboard directory: {}", directory);
+            dashboard::run_dashboard(directory);
         }
         Commands::Routes => {
             routes::run_routes();
