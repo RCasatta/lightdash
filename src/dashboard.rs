@@ -433,7 +433,7 @@ fn create_channel_pages(
             div class="header" {
                 h1 { "Channel" }
                 div class="back-link" {
-                    a href="../index.html" { "Home" } " | " a href="../peers/index.html" { "Peers" }
+                    a href="../index.html" { "Home" } " | " a href="index.html" { "Channels" }
                 }
                 p class="timestamp" { "Generated at: " (now.format("%Y-%m-%d %H:%M:%S UTC")) }
             }
