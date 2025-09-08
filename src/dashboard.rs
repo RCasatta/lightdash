@@ -137,9 +137,9 @@ fn create_peer_pages(
     // Create peers index page
     let peers_index_content = html! {
         div class="header" {
-            h1 { "Peers Directory" }
+            h1 { "Peers" }
             div class="back-link" {
-                "← " a href="../index.html" { "Back to Overview" }
+                a href="../index.html" { "Home" }
             }
             p class="timestamp" { "Generated at: " (now.format("%Y-%m-%d %H:%M:%S UTC")) }
         }
@@ -212,7 +212,7 @@ fn create_peer_pages(
             div class="header" {
                 h1 { "Peer Details" }
                 div class="back-link" {
-                    "← " a href="../../index.html" { "Back to Overview" }
+                    a href="../index.html" { "Home" } " | " a href="index.html" { "Peers" }
                 }
                 p class="timestamp" { "Generated at: " (now.format("%Y-%m-%d %H:%M:%S UTC")) }
             }
@@ -341,9 +341,9 @@ fn create_channel_pages(
     // Create channels index page
     let channels_index_content = html! {
         div class="header" {
-            h1 { "Channels Directory" }
+            h1 { "Channels" }
             div class="back-link" {
-                "← " a href="../index.html" { "Back to Overview" }
+                a href="../index.html" { "Home" }
             }
             p class="timestamp" { "Generated at: " (now.format("%Y-%m-%d %H:%M:%S UTC")) }
         }
@@ -421,7 +421,7 @@ fn create_channel_pages(
             div class="header" {
                 h1 { "Channel Details" }
                 div class="back-link" {
-                    "← " a href="../index.html" { "Back to Overview" }
+                    a href="../index.html" { "Home" } " | " a href="../peers/index.html" { "Peers" }
                 }
                 p class="timestamp" { "Generated at: " (now.format("%Y-%m-%d %H:%M:%S UTC")) }
             }
