@@ -360,6 +360,121 @@ fn create_peer_pages(
     }
 }
 
+fn create_forwards_page(
+    directory: &str,
+    forwards: &[crate::cmd::Forward],
+    now: &chrono::DateTime<chrono::Utc>,
+) {
+    // Filter only settled forwards and reverse the order (most recent first)
+    let mut settled_forwards: Vec<_> = forwards.iter().filter(|f| f.status == "settled").collect();
+
+    settled_forwards.sort_by(|a, b| {
+        // Sort by resolved_time descending (most recent first)
+        match (a.resolved_time, b.resolved_time) {
+            (Some(a_time), Some(b_time)) => b_time
+                .partial_cmp(&a_time)
+                .unwrap_or(std::cmp::Ordering::Equal),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        }
+    });
+
+    let forwards_content = html! {
+        div class="header" {
+            h1 { "Settled Forwards" }
+            div class="back-link" {
+                a href="index.html" { "Home" }
+            }
+            p class="timestamp" { "Generated at: " (now.format("%Y-%m-%d %H:%M:%S UTC")) }
+        }
+
+        div class="content" {
+            h2 { "Settled Forward Payments" }
+            p { "Total settled forwards: " (settled_forwards.len()) }
+
+            @if !settled_forwards.is_empty() {
+                table {
+                    thead {
+                        tr {
+                            th { "In Channel" }
+                            th { "Out Channel" }
+                            th { "Fee (sats)" }
+                            th { "Out Amount (sats)" }
+                            th { "Received Time" }
+                            th { "Resolved Time" }
+                        }
+                    }
+                    tbody {
+                        @for forward in settled_forwards {
+                            tr {
+                                td { (forward.in_channel) }
+                                td {
+                                    @if let Some(out_channel) = &forward.out_channel {
+                                        (out_channel)
+                                    } @else {
+                                        "N/A"
+                                    }
+                                }
+                                td {
+                                    @if let Some(fee) = forward.fee_msat {
+                                        (format!("{:.1}", fee as f64 / 1000.0))
+                                    } @else {
+                                        "N/A"
+                                    }
+                                }
+                                td {
+                                    @if let Some(out_msat) = forward.out_msat {
+                                        (format!("{:.1}", out_msat as f64 / 1000.0))
+                                    } @else {
+                                        "N/A"
+                                    }
+                                }
+                                td {
+                                    @if forward.received_time > 0.0 {
+                                        (DateTime::from_timestamp(forward.received_time as i64, 0)
+                                            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                                            .unwrap_or_else(|| "Invalid".to_string()))
+                                    } @else {
+                                        "N/A"
+                                    }
+                                }
+                                td {
+                                    @if let Some(resolved_time) = forward.resolved_time {
+                                        @if resolved_time > 0.0 {
+                                            (DateTime::from_timestamp(resolved_time as i64, 0)
+                                                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                                                .unwrap_or_else(|| "Invalid".to_string()))
+                                        } @else {
+                                            "N/A"
+                                        }
+                                    } @else {
+                                        "N/A"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } @else {
+                p { "No settled forwards found." }
+            }
+        }
+    };
+
+    let forwards_html = wrap_in_html_page(
+        "Settled Forwards",
+        forwards_content,
+        &now.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+    );
+
+    let forwards_file_path = format!("{}/forwards.html", directory);
+    match fs::write(&forwards_file_path, forwards_html.into_string()) {
+        Ok(_) => println!("Forwards page generated: {}", forwards_file_path),
+        Err(e) => println!("Error writing forwards page: {}", e),
+    }
+}
+
 fn create_channel_pages(
     directory: &str,
     channels: &[crate::cmd::Fund],
@@ -753,6 +868,7 @@ pub fn run_dashboard(directory: String) {
 
     let forwards = list_forwards();
     let total_forwards = forwards.forwards.len();
+    let forwards_data = forwards.forwards.clone(); // Store a copy for later use
     let settled: Vec<_> = forwards
         .forwards
         .into_iter()
@@ -1165,4 +1281,7 @@ pub fn run_dashboard(directory: String) {
         &channels_by_id,
         &info.id,
     );
+
+    // Create forwards page
+    create_forwards_page(&directory, &forwards_data, &now);
 }

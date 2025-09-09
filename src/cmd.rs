@@ -238,7 +238,7 @@ pub struct Forward {
     pub in_msat: u64,
     pub out_msat: Option<u64>,
     pub status: String,
-    received_time: f64,
+    pub received_time: f64,
     pub resolved_time: Option<f64>,
 }
 
