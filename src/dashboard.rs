@@ -792,6 +792,15 @@ pub fn run_dashboard(directory: String) {
         .filter(|c| c.state == "CHANNELD_NORMAL")
         .collect();
 
+    // Load forwards data for home page
+    let forwards = list_forwards();
+    let settled: Vec<_> = forwards
+        .forwards
+        .iter()
+        .filter(|e| e.status == "settled")
+        .map(|e| SettledForward::try_from(e.clone()).unwrap())
+        .collect();
+
     // Generate index.html content
     let index_content = html! {
         div class="header" {
@@ -826,7 +835,7 @@ pub fn run_dashboard(directory: String) {
             }
             h3 {
                 a href="forwards.html" {
-                    "Forwards"
+                    (format!("{} Settled Forwards", settled.len()))
                 }
             }
         }
@@ -872,15 +881,8 @@ pub fn run_dashboard(directory: String) {
         meta.fee_rates.insert(c.fee_per_millionth);
     }
 
-    let forwards = list_forwards();
     let total_forwards = forwards.forwards.len();
     let forwards_data = forwards.forwards.clone(); // Store a copy for later use
-    let settled: Vec<_> = forwards
-        .forwards
-        .into_iter()
-        .filter(|e| e.status == "settled")
-        .map(|e| SettledForward::try_from(e).unwrap())
-        .collect();
     let settled_24h = filter_forwards(&settled, 24, &now);
 
     // let jobs = sling_jobsettings();
