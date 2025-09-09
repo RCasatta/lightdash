@@ -364,9 +364,32 @@ fn create_forwards_page(
     directory: &str,
     forwards: &[crate::cmd::Forward],
     now: &chrono::DateTime<chrono::Utc>,
+    channels_by_id: &HashMap<(&String, &String), &crate::cmd::Channel>,
+    nodes_by_id: &HashMap<&String, &crate::cmd::Node>,
+    our_node_id: &String,
 ) {
     // Filter only settled forwards and reverse the order (most recent first)
     let mut settled_forwards: Vec<_> = forwards.iter().filter(|f| f.status == "settled").collect();
+
+    // Helper function to get node alias for a channel
+    let get_channel_alias = |channel_id: &str| -> String {
+        let channel_id_string = channel_id.to_string();
+
+        // Try to find the channel in our channels (we're the source)
+        if let Some(channel) = channels_by_id.get(&(&channel_id_string, our_node_id)) {
+            // We're the source, so the destination is the remote node
+            if let Some(node) = nodes_by_id.get(&channel.destination) {
+                if let Some(alias) = &node.alias {
+                    return alias.clone();
+                }
+            }
+            // Fallback to node ID if alias not available
+            return channel.destination.clone();
+        }
+
+        // If we can't find the channel, return the original channel ID
+        channel_id.to_string()
+    };
 
     settled_forwards.sort_by(|a, b| {
         // Sort by resolved_time descending (most recent first)
@@ -397,8 +420,8 @@ fn create_forwards_page(
                 table {
                     thead {
                         tr {
-                            th { "In Channel" }
-                            th { "Out Channel" }
+                            th { "In Node" }
+                            th { "Out Node" }
                             th { "Fee (sats)" }
                             th { "Out Amount (sats)" }
                             th { "Received Time" }
@@ -408,10 +431,10 @@ fn create_forwards_page(
                     tbody {
                         @for forward in settled_forwards {
                             tr {
-                                td { (forward.in_channel) }
+                                td { (get_channel_alias(&forward.in_channel)) }
                                 td {
                                     @if let Some(out_channel) = &forward.out_channel {
-                                        (out_channel)
+                                        (get_channel_alias(out_channel))
                                     } @else {
                                         "N/A"
                                     }
@@ -1291,5 +1314,12 @@ pub fn run_dashboard(directory: String) {
     );
 
     // Create forwards page
-    create_forwards_page(&directory, &forwards_data, &now);
+    create_forwards_page(
+        &directory,
+        &forwards_data,
+        &now,
+        &channels_by_id,
+        &nodes_by_id,
+        &info.id,
+    );
 }
