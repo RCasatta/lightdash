@@ -85,6 +85,30 @@ fn create_html_header(title: &str) -> Markup {
                     border-radius: 10px;
                     transition: width 0.3s ease;
                 }
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-bottom: 20px;
+                }
+                th, td {
+                    border: 1px solid #4a5568;
+                    padding: 8px 12px;
+                    text-align: left;
+                }
+                th {
+                    background-color: #2d3748;
+                    color: #63b3ed;
+                    font-weight: bold;
+                }
+                tbody tr:nth-child(even) {
+                    background-color: #2d3748;
+                }
+                tbody tr:nth-child(odd) {
+                    background-color: #1a202c;
+                }
+                tbody tr:hover {
+                    background-color: #4a5568;
+                }
                 "#
             }
         }
@@ -677,6 +701,11 @@ pub fn run_dashboard(directory: String) {
             h3 {
                 a href="channels/" {
                     (format!("{} Channels", normal_channels.len()))
+                }
+            }
+            h3 {
+                a href="forwards.html" {
+                    "Forwards"
                 }
             }
         }

@@ -235,10 +235,10 @@ pub struct Forward {
     pub in_channel: String,
     pub out_channel: Option<String>,
     pub fee_msat: Option<u64>,
-    // pub in_msat: u64,
-    // pub out_msat: Option<u64>,
+    pub in_msat: u64,
+    pub out_msat: Option<u64>,
     pub status: String,
-    // received_time: f64,
+    received_time: f64,
     pub resolved_time: Option<f64>,
 }
 
