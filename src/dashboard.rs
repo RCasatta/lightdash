@@ -402,7 +402,7 @@ fn create_forwards_page(
                             th { "Fee (sats)" }
                             th { "Out Amount (sats)" }
                             th { "Received Time" }
-                            th { "Resolved Time" }
+                            th { "Elapsed (s)" }
                         }
                     }
                     tbody {
@@ -416,14 +416,14 @@ fn create_forwards_page(
                                         "N/A"
                                     }
                                 }
-                                td {
+                                td class="align-right" {
                                     @if let Some(fee) = forward.fee_msat {
                                         (format!("{:.1}", fee as f64 / 1000.0))
                                     } @else {
                                         "N/A"
                                     }
                                 }
-                                td {
+                                td class="align-right" {
                                     @if let Some(out_msat) = forward.out_msat {
                                         (format!("{:.1}", out_msat as f64 / 1000.0))
                                     } @else {
@@ -439,12 +439,10 @@ fn create_forwards_page(
                                         "N/A"
                                     }
                                 }
-                                td {
+                                td class="align-right" {
                                     @if let Some(resolved_time) = forward.resolved_time {
-                                        @if resolved_time > 0.0 {
-                                            (DateTime::from_timestamp(resolved_time as i64, 0)
-                                                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                                                .unwrap_or_else(|| "Invalid".to_string()))
+                                        @if resolved_time > 0.0 && forward.received_time > 0.0 {
+                                            (format!("{:.1}", resolved_time - forward.received_time))
                                         } @else {
                                             "N/A"
                                         }
@@ -459,6 +457,14 @@ fn create_forwards_page(
             } @else {
                 p { "No settled forwards found." }
             }
+        }
+
+        style {
+            r#"
+            .align-right {
+                text-align: right;
+            }
+            "#
         }
     };
 
