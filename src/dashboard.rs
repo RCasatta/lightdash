@@ -143,7 +143,7 @@ fn wrap_in_html_page(title: &str, content: Markup, timestamp: &str) -> Markup {
 
 fn create_peer_pages(
     directory: &str,
-    peers: &[crate::cmd::Peer],
+    store: &Store,
     nodes_by_id: &HashMap<&String, &crate::cmd::Node>,
     now: &chrono::DateTime<chrono::Utc>,
 ) {
@@ -169,9 +169,9 @@ fn create_peer_pages(
 
         div class="info-card" {
             h2 { "Peer List" }
-            p { "Total peers: " (peers.len()) }
+            p { "Total peers: " (store.peers_len()) }
 
-            @for peer in peers {
+            @for peer in store.peers() {
                 div class="section" {
                     div class="info-item" {
                         span class="label" {
@@ -238,7 +238,7 @@ fn create_peer_pages(
         Err(e) => println!("Error writing peers index page: {}", e),
     }
 
-    for peer in peers {
+    for peer in store.peers() {
         let peer_content = html! {
             div class="header" {
                 h1 { "Peer Details" }
@@ -361,15 +361,12 @@ fn create_peer_pages(
 
 fn create_forwards_page(
     directory: &str,
-    forwards: &[crate::cmd::Forward],
+    store: &Store,
     now: &chrono::DateTime<chrono::Utc>,
     channels_by_id: &HashMap<(&String, &String), &crate::cmd::Channel>,
     nodes_by_id: &HashMap<&String, &crate::cmd::Node>,
     our_node_id: &String,
 ) {
-    // Filter only settled forwards and reverse the order (most recent first)
-    let mut settled_forwards: Vec<_> = forwards.iter().filter(|f| f.status == "settled").collect();
-
     // Helper function to get node alias for a channel
     let get_channel_alias = |channel_id: &str| -> String {
         let channel_id_string = channel_id.to_string();
@@ -390,17 +387,9 @@ fn create_forwards_page(
         channel_id.to_string()
     };
 
-    settled_forwards.sort_by(|a, b| {
-        // Sort by resolved_time descending (most recent first)
-        match (a.resolved_time, b.resolved_time) {
-            (Some(a_time), Some(b_time)) => b_time
-                .partial_cmp(&a_time)
-                .unwrap_or(std::cmp::Ordering::Equal),
-            (Some(_), None) => std::cmp::Ordering::Less,
-            (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => std::cmp::Ordering::Equal,
-        }
-    });
+    let mut settled_forwards = store.settled_forwards();
+
+    settled_forwards.sort_by(|a, b| a.resolved_time.cmp(&b.resolved_time));
 
     let forwards_content = html! {
         div class="header" {
@@ -428,49 +417,21 @@ fn create_forwards_page(
                         }
                     }
                     tbody {
-                        @for forward in settled_forwards {
+                        @for forward in &settled_forwards {
                             tr {
                                 td { (get_channel_alias(&forward.in_channel)) }
-                                td {
-                                    @if let Some(out_channel) = &forward.out_channel {
-                                        (get_channel_alias(out_channel))
-                                    } @else {
-                                        "N/A"
-                                    }
+                                td { (get_channel_alias(&forward.out_channel)) }
+                                td class="align-right" {
+                                    (format!("{:.1}", forward.fee_sat as f64 / 1000.0))
                                 }
                                 td class="align-right" {
-                                    @if let Some(fee) = forward.fee_msat {
-                                        (format!("{:.1}", fee as f64 / 1000.0))
-                                    } @else {
-                                        "N/A"
-                                    }
-                                }
-                                td class="align-right" {
-                                    @if let Some(out_msat) = forward.out_msat {
-                                        (format!("{:.1}", out_msat as f64 / 1000.0))
-                                    } @else {
-                                        "N/A"
-                                    }
+                                    "N/A" // out_msat not available in SettledForward
                                 }
                                 td {
-                                    @if forward.received_time > 0.0 {
-                                        (DateTime::from_timestamp(forward.received_time as i64, 0)
-                                            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                                            .unwrap_or_else(|| "Invalid".to_string()))
-                                    } @else {
-                                        "N/A"
-                                    }
+                                    (forward.received_time.format("%Y-%m-%d %H:%M:%S").to_string())
                                 }
                                 td class="align-right" {
-                                    @if let Some(resolved_time) = forward.resolved_time {
-                                        @if resolved_time > 0.0 && forward.received_time > 0.0 {
-                                            (format!("{:.1}", resolved_time - forward.received_time))
-                                        } @else {
-                                            "N/A"
-                                        }
-                                    } @else {
-                                        "N/A"
-                                    }
+                                    (format!("{:.1}", (forward.resolved_time - forward.received_time).num_seconds() as f64))
                                 }
                             }
                         }
@@ -804,13 +765,7 @@ pub fn run_dashboard(directory: String) {
     println!("{}", now);
     println!("my id:{}", store.info.id);
     let current_block = store.info.blockheight;
-
-    let channels = &store.channels;
-    let peers = &store.peers;
     let normal_channels = store.normal_channels();
-
-    // Load forwards data for home page
-    let forwards = &store.forwards;
     let settled = store.settled_forwards();
 
     // Generate index.html content
@@ -837,7 +792,7 @@ pub fn run_dashboard(directory: String) {
         div class="info-card" {
             h3 {
                 a href="peers/" {
-                    (format!("{} Peers", peers.peers.len()))
+                    (format!("{} Peers", store.peers_len()))
                 }
             }
             h3 {
@@ -853,48 +808,43 @@ pub fn run_dashboard(directory: String) {
         }
     };
 
-    let nodes = &store.nodes;
-
     let mut output_content = String::new();
     output_content.push_str(&format!(
         "network channels:{} nodes:{} peers:{}\n",
-        channels.channels.len(),
-        nodes.nodes.len(),
-        peers.peers.len(),
+        store.channels_len(),
+        store.nodes_len(),
+        store.peers_len(),
     ));
 
     println!(
         "network channels:{} nodes:{} peers:{}",
-        channels.channels.len(),
-        nodes.nodes.len(),
-        peers.peers.len(),
+        store.channels_len(),
+        store.nodes_len(),
+        store.peers_len(),
     );
 
-    let _peers_ids: std::collections::HashSet<_> = peers
-        .peers
-        .iter()
+    let _peers_ids: std::collections::HashSet<_> = store
+        .peers()
         .filter(|e| e.num_channels > 0)
         .map(|e| &e.id)
         .collect();
 
-    let nodes_by_id: HashMap<_, _> = nodes
-        .nodes
-        .iter()
+    let nodes_by_id: HashMap<_, _> = store
+        .nodes()
         .filter(|e| e.alias.is_some())
         .map(|e| (&e.nodeid, e))
         .collect();
 
     let mut chan_meta_per_node = HashMap::new();
 
-    for c in channels.channels.iter() {
+    for c in store.channels() {
         let meta: &mut ChannelFee = chan_meta_per_node.entry(&c.source).or_default();
         meta.count += 1;
         meta.fee_sum += c.fee_per_millionth;
         meta.fee_rates.insert(c.fee_per_millionth);
     }
 
-    let total_forwards = forwards.forwards.len();
-    let forwards_data = forwards.forwards.clone(); // Store a copy for later use
+    let total_forwards = store.forwards_len();
     let settled_24h = filter_forwards(&settled, 24, &now);
 
     // let jobs = sling_jobsettings();
@@ -987,7 +937,7 @@ pub fn run_dashboard(directory: String) {
 
     let mut sum_fee_rate = 0u128;
     let mut count = 0u128;
-    for c in channels.channels.iter() {
+    for c in store.channels() {
         if c.base_fee_millisatoshi != 0 {
             continue;
         }
@@ -1008,9 +958,8 @@ pub fn run_dashboard(directory: String) {
         network_average as f64 / 10000.0
     );
 
-    let channels_by_id: HashMap<_, _> = channels
-        .channels
-        .iter()
+    let channels_by_id: HashMap<_, _> = store
+        .channels()
         .map(|e| ((&e.short_channel_id, &e.source), e))
         .collect();
 
@@ -1290,7 +1239,7 @@ pub fn run_dashboard(directory: String) {
     }
 
     // Create peers directory and individual peer pages
-    create_peer_pages(&directory, &peers.peers, &nodes_by_id, &now);
+    create_peer_pages(&directory, &store, &nodes_by_id, &now);
 
     // Create channels directory and individual channel pages
     create_channel_pages(
@@ -1305,7 +1254,7 @@ pub fn run_dashboard(directory: String) {
     // Create forwards page
     create_forwards_page(
         &directory,
-        &forwards_data,
+        &store,
         &now,
         &channels_by_id,
         &nodes_by_id,

@@ -50,4 +50,32 @@ impl Store {
             .map(|e| SettledForward::try_from(e.clone()).unwrap())
             .collect()
     }
+
+    pub fn channels_len(&self) -> usize {
+        self.channels.channels.len()
+    }
+
+    pub fn channels(&self) -> impl Iterator<Item = &cmd::Channel> {
+        self.channels.channels.iter()
+    }
+
+    pub fn peers_len(&self) -> usize {
+        self.peers.peers.len()
+    }
+
+    pub fn peers(&self) -> impl Iterator<Item = &cmd::Peer> {
+        self.peers.peers.iter()
+    }
+
+    pub fn forwards_len(&self) -> usize {
+        self.forwards.forwards.len()
+    }
+
+    pub fn nodes_len(&self) -> usize {
+        self.nodes.nodes.len()
+    }
+
+    pub fn nodes(&self) -> impl Iterator<Item = &cmd::Node> {
+        self.nodes.nodes.iter()
+    }
 }

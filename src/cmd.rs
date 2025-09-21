@@ -115,7 +115,7 @@ pub struct ListPeers {
     pub peers: Vec<Peer>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Peer {
     pub id: String,
     pub connected: bool,
@@ -125,7 +125,7 @@ pub struct Peer {
     pub channels: Vec<PeerChannel>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct PeerChannel {
     pub state: String,
     #[serde(default)]
@@ -138,7 +138,7 @@ pub struct PeerChannel {
     pub funding_txid: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Channel {
     pub source: String,
     pub destination: String,
@@ -159,7 +159,7 @@ pub struct ListNodes {
     pub nodes: Vec<Node>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Node {
     pub nodeid: String,
     pub alias: Option<String>,
@@ -248,6 +248,7 @@ pub struct SettledForward {
     pub out_channel: String,
     pub fee_sat: u64,
     pub resolved_time: DateTime<Utc>,
+    pub received_time: DateTime<Utc>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -275,6 +276,7 @@ impl TryFrom<Forward> for SettledForward {
             fee_sat: value.fee_msat.map(|e| e / 1000).ok_or(())?,
             resolved_time: DateTime::from_timestamp(value.resolved_time.ok_or(())? as i64, 0)
                 .ok_or(())?,
+            received_time: DateTime::from_timestamp(value.received_time as i64, 0).ok_or(())?,
         })
     }
 }
