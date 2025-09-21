@@ -1,79 +1,39 @@
-use chrono::Utc;
 use std::collections::HashMap;
 
-use crate::cmd::*;
+use crate::cmd::cmd_result;
 use crate::common::*;
+use crate::store::Store;
 
 pub fn run_sling() {
-    let now = Utc::now();
-    println!("{}", now);
-    let info = get_info();
-    let _current_block = info.blockheight;
+    let store = Store::new();
+    let normal_channels = store.normal_channels();
+    let settled = store.settled_forwards();
 
-    let channels = list_channels();
-    let nodes = list_nodes();
-    let peers = list_peers();
-
-    let _peers_ids: std::collections::HashSet<_> = peers
-        .peers
-        .iter()
-        .filter(|e| e.num_channels > 0)
-        .map(|e| &e.id)
-        .collect();
-
-    let nodes_by_id: HashMap<_, _> = nodes
-        .nodes
-        .iter()
-        .filter(|e| e.alias.is_some())
-        .map(|e| (&e.nodeid, e))
-        .collect();
-
-    let mut chan_meta_per_node = HashMap::new();
-
-    for c in channels.channels.iter() {
-        let meta: &mut ChannelFee = chan_meta_per_node.entry(&c.source).or_default();
-        meta.count += 1;
-        meta.fee_sum += c.fee_per_millionth;
-        meta.fee_rates.insert(c.fee_per_millionth);
-    }
-
-    let funds = list_funds();
-    let normal_channels: Vec<_> = funds
-        .channels
-        .into_iter()
-        .filter(|c| c.state == "CHANNELD_NORMAL")
-        .collect();
-
-    let forwards = list_forwards();
-    let settled: Vec<_> = forwards
-        .forwards
-        .into_iter()
-        .filter(|e| e.status == "settled")
-        .map(|e| SettledForward::try_from(e).unwrap())
-        .collect();
-
+    // Compute per-channel forward statistics
     let mut per_channel_forwards_in: HashMap<String, u64> = HashMap::new();
     let mut per_channel_forwards_out: HashMap<String, u64> = HashMap::new();
-    let mut per_channel_forwards_in_last_month: HashMap<String, u64> = HashMap::new();
-    let mut per_channel_forwards_out_last_month: HashMap<String, u64> = HashMap::new();
 
     for s in settled.iter() {
-        let days_elapsed = now.signed_duration_since(s.resolved_time).num_days();
         *per_channel_forwards_in
             .entry(s.in_channel.to_string())
             .or_default() += 1;
         *per_channel_forwards_out
             .entry(s.out_channel.to_string())
             .or_default() += 1;
+    }
 
-        if days_elapsed < 30 {
-            *per_channel_forwards_in_last_month
-                .entry(s.in_channel.to_string())
-                .or_default() += 1;
-            *per_channel_forwards_out_last_month
-                .entry(s.out_channel.to_string())
-                .or_default() += 1;
-        }
+    // Get forwards from last 30 days
+    let settled_last_month = store.filter_settled_forwards_by_days(30);
+    let mut per_channel_forwards_in_last_month: HashMap<String, u64> = HashMap::new();
+    let mut per_channel_forwards_out_last_month: HashMap<String, u64> = HashMap::new();
+
+    for s in settled_last_month.iter() {
+        *per_channel_forwards_in_last_month
+            .entry(s.in_channel.to_string())
+            .or_default() += 1;
+        *per_channel_forwards_out_last_month
+            .entry(s.out_channel.to_string())
+            .or_default() += 1;
     }
 
     let mut channels = vec![];
@@ -127,7 +87,7 @@ pub fn run_sling() {
             Rebalance::Nothing
         };
 
-        let alias_or_id = fund.alias_or_id(&nodes_by_id);
+        let alias_or_id = store.get_node_alias(&fund.peer_id);
 
         let c = ChannelMeta {
             fund: fund.clone(),

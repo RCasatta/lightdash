@@ -84,6 +84,14 @@ impl Store {
             .collect()
     }
 
+    /// Filter settled forwards to only include those resolved within the last N days
+    pub fn filter_settled_forwards_by_days(&self, days: i64) -> Vec<SettledForward> {
+        self.settled_forwards()
+            .into_iter()
+            .filter(|f| self.now.signed_duration_since(f.resolved_time).num_days() <= days)
+            .collect()
+    }
+
     pub fn channels_len(&self) -> usize {
         self.channels.channels.len()
     }
