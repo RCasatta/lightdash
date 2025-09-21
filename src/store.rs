@@ -1,6 +1,7 @@
 use crate::cmd::{self, SettledForward};
+use crate::common::ChannelFee;
 use chrono::{DateTime, Utc};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Store containing all data fetched from the Lightning node
 pub struct Store {
@@ -134,5 +135,36 @@ impl Store {
                     node_id.to_string()
                 }
             })
+    }
+
+    /// Get node IDs that have aliases
+    pub fn node_ids_with_aliases(&self) -> Vec<String> {
+        self.nodes_by_id.keys().cloned().collect()
+    }
+
+    /// Get a set of peer IDs that have channels
+    pub fn peers_ids(&self) -> HashSet<String> {
+        self.peers
+            .peers
+            .iter()
+            .filter(|e| e.num_channels > 0)
+            .map(|e| e.id.clone())
+            .collect()
+    }
+
+    /// Get channel metadata per node (fee info aggregated by source node)
+    pub fn chan_meta_per_node(&self) -> HashMap<String, ChannelFee> {
+        let mut chan_meta: HashMap<String, ChannelFee> = HashMap::new();
+
+        for c in &self.channels.channels {
+            let meta = chan_meta
+                .entry(c.source.clone())
+                .or_insert_with(ChannelFee::default);
+            meta.count += 1;
+            meta.fee_sum += c.fee_per_millionth;
+            meta.fee_rates.insert(c.fee_per_millionth);
+        }
+
+        chan_meta
     }
 }

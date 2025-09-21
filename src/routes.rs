@@ -1,48 +1,23 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::cmd::*;
-use crate::common::*;
+use crate::store::Store;
 
 pub fn run_routes() {
-    let nodes = list_nodes();
-    let peers = list_peers();
-
-    let _peers_ids: HashSet<_> = peers
-        .peers
-        .iter()
-        .filter(|e| e.num_channels > 0)
-        .map(|e| &e.id)
-        .collect();
-
-    let nodes_by_id: HashMap<_, _> = nodes
-        .nodes
-        .iter()
-        .filter(|e| e.alias.is_some())
-        .map(|e| (&e.nodeid, e))
-        .collect();
-
-    let channels = list_channels();
-    let mut chan_meta_per_node = HashMap::new();
-
-    for c in channels.channels.iter() {
-        let meta: &mut ChannelFee = chan_meta_per_node.entry(&c.source).or_default();
-        meta.count += 1;
-        meta.fee_sum += c.fee_per_millionth;
-        meta.fee_rates.insert(c.fee_per_millionth);
-    }
-
-    calc_routes(nodes_by_id, _peers_ids, &chan_meta_per_node);
+    let store = Store::new();
+    calc_routes(&store);
 }
 
-pub fn calc_routes(
-    nodes_by_id: HashMap<&String, &Node>,
-    peers_ids: HashSet<&String>,
-    chan_meta: &HashMap<&String, ChannelFee>,
-) {
+pub fn calc_routes(store: &Store) {
+    let chan_meta = store.chan_meta_per_node();
+    let peers_ids = store.peers_ids();
+    let nodes_by_id_keys = store.node_ids_with_aliases();
+
     let mut counters = HashMap::new();
     let mut hop_sum = 0usize;
     let mut total = 0;
-    for id in nodes_by_id.keys() {
+
+    for id in &nodes_by_id_keys {
         // Skip nodes that have less than 2 channels
         if chan_meta
             .get(id)
@@ -70,11 +45,7 @@ pub fn calc_routes(
     for c in counters_vec {
         let id = &c.0;
         let count = c.1;
-        let alias = nodes_by_id
-            .get(id)
-            .map(|n| n.alias.clone())
-            .flatten()
-            .unwrap_or("".to_string());
+        let alias = store.get_node_alias(id);
         let chan_info = chan_meta.get(&c.0).unwrap();
         let avg_fee = chan_info.avg_fee();
         let fee_diversity = format!("{:.3}", chan_info.fee_diversity());
