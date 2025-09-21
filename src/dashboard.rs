@@ -2,8 +2,7 @@ use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::fs;
 
-use crate::cmd::*;
-use crate::common::*;
+use crate::{cmd::SettledForward, common::*, store::Store};
 use maud::{html, Markup, DOCTYPE};
 
 /// Create common HTML header with title
@@ -800,23 +799,24 @@ fn create_channel_pages(
 /// # Panics
 /// Panics if unable to create the output directory or write HTML files
 pub fn run_dashboard(directory: String) {
+    let store = Store::new();
     let now = Utc::now();
     println!("{}", now);
-    let info = get_info();
-    println!("my id:{}", info.id);
-    let current_block = info.blockheight;
+    println!("my id:{}", store.info.id);
+    let current_block = store.info.blockheight;
 
-    let channels = list_channels();
-    let peers = list_peers();
-    let funds = list_funds();
+    let channels = &store.channels;
+    let peers = &store.peers;
+    let funds = &store.funds;
     let normal_channels: Vec<_> = funds
         .channels
+        .clone()
         .into_iter()
         .filter(|c| c.state == "CHANNELD_NORMAL")
         .collect();
 
     // Load forwards data for home page
-    let forwards = list_forwards();
+    let forwards = &store.forwards;
     let settled: Vec<_> = forwards
         .forwards
         .iter()
@@ -835,12 +835,12 @@ pub fn run_dashboard(directory: String) {
 
             div class="info-item" {
                 span class="label" { "Node ID: " }
-                span class="value" { (info.id) }
+                span class="value" { (store.info.id) }
             }
 
             div class="info-item" {
                 span class="label" { "Block Height: " }
-                span class="value" { (info.blockheight) }
+                span class="value" { (store.info.blockheight) }
             }
 
         }
@@ -864,7 +864,7 @@ pub fn run_dashboard(directory: String) {
         }
     };
 
-    let nodes = list_nodes();
+    let nodes = &store.nodes;
 
     let mut output_content = String::new();
     output_content.push_str(&format!(
@@ -1027,7 +1027,7 @@ pub fn run_dashboard(directory: String) {
 
     let zero_fees = normal_channels.iter().all(|c| {
         channels_by_id
-            .get(&(&c.short_channel_id(), &info.id))
+            .get(&(&c.short_channel_id(), &store.info.id))
             .map(|e| e.base_fee_millisatoshi)
             .unwrap_or(1)
             == 0
@@ -1135,7 +1135,7 @@ pub fn run_dashboard(directory: String) {
         let perc = fund.perc();
         perces.push(fund.perc_float());
         let short_channel_id = fund.short_channel_id();
-        let our = channels_by_id.get(&(&short_channel_id, &info.id));
+        let our = channels_by_id.get(&(&short_channel_id, &store.info.id));
         let our_fee = our
             .map(|e| e.fee_per_millionth.to_string())
             .unwrap_or("".to_string());
@@ -1310,7 +1310,7 @@ pub fn run_dashboard(directory: String) {
         &nodes_by_id,
         &now,
         &channels_by_id,
-        &info.id,
+        &store.info.id,
     );
 
     // Create forwards page
@@ -1320,6 +1320,6 @@ pub fn run_dashboard(directory: String) {
         &now,
         &channels_by_id,
         &nodes_by_id,
-        &info.id,
+        &store.info.id,
     );
 }

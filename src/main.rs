@@ -6,6 +6,7 @@ mod dashboard;
 mod fees;
 mod routes;
 mod sling;
+mod store;
 
 #[derive(Parser)]
 #[command(name = "lightdash")]
