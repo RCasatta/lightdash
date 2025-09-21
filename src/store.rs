@@ -1,4 +1,4 @@
-use crate::cmd;
+use crate::cmd::{self, SettledForward};
 
 /// Store containing all data fetched from the Lightning node
 pub struct Store {
@@ -29,5 +29,25 @@ impl Store {
             forwards,
             nodes,
         }
+    }
+
+    /// Get normal channels (channels in CHANNELD_NORMAL state)
+    pub fn normal_channels(&self) -> Vec<cmd::Fund> {
+        self.funds
+            .channels
+            .iter()
+            .filter(|c| c.state == "CHANNELD_NORMAL")
+            .cloned()
+            .collect()
+    }
+
+    /// Get settled forwards
+    pub fn settled_forwards(&self) -> Vec<SettledForward> {
+        self.forwards
+            .forwards
+            .iter()
+            .filter(|e| e.status == "settled")
+            .map(|e| SettledForward::try_from(e.clone()).unwrap())
+            .collect()
     }
 }

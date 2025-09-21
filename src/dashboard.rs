@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::fs;
 
-use crate::{cmd::SettledForward, common::*, store::Store};
+use crate::{common::*, store::Store};
 use maud::{html, Markup, DOCTYPE};
 
 /// Create common HTML header with title
@@ -807,22 +807,11 @@ pub fn run_dashboard(directory: String) {
 
     let channels = &store.channels;
     let peers = &store.peers;
-    let funds = &store.funds;
-    let normal_channels: Vec<_> = funds
-        .channels
-        .clone()
-        .into_iter()
-        .filter(|c| c.state == "CHANNELD_NORMAL")
-        .collect();
+    let normal_channels = store.normal_channels();
 
     // Load forwards data for home page
     let forwards = &store.forwards;
-    let settled: Vec<_> = forwards
-        .forwards
-        .iter()
-        .filter(|e| e.status == "settled")
-        .map(|e| SettledForward::try_from(e.clone()).unwrap())
-        .collect();
+    let settled = store.settled_forwards();
 
     // Generate index.html content
     let index_content = html! {
