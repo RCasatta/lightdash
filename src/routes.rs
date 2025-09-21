@@ -3,12 +3,7 @@ use std::collections::HashMap;
 use crate::cmd::*;
 use crate::store::Store;
 
-pub fn run_routes() {
-    let store = Store::new();
-    calc_routes(&store);
-}
-
-pub fn calc_routes(store: &Store) {
+pub fn run_routes(store: &Store) {
     let chan_meta = store.chan_meta_per_node();
     let peers_ids = store.peers_ids();
     let nodes_by_id_keys = store.node_ids_with_aliases();

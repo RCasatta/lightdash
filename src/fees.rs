@@ -1,8 +1,7 @@
 use crate::common::*;
 use crate::store::Store;
 
-pub fn run_fees() {
-    let store = Store::new();
+pub fn run_fees(store: &Store) {
     let normal_channels = store.normal_channels();
     let settled_24h = store.filter_settled_forwards_by_hours(24);
 

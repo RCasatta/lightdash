@@ -4,8 +4,7 @@ use crate::cmd::cmd_result;
 use crate::common::*;
 use crate::store::Store;
 
-pub fn run_sling() {
-    let store = Store::new();
+pub fn run_sling(store: &Store) {
     let normal_channels = store.normal_channels();
     let settled = store.settled_forwards();
 

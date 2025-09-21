@@ -729,8 +729,7 @@ fn create_channel_pages(
 ///
 /// # Panics
 /// Panics if unable to create the output directory or write HTML files
-pub fn run_dashboard(directory: String) {
-    let store = Store::new();
+pub fn run_dashboard(store: &Store, directory: String) {
     let now = Utc::now();
     println!("{}", now);
     println!("my id:{}", store.info.id);

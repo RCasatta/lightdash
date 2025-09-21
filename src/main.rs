@@ -1,5 +1,7 @@
 use clap::{Parser, Subcommand};
 
+use crate::store::Store;
+
 mod cmd;
 mod common;
 mod dashboard;
@@ -33,20 +35,21 @@ enum Commands {
 
 fn main() {
     let cli = Cli::parse();
+    let store = Store::new();
 
     match cli.command {
         Commands::Dashboard { directory } => {
             println!("Dashboard directory: {}", directory);
-            dashboard::run_dashboard(directory);
+            dashboard::run_dashboard(&store, directory);
         }
         Commands::Routes => {
-            routes::run_routes();
+            routes::run_routes(&store);
         }
         Commands::Sling => {
-            sling::run_sling();
+            sling::run_sling(&store);
         }
         Commands::Fees => {
-            fees::run_fees();
+            fees::run_fees(&store);
         }
     }
 }
