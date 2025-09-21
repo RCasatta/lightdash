@@ -268,7 +268,7 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
                     span class="value" { (peer.features) }
                 }
 
-                @if let Some(node_info) = store.nodes_by_id().get(&peer.id) {
+                @if let Some(node_info) = store.nodes.nodes.iter().find(|n| n.nodeid == peer.id) {
                     div class="info-item" {
                         span class="label" { "Alias: " }
                         span class="value" { (node_info.alias.as_deref().unwrap_or("N/A")) }
@@ -357,10 +357,7 @@ fn create_forwards_page(
         let channel_id_string = channel_id.to_string();
 
         // Try to find the channel in our channels (we're the source)
-        if let Some(channel) = store
-            .channels_by_id()
-            .get(&(&channel_id_string, our_node_id))
-        {
+        if let Some(channel) = store.get_channel(&channel_id_string, our_node_id) {
             // We're the source, so the destination is the remote node
             return store.get_node_alias(&channel.destination);
         }
@@ -571,7 +568,7 @@ fn create_channel_pages(
                     }
                 }
 
-                @if let Some(node_info) = store.nodes_by_id().get(&channel.peer_id) {
+                @if let Some(node_info) = store.nodes.nodes.iter().find(|n| n.nodeid == channel.peer_id) {
                     div class="info-item" {
                         span class="label" { "Peer Alias: " }
                         span class="value" {
@@ -644,7 +641,7 @@ fn create_channel_pages(
             }
 
             @if let Some(scid) = &channel.short_channel_id {
-                @if let Some(channel_info) = store.channels_by_id().get(&(scid, our_node_id)) {
+                @if let Some(channel_info) = store.get_channel(scid, our_node_id) {
                     div class="info-card" {
                         h2 { "Network Channel Information" }
 
@@ -921,8 +918,7 @@ pub fn run_dashboard(directory: String) {
 
     let zero_fees = normal_channels.iter().all(|c| {
         store
-            .channels_by_id()
-            .get(&(&c.short_channel_id(), &store.info.id))
+            .get_channel(&c.short_channel_id(), &store.info.id)
             .map(|e| e.base_fee_millisatoshi)
             .unwrap_or(1)
             == 0
@@ -1025,14 +1021,12 @@ pub fn run_dashboard(directory: String) {
 
     println!("pull_in:{} push_out:{}", pull_in.len(), push_out.len());
 
-    let channels_by_id = store.channels_by_id();
-
     for channel in channels {
         let fund = &channel.fund;
         let perc = fund.perc();
         perces.push(fund.perc_float());
         let short_channel_id = fund.short_channel_id();
-        let our = channels_by_id.get(&(&short_channel_id, &store.info.id));
+        let our = store.get_channel(&short_channel_id, &store.info.id);
         let our_fee = our
             .map(|e| e.fee_per_millionth.to_string())
             .unwrap_or("".to_string());
@@ -1048,7 +1042,7 @@ pub fn run_dashboard(directory: String) {
 
         let amount = fund.amount_msat / 1000;
 
-        let their = channels_by_id.get(&(&short_channel_id, &fund.peer_id));
+        let their = store.get_channel(&short_channel_id, &fund.peer_id);
         let their_fee = their
             .map(|e| e.fee_per_millionth.to_string())
             .unwrap_or("".to_string());
@@ -1058,8 +1052,10 @@ pub fn run_dashboard(directory: String) {
         let min_max = format!("{our_min}/{our_max}");
 
         let last_timestamp = store
-            .nodes_by_id()
-            .get(&fund.peer_id)
+            .nodes
+            .nodes
+            .iter()
+            .find(|n| n.nodeid == fund.peer_id)
             .map(|e| DateTime::from_timestamp(e.last_timestamp.unwrap_or(0) as i64, 0).unwrap())
             .unwrap_or(DateTime::from_timestamp(0, 0).unwrap());
         let last_timestamp_delta = cut_days(now.signed_duration_since(last_timestamp).num_days());
@@ -1074,7 +1070,7 @@ pub fn run_dashboard(directory: String) {
             &short_channel_id,
             &channel.alias_or_id(),
             &fund,
-            our,
+            our.as_ref(),
             &settled_24h,
         );
 

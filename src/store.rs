@@ -9,6 +9,9 @@ pub struct Store {
     pub funds: cmd::ListFunds,
     pub forwards: cmd::ListForwards,
     pub nodes: cmd::ListNodes,
+    // Cached computed data
+    nodes_by_id: HashMap<String, cmd::Node>,
+    channels_by_id: HashMap<(String, String), cmd::Channel>,
 }
 
 impl Store {
@@ -22,6 +25,21 @@ impl Store {
         let forwards = cmd::list_forwards();
         let nodes = cmd::list_nodes();
         println!("Data fetched successfully");
+
+        // Compute cached data
+        let nodes_by_id = nodes
+            .nodes
+            .iter()
+            .filter(|e| e.alias.is_some())
+            .map(|e| (e.nodeid.clone(), e.clone()))
+            .collect();
+
+        let channels_by_id = channels
+            .channels
+            .iter()
+            .map(|e| ((e.short_channel_id.clone(), e.source.clone()), e.clone()))
+            .collect();
+
         Self {
             info,
             channels,
@@ -29,6 +47,8 @@ impl Store {
             funds,
             forwards,
             nodes,
+            nodes_by_id,
+            channels_by_id,
         }
     }
 
@@ -76,32 +96,16 @@ impl Store {
         self.nodes.nodes.len()
     }
 
-    /// Get a HashMap of node ID to Node for nodes that have aliases
-    pub fn nodes_by_id(&self) -> HashMap<&String, &cmd::Node> {
-        self.nodes
-            .nodes
-            .iter()
-            .filter(|e| e.alias.is_some())
-            .map(|e| (&e.nodeid, e))
-            .collect()
-    }
-
-    /// Get a HashMap of (short_channel_id, source) to Channel
-    pub fn channels_by_id(&self) -> HashMap<(&String, &String), &cmd::Channel> {
-        self.channels
-            .channels
-            .iter()
-            .map(|e| ((&e.short_channel_id, &e.source), e))
-            .collect()
+    /// Get a channel by short_channel_id and source
+    pub fn get_channel(&self, short_channel_id: &str, source: &str) -> Option<&cmd::Channel> {
+        self.channels_by_id
+            .get(&(short_channel_id.to_string(), source.to_string()))
     }
 
     /// Get the alias for a node ID, or format the ID if no alias exists
     pub fn get_node_alias(&self, node_id: &str) -> String {
-        let nodes_by_id = self.nodes_by_id();
-        let node_id_string = node_id.to_string();
-
-        nodes_by_id
-            .get(&node_id_string)
+        self.nodes_by_id
+            .get(node_id)
             .and_then(|e| e.alias.clone())
             .unwrap_or_else(|| {
                 if node_id.len() >= 66 {
