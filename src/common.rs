@@ -1,4 +1,3 @@
-use chrono::{DateTime, Utc};
 use std::collections::HashSet;
 
 pub const PPM_MIN: u64 = 50; // minimum between 100% and 50%
@@ -147,18 +146,6 @@ pub fn calc_setchannel(
     };
 
     (new_ppm, result)
-}
-
-pub fn filter_forwards(
-    forwards: &[crate::cmd::SettledForward],
-    hour: i64,
-    now: &DateTime<Utc>,
-) -> Vec<crate::cmd::SettledForward> {
-    forwards
-        .iter()
-        .filter(|f| now.signed_duration_since(f.resolved_time).num_hours() <= hour)
-        .cloned()
-        .collect()
 }
 
 pub fn did_forward<'a>(
