@@ -141,12 +141,7 @@ fn wrap_in_html_page(title: &str, content: Markup, timestamp: &str) -> Markup {
     }
 }
 
-fn create_peer_pages(
-    directory: &str,
-    store: &Store,
-    nodes_by_id: &HashMap<&String, &crate::cmd::Node>,
-    now: &chrono::DateTime<chrono::Utc>,
-) {
+fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chrono::Utc>) {
     let peers_dir = format!("{}/peers", directory);
 
     // Create peers directory
@@ -184,15 +179,7 @@ fn create_peer_pages(
                         }
                         span class="value" {
                             a href={(format!("{}.html", peer.id))} {
-                                @if let Some(node_info) = nodes_by_id.get(&peer.id) {
-                                    @if let Some(alias) = &node_info.alias {
-                                        (alias)
-                                    } @else {
-                                        (&peer.id[..12])
-                                    }
-                                } @else {
-                                    (&peer.id[..12])
-                                }
+                                (store.get_node_alias(&peer.id))
                             }
                         }
                     }
@@ -281,7 +268,7 @@ fn create_peer_pages(
                     span class="value" { (peer.features) }
                 }
 
-                @if let Some(node_info) = nodes_by_id.get(&peer.id) {
+                @if let Some(node_info) = store.nodes_by_id().get(&peer.id) {
                     div class="info-item" {
                         span class="label" { "Alias: " }
                         span class="value" { (node_info.alias.as_deref().unwrap_or("N/A")) }
@@ -364,7 +351,6 @@ fn create_forwards_page(
     store: &Store,
     now: &chrono::DateTime<chrono::Utc>,
     channels_by_id: &HashMap<(&String, &String), &crate::cmd::Channel>,
-    nodes_by_id: &HashMap<&String, &crate::cmd::Node>,
     our_node_id: &String,
 ) {
     // Helper function to get node alias for a channel
@@ -374,13 +360,7 @@ fn create_forwards_page(
         // Try to find the channel in our channels (we're the source)
         if let Some(channel) = channels_by_id.get(&(&channel_id_string, our_node_id)) {
             // We're the source, so the destination is the remote node
-            if let Some(node) = nodes_by_id.get(&channel.destination) {
-                if let Some(alias) = &node.alias {
-                    return alias.clone();
-                }
-            }
-            // Fallback to node ID if alias not available
-            return channel.destination.clone();
+            return store.get_node_alias(&channel.destination);
         }
 
         // If we can't find the channel, return the original channel ID
@@ -467,7 +447,7 @@ fn create_forwards_page(
 fn create_channel_pages(
     directory: &str,
     channels: &[crate::cmd::Fund],
-    nodes_by_id: &HashMap<&String, &crate::cmd::Node>,
+    store: &Store,
     now: &chrono::DateTime<chrono::Utc>,
     channels_by_id: &HashMap<(&String, &String), &crate::cmd::Channel>,
     our_node_id: &String,
@@ -516,15 +496,7 @@ fn create_channel_pages(
                     div class="info-item" {
                         span class="label" { "Peer: " }
                         span class="value" {
-                            @if let Some(node_info) = nodes_by_id.get(&channel.peer_id) {
-                                @if let Some(alias) = &node_info.alias {
-                                    (alias)
-                                } @else {
-                                    (&channel.peer_id[..12])
-                                }
-                            } @else {
-                                (&channel.peer_id[..12])
-                            }
+                            (store.get_node_alias(&channel.peer_id))
                         }
                     }
 
@@ -598,7 +570,7 @@ fn create_channel_pages(
                     }
                 }
 
-                @if let Some(node_info) = nodes_by_id.get(&channel.peer_id) {
+                @if let Some(node_info) = store.nodes_by_id().get(&channel.peer_id) {
                     div class="info-item" {
                         span class="label" { "Peer Alias: " }
                         span class="value" {
@@ -823,18 +795,6 @@ pub fn run_dashboard(directory: String) {
         store.peers_len(),
     );
 
-    let _peers_ids: std::collections::HashSet<_> = store
-        .peers()
-        .filter(|e| e.num_channels > 0)
-        .map(|e| &e.id)
-        .collect();
-
-    let nodes_by_id: HashMap<_, _> = store
-        .nodes()
-        .filter(|e| e.alias.is_some())
-        .map(|e| (&e.nodeid, e))
-        .collect();
-
     let mut chan_meta_per_node = HashMap::new();
 
     for c in store.channels() {
@@ -1038,7 +998,7 @@ pub fn run_dashboard(directory: String) {
             Rebalance::Nothing
         };
 
-        let alias_or_id = fund.alias_or_id(&nodes_by_id);
+        let alias_or_id = store.get_node_alias(&fund.peer_id);
 
         let c = ChannelMeta {
             fund: fund.clone(),
@@ -1098,7 +1058,8 @@ pub fn run_dashboard(directory: String) {
             .unwrap_or("".to_string());
         let min_max = format!("{our_min}/{our_max}");
 
-        let last_timestamp = nodes_by_id
+        let last_timestamp = store
+            .nodes_by_id()
             .get(&fund.peer_id)
             .map(|e| DateTime::from_timestamp(e.last_timestamp.unwrap_or(0) as i64, 0).unwrap())
             .unwrap_or(DateTime::from_timestamp(0, 0).unwrap());
@@ -1239,25 +1200,18 @@ pub fn run_dashboard(directory: String) {
     }
 
     // Create peers directory and individual peer pages
-    create_peer_pages(&directory, &store, &nodes_by_id, &now);
+    create_peer_pages(&directory, &store, &now);
 
     // Create channels directory and individual channel pages
     create_channel_pages(
         &directory,
         &normal_channels,
-        &nodes_by_id,
+        &store,
         &now,
         &channels_by_id,
         &store.info.id,
     );
 
     // Create forwards page
-    create_forwards_page(
-        &directory,
-        &store,
-        &now,
-        &channels_by_id,
-        &nodes_by_id,
-        &store.info.id,
-    );
+    create_forwards_page(&directory, &store, &now, &channels_by_id, &store.info.id);
 }

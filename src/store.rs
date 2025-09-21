@@ -1,4 +1,5 @@
 use crate::cmd::{self, SettledForward};
+use std::collections::HashMap;
 
 /// Store containing all data fetched from the Lightning node
 pub struct Store {
@@ -75,7 +76,30 @@ impl Store {
         self.nodes.nodes.len()
     }
 
-    pub fn nodes(&self) -> impl Iterator<Item = &cmd::Node> {
-        self.nodes.nodes.iter()
+    /// Get a HashMap of node ID to Node for nodes that have aliases
+    pub fn nodes_by_id(&self) -> HashMap<&String, &cmd::Node> {
+        self.nodes
+            .nodes
+            .iter()
+            .filter(|e| e.alias.is_some())
+            .map(|e| (&e.nodeid, e))
+            .collect()
+    }
+
+    /// Get the alias for a node ID, or format the ID if no alias exists
+    pub fn get_node_alias(&self, node_id: &str) -> String {
+        let nodes_by_id = self.nodes_by_id();
+        let node_id_string = node_id.to_string();
+
+        nodes_by_id
+            .get(&node_id_string)
+            .and_then(|e| e.alias.clone())
+            .unwrap_or_else(|| {
+                if node_id.len() >= 66 {
+                    format!("{}...{}", &node_id[0..8], &node_id[58..])
+                } else {
+                    node_id.to_string()
+                }
+            })
     }
 }
