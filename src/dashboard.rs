@@ -803,7 +803,7 @@ pub fn run_dashboard(directory: String) {
     }
 
     let total_forwards = store.forwards_len();
-    let settled_24h = filter_forwards(&settled, 24, &now);
+    let settled_24h = store.filter_settled_forwards_by_hours(24);
 
     // let jobs = sling_jobsettings();
     let forwards_perc = (settled.len() as f64 / total_forwards as f64) * 100.0;

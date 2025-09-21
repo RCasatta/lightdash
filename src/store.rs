@@ -1,4 +1,5 @@
 use crate::cmd::{self, SettledForward};
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 
 /// Store containing all data fetched from the Lightning node
@@ -12,12 +13,14 @@ pub struct Store {
     // Cached computed data
     nodes_by_id: HashMap<String, cmd::Node>,
     channels_by_id: HashMap<(String, String), cmd::Channel>,
+    now: DateTime<Utc>,
 }
 
 impl Store {
     /// Create a new Store by fetching all data from the Lightning node
     pub fn new() -> Self {
         println!("Fetching data from Lightning node...");
+        let now = Utc::now();
         let info = cmd::get_info();
         let channels = cmd::list_channels();
         let peers = cmd::list_peers();
@@ -49,6 +52,7 @@ impl Store {
             nodes,
             nodes_by_id,
             channels_by_id,
+            now,
         }
     }
 
@@ -69,6 +73,14 @@ impl Store {
             .iter()
             .filter(|e| e.status == "settled")
             .map(|e| SettledForward::try_from(e.clone()).unwrap())
+            .collect()
+    }
+
+    /// Filter settled forwards to only include those resolved within the last N hours
+    pub fn filter_settled_forwards_by_hours(&self, hours: i64) -> Vec<SettledForward> {
+        self.settled_forwards()
+            .into_iter()
+            .filter(|f| self.now.signed_duration_since(f.resolved_time).num_hours() <= hours)
             .collect()
     }
 
