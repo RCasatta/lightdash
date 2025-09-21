@@ -350,7 +350,6 @@ fn create_forwards_page(
     directory: &str,
     store: &Store,
     now: &chrono::DateTime<chrono::Utc>,
-    channels_by_id: &HashMap<(&String, &String), &crate::cmd::Channel>,
     our_node_id: &String,
 ) {
     // Helper function to get node alias for a channel
@@ -358,7 +357,10 @@ fn create_forwards_page(
         let channel_id_string = channel_id.to_string();
 
         // Try to find the channel in our channels (we're the source)
-        if let Some(channel) = channels_by_id.get(&(&channel_id_string, our_node_id)) {
+        if let Some(channel) = store
+            .channels_by_id()
+            .get(&(&channel_id_string, our_node_id))
+        {
             // We're the source, so the destination is the remote node
             return store.get_node_alias(&channel.destination);
         }
@@ -449,7 +451,6 @@ fn create_channel_pages(
     channels: &[crate::cmd::Fund],
     store: &Store,
     now: &chrono::DateTime<chrono::Utc>,
-    channels_by_id: &HashMap<(&String, &String), &crate::cmd::Channel>,
     our_node_id: &String,
 ) {
     let channels_dir = format!("{}/channels", directory);
@@ -643,7 +644,7 @@ fn create_channel_pages(
             }
 
             @if let Some(scid) = &channel.short_channel_id {
-                @if let Some(channel_info) = channels_by_id.get(&(scid, our_node_id)) {
+                @if let Some(channel_info) = store.channels_by_id().get(&(scid, our_node_id)) {
                     div class="info-card" {
                         h2 { "Network Channel Information" }
 
@@ -918,13 +919,9 @@ pub fn run_dashboard(directory: String) {
         network_average as f64 / 10000.0
     );
 
-    let channels_by_id: HashMap<_, _> = store
-        .channels()
-        .map(|e| ((&e.short_channel_id, &e.source), e))
-        .collect();
-
     let zero_fees = normal_channels.iter().all(|c| {
-        channels_by_id
+        store
+            .channels_by_id()
             .get(&(&c.short_channel_id(), &store.info.id))
             .map(|e| e.base_fee_millisatoshi)
             .unwrap_or(1)
@@ -1027,6 +1024,8 @@ pub fn run_dashboard(directory: String) {
     ));
 
     println!("pull_in:{} push_out:{}", pull_in.len(), push_out.len());
+
+    let channels_by_id = store.channels_by_id();
 
     for channel in channels {
         let fund = &channel.fund;
@@ -1203,15 +1202,8 @@ pub fn run_dashboard(directory: String) {
     create_peer_pages(&directory, &store, &now);
 
     // Create channels directory and individual channel pages
-    create_channel_pages(
-        &directory,
-        &normal_channels,
-        &store,
-        &now,
-        &channels_by_id,
-        &store.info.id,
-    );
+    create_channel_pages(&directory, &normal_channels, &store, &now, &store.info.id);
 
     // Create forwards page
-    create_forwards_page(&directory, &store, &now, &channels_by_id, &store.info.id);
+    create_forwards_page(&directory, &store, &now, &store.info.id);
 }

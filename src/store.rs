@@ -86,6 +86,15 @@ impl Store {
             .collect()
     }
 
+    /// Get a HashMap of (short_channel_id, source) to Channel
+    pub fn channels_by_id(&self) -> HashMap<(&String, &String), &cmd::Channel> {
+        self.channels
+            .channels
+            .iter()
+            .map(|e| ((&e.short_channel_id, &e.source), e))
+            .collect()
+    }
+
     /// Get the alias for a node ID, or format the ID if no alias exists
     pub fn get_node_alias(&self, node_id: &str) -> String {
         let nodes_by_id = self.nodes_by_id();
