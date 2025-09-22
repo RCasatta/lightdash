@@ -76,14 +76,17 @@ impl Store {
             .collect()
     }
 
-    /// Get settled forwards
+    /// Get settled forwards by most recent first
     pub fn settled_forwards(&self) -> Vec<SettledForward> {
-        self.forwards
+        let mut f: Vec<_> = self
+            .forwards
             .forwards
             .iter()
             .filter(|e| e.status == "settled")
             .map(|e| SettledForward::try_from(e.clone()).unwrap())
-            .collect()
+            .collect();
+        f.sort_by(|a, b| b.resolved_time.cmp(&a.resolved_time));
+        f
     }
 
     /// Filter settled forwards to only include those resolved within the last N hours

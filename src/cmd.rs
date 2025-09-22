@@ -166,12 +166,6 @@ pub struct Node {
     pub last_timestamp: Option<u64>,
 }
 
-impl Node {
-    fn alias(&self) -> String {
-        self.alias.clone().unwrap_or("".to_string())
-    }
-}
-
 #[derive(Deserialize, Debug)]
 pub struct ListFunds {
     pub channels: Vec<Fund>,
@@ -202,17 +196,6 @@ impl Fund {
 
     pub fn short_channel_id(&self) -> String {
         self.short_channel_id.clone().unwrap_or("".to_string())
-    }
-
-    pub fn alias_or_id(&self, m: &HashMap<&String, &Node>) -> String {
-        pad_or_trunc(
-            &m.get(&self.peer_id).map(|e| e.alias()).unwrap_or(format!(
-                "{}...{}",
-                &self.peer_id[0..8],
-                &self.peer_id[58..]
-            )),
-            24,
-        )
     }
 
     pub fn block_born(&self) -> Option<u64> {
@@ -280,14 +263,5 @@ impl TryFrom<Forward> for SettledForward {
                 .ok_or(())?,
             received_time: DateTime::from_timestamp(value.received_time as i64, 0).ok_or(())?,
         })
-    }
-}
-
-pub fn pad_or_trunc(s: &str, l: usize) -> String {
-    // println!("DEBUG {s} has {} chars", s.chars().count());
-    if s.chars().count() > l {
-        s.chars().take(l).collect()
-    } else {
-        format!("{:width$}", s, width = l)
     }
 }

@@ -562,9 +562,7 @@ fn create_forwards_page(
     now: &chrono::DateTime<chrono::Utc>,
     our_node_id: &String,
 ) {
-    let mut settled_forwards = store.settled_forwards();
-
-    settled_forwards.sort_by(|a, b| a.resolved_time.cmp(&b.resolved_time));
+    let settled_forwards = store.settled_forwards();
 
     let forwards_content = create_forwards_html_content(
         &settled_forwards,
@@ -593,9 +591,7 @@ fn create_forwards_week_page(
     now: &chrono::DateTime<chrono::Utc>,
     our_node_id: &String,
 ) {
-    let mut settled_forwards = store.filter_settled_forwards_by_days(7);
-
-    settled_forwards.sort_by(|a, b| a.resolved_time.cmp(&b.resolved_time));
+    let settled_forwards = store.filter_settled_forwards_by_days(7);
 
     let forwards_content = create_forwards_html_content(
         &settled_forwards,
@@ -624,9 +620,7 @@ fn create_forwards_year_page(
     now: &chrono::DateTime<chrono::Utc>,
     our_node_id: &String,
 ) {
-    let mut settled_forwards = store.filter_settled_forwards_by_days(365);
-
-    settled_forwards.sort_by(|a, b| a.resolved_time.cmp(&b.resolved_time));
+    let settled_forwards = store.filter_settled_forwards_by_days(365);
 
     let forwards_content = create_forwards_html_content(
         &settled_forwards,
