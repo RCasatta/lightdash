@@ -65,7 +65,7 @@
           devShells.default = pkgs.mkShell {
             inputsFrom = [ bin ];
 
-            buildInputs = [ rustToolchain ];
+            buildInputs = [ rustToolchain pkgs.miniserve pkgs.just ];
           };
         }
       );

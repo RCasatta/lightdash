@@ -346,6 +346,133 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
     }
 }
 
+fn create_weekday_chart_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono::Utc>) {
+    let weekday_counts = store.forwards_by_weekday();
+
+    let weekday_names = [
+        "Sunday",
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+    ];
+    let max_count = *weekday_counts.iter().max().unwrap_or(&0);
+
+    let chart_content = html! {
+        div class="header" {
+            h1 { "Forwards by Weekday" }
+            div class="back-link" {
+                a href="index.html" { "Home" }
+            }
+            p class="timestamp" { "Generated at: " (now.format("%Y-%m-%d %H:%M:%S UTC")) }
+        }
+
+        div class="content" {
+            h2 { "Settled Forwards Distribution by Day of Week" }
+
+            div class="chart-container" {
+                @for (i, &count) in weekday_counts.iter().enumerate() {
+                    div class="chart-bar" {
+                        div class="bar-label" { (weekday_names[i]) ": " (count) }
+                        div class="bar-fill" style={
+                            @if max_count > 0 {
+                                (format!("width: {:.1}%", (count as f64 / max_count as f64) * 100.0))
+                            } @else {
+                                "width: 0%"
+                            }
+                        } {
+                            div class="bar-value" { (count) }
+                        }
+                    }
+                }
+            }
+
+            div class="info-card" {
+                h3 { "Statistics" }
+                p { "Total settled forwards: " (store.settled_forwards().len()) }
+                @if let Some(most_active) = weekday_counts.iter().enumerate().max_by_key(|(_, &count)| count) {
+                    p { "Most active day: " (weekday_names[most_active.0]) " (" (most_active.1) " forwards)" }
+                }
+                @if let Some(least_active) = weekday_counts.iter().enumerate().min_by_key(|(_, &count)| count) {
+                    p { "Least active day: " (weekday_names[least_active.0]) " (" (least_active.1) " forwards)" }
+                }
+            }
+        }
+
+        style {
+            r#"
+            .chart-container {
+                margin: 20px 0;
+                padding: 20px;
+                background-color: #2d3748;
+                border-radius: 8px;
+            }
+
+            .chart-bar {
+                display: flex;
+                align-items: center;
+                margin-bottom: 15px;
+                padding: 10px;
+                background-color: #1a202c;
+                border-radius: 6px;
+            }
+
+            .bar-label {
+                width: 150px;
+                font-weight: bold;
+                color: #63b3ed;
+                flex-shrink: 0;
+            }
+
+            .bar-fill {
+                height: 30px;
+                background-color: #63b3ed;
+                border-radius: 4px;
+                position: relative;
+                margin-left: 20px;
+                transition: width 0.3s ease;
+                min-width: 40px;
+                display: flex;
+                align-items: center;
+                justify-content: flex-end;
+                padding-right: 10px;
+            }
+
+            .bar-value {
+                color: #1a202c;
+                font-weight: bold;
+                font-size: 14px;
+            }
+
+            .info-card h3 {
+                color: #63b3ed;
+                margin-top: 0;
+                margin-bottom: 15px;
+            }
+
+            .info-card p {
+                margin: 8px 0;
+                color: #f8f8f2;
+            }
+            "#
+        }
+    };
+
+    let chart_html = wrap_in_html_page(
+        "Forwards by Weekday",
+        chart_content,
+        &now.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+    );
+
+    let chart_file_path = format!("{}/weekday-chart.html", directory);
+    match fs::write(&chart_file_path, chart_html.into_string()) {
+        Ok(_) => log::debug!("Weekday chart page generated: {}", chart_file_path),
+        Err(e) => log::debug!("Error writing weekday chart page: {}", e),
+    }
+}
+
 fn create_forwards_page(
     directory: &str,
     store: &Store,
@@ -772,6 +899,11 @@ pub fn run_dashboard(store: &Store, directory: String) {
             h3 {
                 a href="forwards.html" {
                     (format!("{} Settled Forwards", settled.len()))
+                }
+            }
+            h3 {
+                a href="weekday-chart.html" {
+                    "📊 Forwards by Weekday"
                 }
             }
         }
@@ -1201,4 +1333,7 @@ pub fn run_dashboard(store: &Store, directory: String) {
 
     // Create forwards page
     create_forwards_page(&directory, &store, &now, &store.info.id);
+
+    // Create weekday chart page
+    create_weekday_chart_page(&directory, &store, &now);
 }
