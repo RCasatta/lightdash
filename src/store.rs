@@ -1,6 +1,6 @@
 use crate::cmd::{self, SettledForward};
 use crate::common::ChannelFee;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Utc};
 use std::collections::{HashMap, HashSet};
 
 /// Store containing all data fetched from the Lightning node
@@ -175,5 +175,27 @@ impl Store {
         }
 
         chan_meta
+    }
+
+    /// Get a vector of 7 elements counting settled forwards by weekday
+    /// Index 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    pub fn forwards_by_weekday(&self) -> Vec<usize> {
+        let mut weekday_counts = vec![0; 7];
+
+        for forward in self.settled_forwards() {
+            let weekday = forward.resolved_time.weekday();
+            let index = match weekday {
+                chrono::Weekday::Sun => 0,
+                chrono::Weekday::Mon => 1,
+                chrono::Weekday::Tue => 2,
+                chrono::Weekday::Wed => 3,
+                chrono::Weekday::Thu => 4,
+                chrono::Weekday::Fri => 5,
+                chrono::Weekday::Sat => 6,
+            };
+            weekday_counts[index] += 1;
+        }
+
+        weekday_counts
     }
 }
