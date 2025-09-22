@@ -247,6 +247,7 @@ pub struct SettledForward {
     pub in_channel: String,
     pub out_channel: String,
     pub fee_sat: u64,
+    pub out_sat: u64,
     pub resolved_time: DateTime<Utc>,
     pub received_time: DateTime<Utc>,
 }
@@ -274,6 +275,7 @@ impl TryFrom<Forward> for SettledForward {
             in_channel: value.in_channel,
             out_channel: value.out_channel.ok_or(())?,
             fee_sat: value.fee_msat.map(|e| e / 1000).ok_or(())?,
+            out_sat: value.out_msat.map(|e| e / 1000).ok_or(())?,
             resolved_time: DateTime::from_timestamp(value.resolved_time.ok_or(())? as i64, 0)
                 .ok_or(())?,
             received_time: DateTime::from_timestamp(value.received_time as i64, 0).ok_or(())?,

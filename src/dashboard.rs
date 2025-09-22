@@ -528,10 +528,10 @@ fn create_forwards_page(
                                 td { (get_channel_alias(&forward.in_channel)) }
                                 td { (get_channel_alias(&forward.out_channel)) }
                                 td class="align-right" {
-                                    (format!("{:.1}", forward.fee_sat as f64 / 1000.0))
+                                    (format!("{:.1}", forward.fee_sat as f64))
                                 }
                                 td class="align-right" {
-                                    "N/A" // out_msat not available in SettledForward
+                                    (format!("{:.1}", forward.out_sat as f64))
                                 }
                                 td {
                                     (forward.received_time.format("%Y-%m-%d %H:%M:%S").to_string())
