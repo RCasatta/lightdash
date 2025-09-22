@@ -146,11 +146,11 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
 
     // Create peers directory
     if let Err(e) = fs::create_dir_all(&peers_dir) {
-        println!("Error creating peers directory {}: {}", peers_dir, e);
+        log::debug!("Error creating peers directory {}: {}", peers_dir, e);
         return;
     }
 
-    println!("Creating peer pages in: {}", peers_dir);
+    log::debug!("Creating peer pages in: {}", peers_dir);
 
     // Create peers index page
     let peers_index_content = html! {
@@ -221,8 +221,8 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
     let peers_index_path = format!("{}/index.html", peers_dir);
 
     match fs::write(&peers_index_path, peers_index_html.into_string()) {
-        Ok(_) => println!("Peers index page generated: {}", peers_index_path),
-        Err(e) => println!("Error writing peers index page: {}", e),
+        Ok(_) => log::debug!("Peers index page generated: {}", peers_index_path),
+        Err(e) => log::debug!("Error writing peers index page: {}", e),
     }
 
     for peer in store.peers() {
@@ -340,8 +340,8 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
         let peer_file_path = format!("{}/{}.html", peers_dir, peer.id);
 
         match fs::write(&peer_file_path, peer_html.into_string()) {
-            Ok(_) => println!("Peer page generated: {}", peer_file_path),
-            Err(e) => println!("Error writing peer page {}: {}", peer_file_path, e),
+            Ok(_) => log::debug!("Peer page generated: {}", peer_file_path),
+            Err(e) => log::debug!("Error writing peer page {}: {}", peer_file_path, e),
         }
     }
 }
@@ -438,8 +438,8 @@ fn create_forwards_page(
 
     let forwards_file_path = format!("{}/forwards.html", directory);
     match fs::write(&forwards_file_path, forwards_html.into_string()) {
-        Ok(_) => println!("Forwards page generated: {}", forwards_file_path),
-        Err(e) => println!("Error writing forwards page: {}", e),
+        Ok(_) => log::debug!("Forwards page generated: {}", forwards_file_path),
+        Err(e) => log::debug!("Error writing forwards page: {}", e),
     }
 }
 
@@ -454,11 +454,11 @@ fn create_channel_pages(
 
     // Create channels directory
     if let Err(e) = fs::create_dir_all(&channels_dir) {
-        println!("Error creating channels directory {}: {}", channels_dir, e);
+        log::debug!("Error creating channels directory {}: {}", channels_dir, e);
         return;
     }
 
-    println!("Creating channel pages in: {}", channels_dir);
+    log::debug!("Creating channel pages in: {}", channels_dir);
 
     // Create channels index page
     let channels_index_content = html! {
@@ -529,8 +529,8 @@ fn create_channel_pages(
     let channels_index_path = format!("{}/index.html", channels_dir);
 
     match fs::write(&channels_index_path, channels_index_html.into_string()) {
-        Ok(_) => println!("Channels index page generated: {}", channels_index_path),
-        Err(e) => println!("Error writing channels index page: {}", e),
+        Ok(_) => log::debug!("Channels index page generated: {}", channels_index_path),
+        Err(e) => log::debug!("Error writing channels index page: {}", e),
     }
 
     // Create individual channel pages
@@ -694,8 +694,8 @@ fn create_channel_pages(
         let channel_file_path = format!("{}/{}", channels_dir, channel_file_name);
 
         match fs::write(&channel_file_path, channel_html.into_string()) {
-            Ok(_) => println!("Channel page generated: {}", channel_file_path),
-            Err(e) => println!("Error writing channel page {}: {}", channel_file_path, e),
+            Ok(_) => log::debug!("Channel page generated: {}", channel_file_path),
+            Err(e) => log::debug!("Error writing channel page {}: {}", channel_file_path, e),
         }
     }
 }
@@ -731,8 +731,8 @@ fn create_channel_pages(
 /// Panics if unable to create the output directory or write HTML files
 pub fn run_dashboard(store: &Store, directory: String) {
     let now = Utc::now();
-    println!("{}", now);
-    println!("my id:{}", store.info.id);
+    log::debug!("{}", now);
+    log::debug!("my id:{}", store.info.id);
     let current_block = store.info.blockheight;
     let normal_channels = store.normal_channels();
     let settled = store.settled_forwards();
@@ -785,7 +785,7 @@ pub fn run_dashboard(store: &Store, directory: String) {
         store.peers_len(),
     ));
 
-    println!(
+    log::debug!(
         "network channels:{} nodes:{} peers:{}",
         store.channels_len(),
         store.nodes_len(),
@@ -814,7 +814,7 @@ pub fn run_dashboard(store: &Store, directory: String) {
         forwards_perc
     ));
 
-    println!(
+    log::debug!(
         "forwards: {}/{} {:.1}%",
         settled.len(),
         total_forwards,
@@ -884,7 +884,7 @@ pub fn run_dashboard(store: &Store, directory: String) {
         last_week / 7.0
     ));
 
-    println!(
+    log::debug!(
         "settled frequency ever:{:.2} year:{:.2} month:{:.2} week:{:.2}",
         settled.len() as f64 / el as f64,
         last_year / 365.0,
@@ -910,7 +910,7 @@ pub fn run_dashboard(store: &Store, directory: String) {
         network_average as f64 / 10000.0
     ));
 
-    println!(
+    log::debug!(
         "network average fee: {network_average} per millionth {:.3}% ",
         network_average as f64 / 10000.0
     );
@@ -928,7 +928,7 @@ pub fn run_dashboard(store: &Store, directory: String) {
         zero_fees
     ));
 
-    println!(
+    log::debug!(
         "my channels: {} - zero base fees? {}",
         normal_channels.len(),
         zero_fees
@@ -1018,7 +1018,7 @@ pub fn run_dashboard(store: &Store, directory: String) {
         push_out.len()
     ));
 
-    println!("pull_in:{} push_out:{}", pull_in.len(), push_out.len());
+    log::debug!("pull_in:{} push_out:{}", pull_in.len(), push_out.len());
 
     for channel in channels {
         let fund = &channel.fund;
@@ -1144,7 +1144,7 @@ pub fn run_dashboard(store: &Store, directory: String) {
         variance * 100.0
     ));
 
-    println!(
+    log::debug!(
         "mean_perces:{:.1} variance:{:.1}",
         mean_perces * 100.0,
         variance * 100.0
@@ -1153,24 +1153,24 @@ pub fn run_dashboard(store: &Store, directory: String) {
     lines.sort_by(|a, b| a.0.cmp(&b.0));
     output_content.push_str("min_max our_base_fee our_fee scid amount perc their_fee their_base_fee last_tstamp_delta last_upd_delta monthly_forw monthly_forw_fee is_sink push/pull alias_or_id\n");
 
-    println!("min_max our_base_fee our_fee scid amount perc their_fee their_base_fee last_tstamp_delta last_upd_delta monthly_forw monthly_forw_fee is_sink push/pull alias_or_id");
+    log::debug!("min_max our_base_fee our_fee scid amount perc their_fee their_base_fee last_tstamp_delta last_upd_delta monthly_forw monthly_forw_fee is_sink push/pull alias_or_id");
 
     for (_, l1, _) in lines.iter() {
         output_content.push_str(&format!("{l1}\n"));
-        println!("{l1}");
+        log::debug!("{l1}");
     }
 
     for (_, _, l2) in lines {
         if let Some(l) = l2 {
             output_content.push_str(&format!("{l}\n"));
-            println!("{l}");
+            log::debug!("{l}");
         }
     }
 
     // Display sling jobs without executing
     for (cmd, details) in sling_lines.iter() {
         output_content.push_str(&format!("`{cmd}` {details}\n"));
-        println!("`{cmd}` {details}");
+        log::debug!("`{cmd}` {details}");
     }
 
     // Generate HTML files after all output is collected
@@ -1182,15 +1182,15 @@ pub fn run_dashboard(store: &Store, directory: String) {
 
     // Create the directory if it doesn't exist
     if let Err(e) = fs::create_dir_all(&directory) {
-        println!("Error creating directory {}: {}", directory, e);
+        log::debug!("Error creating directory {}: {}", directory, e);
         return;
     }
 
     // Create the index.html file
     let html_file_path = format!("{}/index.html", directory);
     match fs::write(&html_file_path, html_content.into_string()) {
-        Ok(_) => println!("HTML dashboard generated: {}", html_file_path),
-        Err(e) => println!("Error writing HTML file: {}", e),
+        Ok(_) => log::debug!("HTML dashboard generated: {}", html_file_path),
+        Err(e) => log::debug!("Error writing HTML file: {}", e),
     }
 
     // Create peers directory and individual peer pages

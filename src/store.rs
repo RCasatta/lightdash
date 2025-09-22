@@ -20,7 +20,8 @@ pub struct Store {
 impl Store {
     /// Create a new Store by fetching all data from the Lightning node
     pub fn new() -> Self {
-        println!("Fetching data from Lightning node...");
+        let start_time = std::time::Instant::now();
+        log::debug!("Fetching data from Lightning node...");
         let now = Utc::now();
         let info = cmd::get_info();
         let channels = cmd::list_channels();
@@ -28,7 +29,7 @@ impl Store {
         let funds = cmd::list_funds();
         let forwards = cmd::list_forwards();
         let nodes = cmd::list_nodes();
-        println!("Data fetched successfully");
+        log::debug!("Data fetched successfully");
 
         // Compute cached data
         let nodes_by_id = nodes
@@ -44,7 +45,7 @@ impl Store {
             .map(|e| ((e.short_channel_id.clone(), e.source.clone()), e.clone()))
             .collect();
 
-        Self {
+        let store = Self {
             info,
             channels,
             peers,
@@ -54,7 +55,15 @@ impl Store {
             nodes_by_id,
             channels_by_id,
             now,
-        }
+        };
+
+        let duration = start_time.elapsed();
+        log::info!(
+            "Store initialization completed in {:.2}s",
+            duration.as_secs_f64()
+        );
+
+        store
     }
 
     /// Get normal channels (channels in CHANNELD_NORMAL state)

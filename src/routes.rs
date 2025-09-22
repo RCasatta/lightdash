@@ -36,7 +36,7 @@ pub fn run_routes(store: &Store) {
     counters_vec.sort_by(|a, b| b.1.cmp(&a.1));
 
     let average_hops = hop_sum as f64 / total as f64;
-    println!("\nNode most present in random routes (average hops:{average_hops:.2}):");
+    log::debug!("\nNode most present in random routes (average hops:{average_hops:.2}):");
     for c in counters_vec {
         let id = &c.0;
         let count = c.1;
@@ -45,6 +45,6 @@ pub fn run_routes(store: &Store) {
         let avg_fee = chan_info.avg_fee();
         let fee_diversity = format!("{:.3}", chan_info.fee_diversity());
         let num_chans = chan_info.count;
-        println!("{id} {count:>5} avg:{avg_fee:>6.1} dvr:{fee_diversity:>6} chans:{num_chans:>4} {alias}");
+        log::debug!("{id} {count:>5} avg:{avg_fee:>6.1} dvr:{fee_diversity:>6} chans:{num_chans:>4} {alias}");
     }
 }

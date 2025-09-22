@@ -25,7 +25,7 @@ pub fn run_fees(store: &Store) {
 
     for cmd in lines {
         if let Some(c) = cmd {
-            println!("{c}");
+            log::debug!("{c}");
         }
     }
 }

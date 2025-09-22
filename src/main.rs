@@ -39,7 +39,7 @@ fn main() {
 
     match cli.command {
         Commands::Dashboard { directory } => {
-            println!("Dashboard directory: {}", directory);
+            log::debug!("Dashboard directory: {}", directory);
             dashboard::run_dashboard(&store, directory);
         }
         Commands::Routes => {

@@ -142,13 +142,13 @@ pub fn run_sling(store: &Store) {
 
     // Execute sling jobs
     let result = cmd_result("lightning-cli", &["sling-deletejob", "all"]);
-    println!("{result}");
+    log::debug!("{result}");
     for (cmd, details) in sling_lines.iter() {
-        println!("`{cmd}` {details}");
+        log::debug!("`{cmd}` {details}");
         let split: Vec<&str> = cmd.split(' ').collect();
         let result = cmd_result(split[0], &split[1..]);
-        println!("{result}");
+        log::debug!("{result}");
     }
     let result = cmd_result("lightning-cli", &["sling-go"]);
-    println!("{result}");
+    log::debug!("{result}");
 }
