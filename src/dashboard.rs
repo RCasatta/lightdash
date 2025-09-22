@@ -473,12 +473,14 @@ fn create_weekday_chart_page(directory: &str, store: &Store, now: &chrono::DateT
     }
 }
 
-fn create_forwards_page(
-    directory: &str,
+/// Create HTML content for a forwards page with the given forwards data
+fn create_forwards_html_content(
+    forwards: &[crate::cmd::SettledForward],
+    title: &str,
     store: &Store,
     now: &chrono::DateTime<chrono::Utc>,
     our_node_id: &String,
-) {
+) -> Markup {
     // Helper function to get node alias for a channel
     let get_channel_alias = |channel_id: &str| -> String {
         let channel_id_string = channel_id.to_string();
@@ -493,13 +495,9 @@ fn create_forwards_page(
         channel_id.to_string()
     };
 
-    let mut settled_forwards = store.settled_forwards();
-
-    settled_forwards.sort_by(|a, b| a.resolved_time.cmp(&b.resolved_time));
-
-    let forwards_content = html! {
+    html! {
         div class="header" {
-            h1 { "Settled Forwards" }
+            h1 { (title) }
             div class="back-link" {
                 a href="index.html" { "Home" }
             }
@@ -508,9 +506,9 @@ fn create_forwards_page(
 
         div class="content" {
             h2 { "Settled Forward Payments" }
-            p { "Total settled forwards: " (settled_forwards.len()) }
+            p { "Total settled forwards: " (forwards.len()) }
 
-            @if !settled_forwards.is_empty() {
+            @if !forwards.is_empty() {
                 table {
                     thead {
                         tr {
@@ -523,7 +521,7 @@ fn create_forwards_page(
                         }
                     }
                     tbody {
-                        @for forward in &settled_forwards {
+                        @for forward in forwards {
                             tr {
                                 td { (get_channel_alias(&forward.in_channel)) }
                                 td { (get_channel_alias(&forward.out_channel)) }
@@ -555,7 +553,26 @@ fn create_forwards_page(
             }
             "#
         }
-    };
+    }
+}
+
+fn create_forwards_page(
+    directory: &str,
+    store: &Store,
+    now: &chrono::DateTime<chrono::Utc>,
+    our_node_id: &String,
+) {
+    let mut settled_forwards = store.settled_forwards();
+
+    settled_forwards.sort_by(|a, b| a.resolved_time.cmp(&b.resolved_time));
+
+    let forwards_content = create_forwards_html_content(
+        &settled_forwards,
+        "Settled Forwards",
+        store,
+        now,
+        our_node_id,
+    );
 
     let forwards_html = wrap_in_html_page(
         "Settled Forwards",
@@ -567,6 +584,68 @@ fn create_forwards_page(
     match fs::write(&forwards_file_path, forwards_html.into_string()) {
         Ok(_) => log::debug!("Forwards page generated: {}", forwards_file_path),
         Err(e) => log::debug!("Error writing forwards page: {}", e),
+    }
+}
+
+fn create_forwards_week_page(
+    directory: &str,
+    store: &Store,
+    now: &chrono::DateTime<chrono::Utc>,
+    our_node_id: &String,
+) {
+    let mut settled_forwards = store.filter_settled_forwards_by_days(7);
+
+    settled_forwards.sort_by(|a, b| a.resolved_time.cmp(&b.resolved_time));
+
+    let forwards_content = create_forwards_html_content(
+        &settled_forwards,
+        "Settled Forwards - Last Week",
+        store,
+        now,
+        our_node_id,
+    );
+
+    let forwards_html = wrap_in_html_page(
+        "Settled Forwards - Last Week",
+        forwards_content,
+        &now.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+    );
+
+    let forwards_file_path = format!("{}/forwards-week.html", directory);
+    match fs::write(&forwards_file_path, forwards_html.into_string()) {
+        Ok(_) => log::debug!("Weekly forwards page generated: {}", forwards_file_path),
+        Err(e) => log::debug!("Error writing weekly forwards page: {}", e),
+    }
+}
+
+fn create_forwards_year_page(
+    directory: &str,
+    store: &Store,
+    now: &chrono::DateTime<chrono::Utc>,
+    our_node_id: &String,
+) {
+    let mut settled_forwards = store.filter_settled_forwards_by_days(365);
+
+    settled_forwards.sort_by(|a, b| a.resolved_time.cmp(&b.resolved_time));
+
+    let forwards_content = create_forwards_html_content(
+        &settled_forwards,
+        "Settled Forwards - Last Year",
+        store,
+        now,
+        our_node_id,
+    );
+
+    let forwards_html = wrap_in_html_page(
+        "Settled Forwards - Last Year",
+        forwards_content,
+        &now.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+    );
+
+    let forwards_file_path = format!("{}/forwards-year.html", directory);
+    match fs::write(&forwards_file_path, forwards_html.into_string()) {
+        Ok(_) => log::debug!("Yearly forwards page generated: {}", forwards_file_path),
+        Err(e) => log::debug!("Error writing yearly forwards page: {}", e),
     }
 }
 
@@ -899,6 +978,16 @@ pub fn run_dashboard(store: &Store, directory: String) {
             h3 {
                 a href="forwards.html" {
                     (format!("{} Settled Forwards", settled.len()))
+                }
+            }
+            h3 {
+                a href="forwards-week.html" {
+                    (format!("{} Forwards (Last Week)", store.filter_settled_forwards_by_days(7).len()))
+                }
+            }
+            h3 {
+                a href="forwards-year.html" {
+                    (format!("{} Forwards (Last Year)", store.filter_settled_forwards_by_days(365).len()))
                 }
             }
             h3 {
@@ -1333,6 +1422,12 @@ pub fn run_dashboard(store: &Store, directory: String) {
 
     // Create forwards page
     create_forwards_page(&directory, &store, &now, &store.info.id);
+
+    // Create weekly forwards page
+    create_forwards_week_page(&directory, &store, &now, &store.info.id);
+
+    // Create yearly forwards page
+    create_forwards_year_page(&directory, &store, &now, &store.info.id);
 
     // Create weekday chart page
     create_weekday_chart_page(&directory, &store, &now);
