@@ -231,6 +231,7 @@ pub struct SettledForward {
     pub out_channel: String,
     pub fee_sat: u64,
     pub out_sat: u64,
+    pub fee_ppm: u64,
     pub resolved_time: DateTime<Utc>,
     pub received_time: DateTime<Utc>,
 }
@@ -254,26 +255,23 @@ impl TryFrom<Forward> for SettledForward {
     type Error = ();
 
     fn try_from(value: Forward) -> Result<Self, Self::Error> {
+        let fee_msat = value.fee_msat.ok_or(())?;
+        let out_msat = value.out_msat.ok_or(())?;
+        let fee_ppm = if out_msat == 0 {
+            0
+        } else {
+            ((fee_msat as f64 / out_msat as f64) * 1_000_000.0) as u64
+        };
+
         Ok(Self {
             in_channel: value.in_channel,
             out_channel: value.out_channel.ok_or(())?,
-            fee_sat: value.fee_msat.map(|e| e / 1000).ok_or(())?,
-            out_sat: value.out_msat.map(|e| e / 1000).ok_or(())?,
+            fee_sat: fee_msat / 1000,
+            out_sat: out_msat / 1000,
+            fee_ppm,
             resolved_time: DateTime::from_timestamp(value.resolved_time.ok_or(())? as i64, 0)
                 .ok_or(())?,
             received_time: DateTime::from_timestamp(value.received_time as i64, 0).ok_or(())?,
         })
-    }
-}
-
-impl SettledForward {
-    /// Calculate fee in parts per million (ppm)
-    /// Formula: (fee / out) * 1,000,000
-    pub fn fee_ppm(&self) -> u64 {
-        if self.out_sat == 0 {
-            0
-        } else {
-            ((self.fee_sat as f64 / self.out_sat as f64) * 1_000_000.0) as u64
-        }
     }
 }

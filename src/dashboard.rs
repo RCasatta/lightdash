@@ -533,7 +533,7 @@ fn create_forwards_html_content(
                                     (format!("{:.1}", forward.out_sat as f64))
                                 }
                                 td class="align-right" {
-                                    (forward.fee_ppm())
+                                    (forward.fee_ppm)
                                 }
                                 td {
                                     (forward.received_time.format("%Y-%m-%d %H:%M:%S").to_string())
