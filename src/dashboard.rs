@@ -516,6 +516,7 @@ fn create_forwards_html_content(
                             th { "Out Node" }
                             th { "Fee (sats)" }
                             th { "Out Amount (sats)" }
+                            th { "Fee PPM" }
                             th { "Received Time" }
                             th { "Elapsed (s)" }
                         }
@@ -530,6 +531,9 @@ fn create_forwards_html_content(
                                 }
                                 td class="align-right" {
                                     (format!("{:.1}", forward.out_sat as f64))
+                                }
+                                td class="align-right" {
+                                    (forward.fee_ppm())
                                 }
                                 td {
                                     (forward.received_time.format("%Y-%m-%d %H:%M:%S").to_string())

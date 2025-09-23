@@ -265,3 +265,15 @@ impl TryFrom<Forward> for SettledForward {
         })
     }
 }
+
+impl SettledForward {
+    /// Calculate fee in parts per million (ppm)
+    /// Formula: (fee / out) * 1,000,000
+    pub fn fee_ppm(&self) -> u64 {
+        if self.out_sat == 0 {
+            0
+        } else {
+            ((self.fee_sat as f64 / self.out_sat as f64) * 1_000_000.0) as u64
+        }
+    }
+}
