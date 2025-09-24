@@ -664,6 +664,10 @@ fn create_channel_pages(
 
     log::debug!("Creating channel pages in: {}", channels_dir);
 
+    // Sort channels by balance percentage (lower first)
+    let mut sorted_channels = channels.to_vec();
+    sorted_channels.sort_by(|a, b| a.perc_float().partial_cmp(&b.perc_float()).unwrap());
+
     // Create channels index page
     let channels_index_content = html! {
         div class="header" {
@@ -678,46 +682,38 @@ fn create_channel_pages(
             h2 { "Channel List" }
             p { "Total channels: " (channels.len()) }
 
-            @for channel in channels {
-                div class="section" {
-                    div class="info-item" {
-                        span class="label" { "Channel: " }
-                        span class="value" {
-                            @if let Some(scid) = &channel.short_channel_id {
-                                a href={(format!("{}.html", scid))} {
-                                    (scid)
-                                }
-                            } @else {
-                                a href={(format!("{}.html", channel.channel_id))} {
-                                    (&channel.channel_id[..16])
+            table {
+                thead {
+                    tr {
+                        th { "Channel ID" }
+                        th { "Node Alias" }
+                        th style="text-align: right;" { "Balance %" }
+                        th style="text-align: right;" { "Amount" }
+                    }
+                }
+                tbody {
+                    @for channel in sorted_channels {
+                        tr {
+                            td {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    a href={(format!("{}.html", scid))} {
+                                        (scid)
+                                    }
+                                } @else {
+                                    a href={(format!("{}.html", channel.channel_id))} {
+                                        (&channel.channel_id[..16])
+                                    }
                                 }
                             }
-                        }
-                    }
-
-                    div class="info-item" {
-                        span class="label" { "Peer: " }
-                        span class="value" {
-                            (store.get_node_alias(&channel.peer_id))
-                        }
-                    }
-
-                    div class="info-item" {
-                        span class="label" { "State: " }
-                        span class="value" { (channel.state) }
-                    }
-
-                    div class="info-item" {
-                        span class="label" { "Balance: " }
-                        span class="value" {
-                            (format!("{:.1}%", channel.perc_float() * 100.0))
-                        }
-                    }
-
-                    div class="info-item" {
-                        span class="label" { "Amount: " }
-                        span class="value" {
-                            (format!("{} sats", channel.amount_msat / 1000))
+                            td {
+                                (store.get_node_alias(&channel.peer_id))
+                            }
+                            td style="text-align: right;" {
+                                (format!("{:.1}", channel.perc_float() * 100.0))
+                            }
+                            td style="text-align: right;" {
+                                (format!("{} sats", channel.amount_msat / 1000))
+                            }
                         }
                     }
                 }
