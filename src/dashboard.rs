@@ -688,7 +688,7 @@ fn create_channel_pages(
                         th { "Channel ID" }
                         th { "Node Alias" }
                         th style="text-align: right;" { "Balance %" }
-                        th style="text-align: right;" { "Amount" }
+                        th style="text-align: right;" { "Amount (sats)" }
                     }
                 }
                 tbody {
@@ -712,7 +712,7 @@ fn create_channel_pages(
                                 (format!("{:.1}", channel.perc_float() * 100.0))
                             }
                             td style="text-align: right;" {
-                                (format!("{} sats", channel.amount_msat / 1000))
+                                (channel.amount_msat / 1000)
                             }
                         }
                     }
