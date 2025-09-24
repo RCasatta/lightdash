@@ -689,6 +689,8 @@ fn create_channel_pages(
                         th { "Node Alias" }
                         th style="text-align: right;" { "Balance %" }
                         th style="text-align: right;" { "Amount (sats)" }
+                        th style="text-align: right;" { "My PPM" }
+                        th style="text-align: right;" { "Inbound PPM" }
                     }
                 }
                 tbody {
@@ -713,6 +715,28 @@ fn create_channel_pages(
                             }
                             td style="text-align: right;" {
                                 (channel.amount_msat / 1000)
+                            }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(channel_info) = store.get_channel(scid, &store.info.id) {
+                                        (channel_info.fee_per_millionth)
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
+                            }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(channel_info) = store.get_channel(scid, &channel.peer_id) {
+                                        (channel_info.fee_per_millionth)
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
                             }
                         }
                     }
