@@ -114,6 +114,26 @@ fn create_html_header(title: &str) -> Markup {
     }
 }
 
+/// Create common page header with navigation links
+fn create_page_header(title: &str, is_subdir: bool) -> Markup {
+    let (home_link, channels_link, forwards_link) = if is_subdir {
+        ("../index.html", "../channels/", "../forwards-week.html")
+    } else {
+        ("index.html", "channels/", "forwards-week.html")
+    };
+
+    html! {
+        div class="header" {
+            h1 { (title) }
+            div class="back-link" {
+                a href=(home_link) { "Home" } " | "
+                a href=(channels_link) { "Channels" } " | "
+                a href=(forwards_link) { "Forwards" }
+            }
+        }
+    }
+}
+
 /// Create common HTML footer
 fn create_html_footer(timestamp: &str) -> Markup {
     html! {
@@ -154,13 +174,7 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
 
     // Create peers index page
     let peers_index_content = html! {
-        div class="header" {
-            h1 { "Peers" }
-            div class="back-link" {
-                a href="../index.html" { "Home" }
-            }
-            p class="timestamp" { "Generated at: " (now.format("%Y-%m-%d %H:%M:%S UTC")) }
-        }
+        (create_page_header("Peers", true))
 
         div class="info-card" {
             h2 { "Peer List" }
@@ -227,13 +241,7 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
 
     for peer in store.peers() {
         let peer_content = html! {
-            div class="header" {
-                h1 { "Peer Details" }
-                div class="back-link" {
-                    a href="../index.html" { "Home" } " | " a href="index.html" { "Peers" }
-                }
-                p class="timestamp" { "Generated at: " (now.format("%Y-%m-%d %H:%M:%S UTC")) }
-            }
+            (create_page_header("Peer Details", true))
 
             div class="info-card" {
                 h2 { "Peer Information" }
@@ -361,13 +369,7 @@ fn create_weekday_chart_page(directory: &str, store: &Store, now: &chrono::DateT
     let max_count = *weekday_counts.iter().max().unwrap_or(&0);
 
     let chart_content = html! {
-        div class="header" {
-            h1 { "Forwards by Weekday" }
-            div class="back-link" {
-                a href="index.html" { "Home" }
-            }
-            p class="timestamp" { "Generated at: " (now.format("%Y-%m-%d %H:%M:%S UTC")) }
-        }
+        (create_page_header("Forwards by Weekday", false))
 
         div class="content" {
             h2 { "Settled Forwards Distribution by Day of Week" }
@@ -478,7 +480,6 @@ fn create_forwards_html_content(
     forwards: &[crate::cmd::SettledForward],
     title: &str,
     store: &Store,
-    now: &chrono::DateTime<chrono::Utc>,
     our_node_id: &String,
 ) -> Markup {
     // Helper function to get node alias for a channel
@@ -496,13 +497,7 @@ fn create_forwards_html_content(
     };
 
     html! {
-        div class="header" {
-            h1 { (title) }
-            div class="back-link" {
-                a href="index.html" { "Home" }
-            }
-            p class="timestamp" { "Generated at: " (now.format("%Y-%m-%d %H:%M:%S UTC")) }
-        }
+        (create_page_header(title, false))
 
         div class="content" {
             h2 { "Settled Forward Payments" }
@@ -568,13 +563,8 @@ fn create_forwards_page(
 ) {
     let settled_forwards = store.settled_forwards();
 
-    let forwards_content = create_forwards_html_content(
-        &settled_forwards,
-        "Settled Forwards",
-        store,
-        now,
-        our_node_id,
-    );
+    let forwards_content =
+        create_forwards_html_content(&settled_forwards, "Settled Forwards", store, our_node_id);
 
     let forwards_html = wrap_in_html_page(
         "Settled Forwards",
@@ -601,7 +591,6 @@ fn create_forwards_week_page(
         &settled_forwards,
         "Settled Forwards - Last Week",
         store,
-        now,
         our_node_id,
     );
 
@@ -630,7 +619,6 @@ fn create_forwards_year_page(
         &settled_forwards,
         "Settled Forwards - Last Year",
         store,
-        now,
         our_node_id,
     );
 
@@ -670,13 +658,7 @@ fn create_channel_pages(
 
     // Create channels index page
     let channels_index_content = html! {
-        div class="header" {
-            h1 { "Channels" }
-            div class="back-link" {
-                a href="../index.html" { "Home" }
-            }
-            p class="timestamp" { "Generated at: " (now.format("%Y-%m-%d %H:%M:%S UTC")) }
-        }
+        (create_page_header("Channels", true))
 
         div class="info-card" {
             h2 { "Channel List" }
@@ -760,13 +742,7 @@ fn create_channel_pages(
     // Create individual channel pages
     for channel in channels {
         let channel_content = html! {
-            div class="header" {
-                h1 { "Channel" }
-                div class="back-link" {
-                    a href="../index.html" { "Home" } " | " a href="index.html" { "Channels" }
-                }
-                p class="timestamp" { "Generated at: " (now.format("%Y-%m-%d %H:%M:%S UTC")) }
-            }
+            (create_page_header("Channel", true))
 
             div class="info-card" {
                 h2 { "Channel Information" }
@@ -963,9 +939,7 @@ pub fn run_dashboard(store: &Store, directory: String) {
 
     // Generate index.html content
     let index_content = html! {
-        div class="header" {
-            h1 { "Lightning Network Dashboard" }
-        }
+        (create_page_header("Lightning Network Dashboard", false))
 
         div class="info-card" {
             h2 { "Node Information" }
@@ -995,7 +969,7 @@ pub fn run_dashboard(store: &Store, directory: String) {
             }
             h3 {
                 a href="forwards.html" {
-                    (format!("{} Settled Forwards", settled.len()))
+                    (format!("{} Settled Forwards (Ever)", settled.len()))
                 }
             }
             h3 {
