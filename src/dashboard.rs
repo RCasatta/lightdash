@@ -371,7 +371,7 @@ fn create_weekday_chart_page(directory: &str, store: &Store, now: &chrono::DateT
     let chart_content = html! {
         (create_page_header("Forwards by Weekday", false))
 
-        div class="content" {
+        div class="info-card" {
             h2 { "Settled Forwards Distribution by Day of Week" }
 
             div class="chart-container" {
@@ -499,7 +499,7 @@ fn create_forwards_html_content(
     html! {
         (create_page_header(title, false))
 
-        div class="content" {
+        div class="info-card" {
             h2 { "Settled Forward Payments" }
             p { "Total settled forwards: " (forwards.len()) }
 
