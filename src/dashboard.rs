@@ -656,12 +656,20 @@ fn create_channel_pages(
     let mut sorted_channels = channels.to_vec();
     sorted_channels.sort_by(|a, b| a.perc_float().partial_cmp(&b.perc_float()).unwrap());
 
+    // Sort channels by channel ID
+    let mut sorted_channels_by_id = channels.to_vec();
+    sorted_channels_by_id.sort_by(|a, b| {
+        let a_id = a.short_channel_id.as_ref().unwrap_or(&a.channel_id);
+        let b_id = b.short_channel_id.as_ref().unwrap_or(&b.channel_id);
+        a_id.cmp(b_id)
+    });
+
     // Create channels index page
     let channels_index_content = html! {
         (create_page_header("Channels", true))
 
         div class="info-card" {
-            h2 { "Channel List" }
+            h2 { "Channel List (Sorted by Balance percentage)" }
             p { "Total channels: " (channels.len()) }
 
             table {
@@ -677,6 +685,71 @@ fn create_channel_pages(
                 }
                 tbody {
                     @for channel in sorted_channels {
+                        tr {
+                            td {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    a href={(format!("{}.html", scid))} {
+                                        (scid)
+                                    }
+                                } @else {
+                                    a href={(format!("{}.html", channel.channel_id))} {
+                                        (&channel.channel_id[..16])
+                                    }
+                                }
+                            }
+                            td {
+                                (store.get_node_alias(&channel.peer_id))
+                            }
+                            td style="text-align: right;" {
+                                (format!("{:.1}", channel.perc_float() * 100.0))
+                            }
+                            td style="text-align: right;" {
+                                (channel.amount_msat / 1000)
+                            }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(channel_info) = store.get_channel(scid, &store.info.id) {
+                                        (channel_info.fee_per_millionth)
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
+                            }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(channel_info) = store.get_channel(scid, &channel.peer_id) {
+                                        (channel_info.fee_per_millionth)
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        div class="info-card" {
+            h2 { "Channel List (Sorted by Channel ID)" }
+
+            table {
+                thead {
+                    tr {
+                        th { "Channel ID" }
+                        th { "Node Alias" }
+                        th style="text-align: right;" { "Balance %" }
+                        th style="text-align: right;" { "Amount (sats)" }
+                        th style="text-align: right;" { "My PPM" }
+                        th style="text-align: right;" { "Inbound PPM" }
+                    }
+                }
+                tbody {
+                    @for channel in sorted_channels_by_id {
                         tr {
                             td {
                                 @if let Some(scid) = &channel.short_channel_id {
