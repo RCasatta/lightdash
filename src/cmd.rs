@@ -14,7 +14,7 @@ pub fn _sling_jobsettings() -> HashMap<String, JobSetting> {
 
 pub fn list_funds() -> ListFunds {
     let str = if cfg!(debug_assertions) {
-        cmd_result("cat", &["test-json/listfunds"])
+        cmd_result("zcat", &["test-json/listfunds.gz"])
     } else {
         cmd_result("lightning-cli", &["listfunds"])
     };

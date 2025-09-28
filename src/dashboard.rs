@@ -1732,8 +1732,8 @@ pub fn run_dashboard(store: &Store, directory: String) {
         let ever_forw_in_out = ever_forw_fee + ever_forw_fee_incom.abs() as u64;
 
         // gain is millisat "gained" per block, a millisat is gained is it an effective fee from outgoing forward, but also if it's an ineffective fee as incoming forward.
-        let gain = ((ever_forw_in_out as f64 / (current_block - channel.block_born) as f64)
-            * 1000.0) as u64;
+        let blocks_alive = current_block.saturating_sub(channel.block_born).max(1); // Prevent division by zero and overflow
+        let gain = ((ever_forw_in_out as f64 / blocks_alive as f64) * 1000.0) as u64;
 
         let ever_forw_in = *per_channel_forwards_in
             .get(&short_channel_id)
