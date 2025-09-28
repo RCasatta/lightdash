@@ -41,7 +41,7 @@ pub fn list_channels() -> ListChannels {
 
 pub fn list_peers() -> ListPeers {
     let str = if cfg!(debug_assertions) {
-        cmd_result("cat", &["test-json/listpeers"])
+        cmd_result("zcat", &["test-json/listpeers.gz"])
     } else {
         cmd_result("lightning-cli", &["listpeers"])
     };
@@ -59,7 +59,7 @@ pub fn list_forwards() -> ListForwards {
 
 pub fn list_closed_channels() -> ListClosedChannels {
     let str = if cfg!(debug_assertions) {
-        cmd_result("cat", &["test-json/listclosedchannels"])
+        cmd_result("zcat", &["test-json/listclosedchannels.gz"])
     } else {
         cmd_result("lightning-cli", &["listclosedchannels"])
     };
