@@ -201,4 +201,74 @@ impl Store {
 
         weekday_counts
     }
+
+    /// Get fees earned in sats for the last N months from settled forwards
+    pub fn fees_earned_last_months(&self, months: i64) -> u64 {
+        let days = months * 30; // Approximating 30 days per month like the bash script
+        self.settled_forwards()
+            .into_iter()
+            .filter(|f| self.now.signed_duration_since(f.resolved_time).num_days() <= days)
+            .map(|f| f.fee_sat)
+            .sum()
+    }
+
+    /// Get total channel funds in sats
+    pub fn total_channel_funds_sats(&self) -> u64 {
+        self.normal_channels()
+            .iter()
+            .map(|c| c.our_amount_msat / 1000)
+            .sum()
+    }
+
+    /// Calculate projected yearly APY percentage for given time period
+    pub fn calculate_apy_percent(&self, months: i64) -> f64 {
+        let fees_earned = self.fees_earned_last_months(months);
+        let total_funds = self.total_channel_funds_sats();
+
+        if total_funds == 0 {
+            return 0.0;
+        }
+
+        let annualization_factor = 12.0 / months as f64;
+        (fees_earned as f64 * 100.0 * annualization_factor) / total_funds as f64
+    }
+
+    /// Get total amount transacted in sats for the last month
+    pub fn transacted_last_month_sats(&self) -> u64 {
+        self.settled_forwards()
+            .into_iter()
+            .filter(|f| self.now.signed_duration_since(f.resolved_time).num_days() <= 30)
+            .map(|f| f.out_sat)
+            .sum()
+    }
+
+    /// Get APY data structure with all calculations
+    pub fn get_apy_data(&self) -> ApyData {
+        ApyData {
+            fees_1_month: self.fees_earned_last_months(1),
+            fees_3_months: self.fees_earned_last_months(3),
+            fees_6_months: self.fees_earned_last_months(6),
+            fees_12_months: self.fees_earned_last_months(12),
+            total_funds: self.total_channel_funds_sats(),
+            apy_1_month: self.calculate_apy_percent(1),
+            apy_3_months: self.calculate_apy_percent(3),
+            apy_6_months: self.calculate_apy_percent(6),
+            apy_12_months: self.calculate_apy_percent(12),
+            transacted_last_month: self.transacted_last_month_sats(),
+        }
+    }
+}
+
+/// APY calculation data
+pub struct ApyData {
+    pub fees_1_month: u64,
+    pub fees_3_months: u64,
+    pub fees_6_months: u64,
+    pub fees_12_months: u64,
+    pub total_funds: u64,
+    pub apy_1_month: f64,
+    pub apy_3_months: f64,
+    pub apy_6_months: f64,
+    pub apy_12_months: f64,
+    pub transacted_last_month: u64,
 }

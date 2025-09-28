@@ -116,10 +116,15 @@ fn create_html_header(title: &str) -> Markup {
 
 /// Create common page header with navigation links
 fn create_page_header(title: &str, is_subdir: bool) -> Markup {
-    let (home_link, channels_link, forwards_link) = if is_subdir {
-        ("../index.html", "../channels/", "../forwards-week.html")
+    let (home_link, channels_link, forwards_link, apy_link) = if is_subdir {
+        (
+            "../index.html",
+            "../channels/",
+            "../forwards-week.html",
+            "../apy.html",
+        )
     } else {
-        ("index.html", "channels/", "forwards-week.html")
+        ("index.html", "channels/", "forwards-week.html", "apy.html")
     };
 
     html! {
@@ -128,7 +133,8 @@ fn create_page_header(title: &str, is_subdir: bool) -> Markup {
             div class="back-link" {
                 a href=(home_link) { "Home" } " | "
                 a href=(channels_link) { "Channels" } " | "
-                a href=(forwards_link) { "Forwards" }
+                a href=(forwards_link) { "Forwards" } " | "
+                a href=(apy_link) { "APY" }
             }
         }
     }
@@ -973,6 +979,130 @@ fn create_channel_pages(
     }
 }
 
+fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono::Utc>) {
+    let apy_data = store.get_apy_data();
+
+    let apy_content = html! {
+        (create_page_header("APY Analysis", false))
+
+        div class="info-card" {
+            h2 { "Annual Percentage Yield (APY) Analysis" }
+
+            div class="section" {
+                h3 class="section-title" { "Fee Income Summary" }
+
+                table {
+                    thead {
+                        tr {
+                            th { "Period" }
+                            th style="text-align: right;" { "Fees Earned (sats)" }
+                            th style="text-align: right;" { "Projected Yearly APY %" }
+                        }
+                    }
+                    tbody {
+                        tr {
+                            td { "Last 1 Month" }
+                            td style="text-align: right;" { (apy_data.fees_1_month) }
+                            td style="text-align: right;" { (format!("{:.3}", apy_data.apy_1_month)) }
+                        }
+                        tr {
+                            td { "Last 3 Months" }
+                            td style="text-align: right;" { (apy_data.fees_3_months) }
+                            td style="text-align: right;" { (format!("{:.3}", apy_data.apy_3_months)) }
+                        }
+                        tr {
+                            td { "Last 6 Months" }
+                            td style="text-align: right;" { (apy_data.fees_6_months) }
+                            td style="text-align: right;" { (format!("{:.3}", apy_data.apy_6_months)) }
+                        }
+                        tr {
+                            td { "Last 12 Months" }
+                            td style="text-align: right;" { (apy_data.fees_12_months) }
+                            td style="text-align: right;" { (format!("{:.3}", apy_data.apy_12_months)) }
+                        }
+                    }
+                }
+            }
+
+            div class="section" {
+                h3 class="section-title" { "Fund Information" }
+
+                div class="info-item" {
+                    span class="label" { "Total Channel Funds: " }
+                    span class="value" { (format!("{} sats", apy_data.total_funds)) }
+                }
+
+                div class="info-item" {
+                    span class="label" { "Transacted Last Month: " }
+                    span class="value" { (format!("{} sats", apy_data.transacted_last_month)) }
+                }
+            }
+
+            div class="section" {
+                h3 class="section-title" { "APY Methodology" }
+                p {
+                    "APY (Annual Percentage Yield) is calculated by taking the fees earned over a specific period, "
+                    "annualizing them (multiplying by 12/months), and dividing by the total channel funds. "
+                    "This gives a projected yearly return rate as a percentage."
+                }
+                p {
+                    "Formula: APY% = (Fees Earned × 12 ÷ Period in Months × 100) ÷ Total Funds"
+                }
+            }
+        }
+
+        style {
+            r#"
+            .info-item {
+                display: flex;
+                margin: 10px 0;
+                padding: 8px 0;
+                border-bottom: 1px solid #4a5568;
+            }
+            
+            .info-item:last-child {
+                border-bottom: none;
+            }
+
+            .label {
+                font-weight: bold;
+                color: #63b3ed;
+                min-width: 200px;
+            }
+
+            .value {
+                color: #f8f8f2;
+            }
+
+            .section {
+                margin: 25px 0;
+            }
+
+            .section:first-child {
+                margin-top: 0;
+            }
+
+            .section p {
+                margin: 10px 0;
+                line-height: 1.6;
+            }
+            "#
+        }
+    };
+
+    let apy_html = wrap_in_html_page(
+        "APY Analysis",
+        apy_content,
+        &now.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+    );
+
+    let apy_file_path = format!("{}/apy.html", directory);
+    match fs::write(&apy_file_path, apy_html.into_string()) {
+        Ok(_) => log::debug!("APY page generated: {}", apy_file_path),
+        Err(e) => log::debug!("Error writing APY page: {}", e),
+    }
+}
+
 /// Run the Lightning Network dashboard generator
 ///
 /// This function generates a comprehensive HTML dashboard for Lightning Network
@@ -1058,6 +1188,11 @@ pub fn run_dashboard(store: &Store, directory: String) {
             h3 {
                 a href="weekday-chart.html" {
                     "📊 Forwards by Weekday"
+                }
+            }
+            h3 {
+                a href="apy.html" {
+                    "📈 APY Analysis"
                 }
             }
         }
@@ -1496,4 +1631,7 @@ pub fn run_dashboard(store: &Store, directory: String) {
 
     // Create weekday chart page
     create_weekday_chart_page(&directory, &store, &now);
+
+    // Create APY page
+    create_apy_page(&directory, &store, &now);
 }
