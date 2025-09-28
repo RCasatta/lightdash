@@ -116,15 +116,22 @@ fn create_html_header(title: &str) -> Markup {
 
 /// Create common page header with navigation links
 fn create_page_header(title: &str, is_subdir: bool) -> Markup {
-    let (home_link, channels_link, forwards_link, apy_link) = if is_subdir {
+    let (home_link, channels_link, forwards_link, apy_link, closed_link) = if is_subdir {
         (
             "../index.html",
             "../channels/",
             "../forwards-week.html",
             "../apy.html",
+            "../closed-channels.html",
         )
     } else {
-        ("index.html", "channels/", "forwards-week.html", "apy.html")
+        (
+            "index.html",
+            "channels/",
+            "forwards-week.html",
+            "apy.html",
+            "closed-channels.html",
+        )
     };
 
     html! {
@@ -134,7 +141,8 @@ fn create_page_header(title: &str, is_subdir: bool) -> Markup {
                 a href=(home_link) { "Home" } " | "
                 a href=(channels_link) { "Channels" } " | "
                 a href=(forwards_link) { "Forwards" } " | "
-                a href=(apy_link) { "APY" }
+                a href=(apy_link) { "APY" } " | "
+                a href=(closed_link) { "Closed" }
             }
         }
     }
@@ -1103,6 +1111,216 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
     }
 }
 
+fn create_closed_channels_page(
+    directory: &str,
+    store: &Store,
+    now: &chrono::DateTime<chrono::Utc>,
+) {
+    let closed_channels_info = store.get_closed_channels_info();
+
+    // Calculate close cause counts
+    let mut cause_counts = std::collections::HashMap::new();
+    for channel_info in &closed_channels_info {
+        *cause_counts
+            .entry(&channel_info.channel.close_cause)
+            .or_insert(0) += 1;
+    }
+    let mut causes: Vec<_> = cause_counts.into_iter().collect();
+    causes.sort_by(|a, b| b.1.cmp(&a.1));
+
+    // Calculate duration statistics
+    let durations: Vec<i64> = closed_channels_info
+        .iter()
+        .filter_map(|c| c.duration_days)
+        .collect();
+
+    let avg_duration = if !durations.is_empty() {
+        durations.iter().sum::<i64>() as f64 / durations.len() as f64
+    } else {
+        0.0
+    };
+
+    let min_duration = durations.iter().min().copied().unwrap_or(0);
+    let max_duration = durations.iter().max().copied().unwrap_or(0);
+
+    let closed_channels_content = html! {
+        (create_page_header("Closed Channels", false))
+
+        div class="info-card" {
+            h2 { "Closed Channels Analysis" }
+            p { "Total closed channels: " (closed_channels_info.len()) }
+
+            @if !closed_channels_info.is_empty() {
+                table {
+                    thead {
+                        tr {
+                            th { "Short Channel ID" }
+                            th { "Peer Alias" }
+                            th { "Peer ID" }
+                            th { "Close Cause" }
+                            th { "Opener" }
+                            th { "Closer" }
+                            th style="text-align: right;" { "Opening Block" }
+                            th style="text-align: right;" { "Duration (Days)" }
+                            th style="text-align: right;" { "Final Amount (sats)" }
+                            th style="text-align: right;" { "Total HTLCs Sent" }
+                        }
+                    }
+                    tbody {
+                        @for channel_info in &closed_channels_info {
+                            tr {
+                                td { (channel_info.channel.short_channel_id_display()) }
+                                td { (channel_info.alias) }
+                                td {
+                                    @if let Some(peer_id) = &channel_info.channel.peer_id {
+                                        a href={(format!("https://mempool.space/lightning/node/{}", peer_id))} target="_blank" {
+                                            (format!("{}...", &peer_id[..16]))
+                                        }
+                                    } @else {
+                                        "N/A"
+                                    }
+                                }
+                                td { (channel_info.channel.close_cause) }
+                                td { (channel_info.channel.opener) }
+                                td {
+                                    @if let Some(closer) = &channel_info.channel.closer {
+                                        (closer)
+                                    } @else {
+                                        "N/A"
+                                    }
+                                }
+                                td style="text-align: right;" {
+                                    @if let Some(block) = channel_info.opening_block {
+                                        (block)
+                                    } @else {
+                                        "N/A"
+                                    }
+                                }
+                                td style="text-align: right;" {
+                                    @if let Some(days) = channel_info.duration_days {
+                                        (format!("{}", days))
+                                    } @else {
+                                        "N/A"
+                                    }
+                                }
+                                td style="text-align: right;" {
+                                    (channel_info.channel.final_to_us_msat / 1000)
+                                }
+                                td style="text-align: right;" {
+                                    @if let Some(htlcs_sent) = channel_info.channel.total_htlcs_sent {
+                                        (htlcs_sent)
+                                    } @else {
+                                        "N/A"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } @else {
+                p { "No closed channels found." }
+            }
+
+            div class="section" {
+                h3 class="section-title" { "Close Cause Summary" }
+                @if !closed_channels_info.is_empty() {
+                    table {
+                        thead {
+                            tr {
+                                th { "Close Cause" }
+                                th style="text-align: right;" { "Count" }
+                            }
+                        }
+                        tbody {
+                            @for (cause, count) in causes {
+                                tr {
+                                    td { (cause) }
+                                    td style="text-align: right;" { (count) }
+                                }
+                            }
+                        }
+                    }
+                } @else {
+                    p { "No data available." }
+                }
+            }
+
+            div class="section" {
+                h3 class="section-title" { "Duration Analysis" }
+                @if !closed_channels_info.is_empty() {
+                    div class="info-item" {
+                        span class="label" { "Average Duration: " }
+                        span class="value" { (format!("{:.1} days", avg_duration)) }
+                    }
+
+                    div class="info-item" {
+                        span class="label" { "Shortest Duration: " }
+                        span class="value" { (format!("{} days", min_duration)) }
+                    }
+
+                    div class="info-item" {
+                        span class="label" { "Longest Duration: " }
+                        span class="value" { (format!("{} days", max_duration)) }
+                    }
+                } @else {
+                    p { "No duration data available." }
+                }
+            }
+        }
+
+        style {
+            r#"
+            .info-item {
+                display: flex;
+                margin: 10px 0;
+                padding: 8px 0;
+                border-bottom: 1px solid #4a5568;
+            }
+            
+            .info-item:last-child {
+                border-bottom: none;
+            }
+
+            .label {
+                font-weight: bold;
+                color: #63b3ed;
+                min-width: 200px;
+            }
+
+            .value {
+                color: #f8f8f2;
+            }
+
+            .section {
+                margin: 25px 0;
+            }
+
+            .section:first-child {
+                margin-top: 0;
+            }
+            "#
+        }
+    };
+
+    let closed_channels_html = wrap_in_html_page(
+        "Closed Channels",
+        closed_channels_content,
+        &now.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+    );
+
+    let closed_channels_file_path = format!("{}/closed-channels.html", directory);
+    match fs::write(
+        &closed_channels_file_path,
+        closed_channels_html.into_string(),
+    ) {
+        Ok(_) => log::debug!(
+            "Closed channels page generated: {}",
+            closed_channels_file_path
+        ),
+        Err(e) => log::debug!("Error writing closed channels page: {}", e),
+    }
+}
+
 /// Run the Lightning Network dashboard generator
 ///
 /// This function generates a comprehensive HTML dashboard for Lightning Network
@@ -1193,6 +1411,11 @@ pub fn run_dashboard(store: &Store, directory: String) {
             h3 {
                 a href="apy.html" {
                     "📈 APY Analysis"
+                }
+            }
+            h3 {
+                a href="closed-channels.html" {
+                    (format!("🔒 {} Closed Channels", store.closed_channels_len()))
                 }
             }
         }
@@ -1634,4 +1857,7 @@ pub fn run_dashboard(store: &Store, directory: String) {
 
     // Create APY page
     create_apy_page(&directory, &store, &now);
+
+    // Create closed channels page
+    create_closed_channels_page(&directory, &store, &now);
 }

@@ -57,6 +57,15 @@ pub fn list_forwards() -> ListForwards {
     serde_json::from_str(&str).unwrap()
 }
 
+pub fn list_closed_channels() -> ListClosedChannels {
+    let str = if cfg!(debug_assertions) {
+        cmd_result("cat", &["test-json/listclosedchannels"])
+    } else {
+        cmd_result("lightning-cli", &["listclosedchannels"])
+    };
+    serde_json::from_str(&str).unwrap()
+}
+
 pub fn get_info() -> GetInfo {
     let str = if cfg!(debug_assertions) {
         cmd_result("cat", &["test-json/getinfo"])
@@ -211,6 +220,79 @@ impl Fund {
 #[derive(Deserialize)]
 pub struct ListForwards {
     pub forwards: Vec<Forward>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ListClosedChannels {
+    pub closedchannels: Vec<ClosedChannel>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct ClosedChannel {
+    #[serde(default)]
+    pub peer_id: Option<String>,
+    pub channel_id: String,
+    #[serde(default)]
+    pub short_channel_id: Option<String>,
+    #[serde(default)]
+    pub alias: Option<ChannelAlias>,
+    pub opener: String,
+    #[serde(default)]
+    pub closer: Option<String>,
+    #[serde(default)]
+    pub private: Option<bool>,
+    #[serde(default)]
+    pub channel_type: Option<ChannelType>,
+    #[serde(default)]
+    pub total_local_commitments: Option<u64>,
+    #[serde(default)]
+    pub total_remote_commitments: Option<u64>,
+    #[serde(default)]
+    pub total_htlcs_sent: Option<u64>,
+    pub funding_txid: String,
+    pub funding_outnum: u32,
+    #[serde(default)]
+    pub leased: Option<bool>,
+    pub total_msat: u64,
+    pub final_to_us_msat: u64,
+    pub min_to_us_msat: u64,
+    pub max_to_us_msat: u64,
+    #[serde(default)]
+    pub last_commitment_txid: Option<String>,
+    #[serde(default)]
+    pub last_commitment_fee_msat: Option<u64>,
+    pub close_cause: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct ChannelAlias {
+    #[serde(rename = "local")]
+    pub local_alias: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct ChannelType {
+    pub bits: Vec<u32>,
+    pub names: Vec<String>,
+}
+
+impl ClosedChannel {
+    /// Get the block height when this channel was opened from the short_channel_id
+    pub fn block_born(&self) -> Option<u64> {
+        self.short_channel_id
+            .as_ref()?
+            .split("x")
+            .next()?
+            .parse()
+            .ok()
+    }
+
+    /// Get short_channel_id or a placeholder if not available
+    pub fn short_channel_id_display(&self) -> String {
+        self.short_channel_id
+            .clone()
+            .unwrap_or_else(|| "N/A".to_string())
+    }
 }
 
 #[derive(Deserialize, Debug, Clone)]

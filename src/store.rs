@@ -11,6 +11,7 @@ pub struct Store {
     pub funds: cmd::ListFunds,
     pub forwards: cmd::ListForwards,
     pub nodes: cmd::ListNodes,
+    pub closed_channels: cmd::ListClosedChannels,
     // Cached computed data
     nodes_by_id: HashMap<String, cmd::Node>,
     channels_by_id: HashMap<(String, String), cmd::Channel>,
@@ -29,6 +30,7 @@ impl Store {
         let funds = cmd::list_funds();
         let forwards = cmd::list_forwards();
         let nodes = cmd::list_nodes();
+        let closed_channels = cmd::list_closed_channels();
         log::debug!("Data fetched successfully");
 
         // Compute cached data
@@ -52,6 +54,7 @@ impl Store {
             funds,
             forwards,
             nodes,
+            closed_channels,
             nodes_by_id,
             channels_by_id,
             now,
@@ -257,6 +260,49 @@ impl Store {
             transacted_last_month: self.transacted_last_month_sats(),
         }
     }
+
+    /// Get closed channels with enriched information (alias, duration)
+    pub fn get_closed_channels_info(&self) -> Vec<ClosedChannelInfo> {
+        let current_block = self.info.blockheight;
+        let mut closed_channels: Vec<ClosedChannelInfo> = self
+            .closed_channels
+            .closedchannels
+            .iter()
+            .map(|channel| {
+                let alias = if let Some(peer_id) = &channel.peer_id {
+                    self.get_node_alias(peer_id)
+                } else {
+                    "Unknown Peer".to_string()
+                };
+                let opening_block = channel.block_born();
+                let duration_days = opening_block.map(|block_born| {
+                    // Estimate duration: assuming ~10 minutes per block = ~144 blocks per day
+                    ((current_block.saturating_sub(block_born)) as f64 / 144.0).round() as i64
+                });
+
+                ClosedChannelInfo {
+                    channel: channel.clone(),
+                    alias,
+                    opening_block,
+                    duration_days,
+                }
+            })
+            .collect();
+
+        // Sort by short_channel_id like in the bash script
+        closed_channels.sort_by(|a, b| {
+            a.channel
+                .short_channel_id_display()
+                .cmp(&b.channel.short_channel_id_display())
+        });
+
+        closed_channels
+    }
+
+    /// Get the number of closed channels
+    pub fn closed_channels_len(&self) -> usize {
+        self.closed_channels.closedchannels.len()
+    }
 }
 
 /// APY calculation data
@@ -271,4 +317,13 @@ pub struct ApyData {
     pub apy_6_months: f64,
     pub apy_12_months: f64,
     pub transacted_last_month: u64,
+}
+
+/// Data structure for closed channel with enriched information
+#[derive(Debug, Clone)]
+pub struct ClosedChannelInfo {
+    pub channel: cmd::ClosedChannel,
+    pub alias: String,
+    pub opening_block: Option<u64>,
+    pub duration_days: Option<i64>,
 }
