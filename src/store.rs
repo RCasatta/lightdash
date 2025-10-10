@@ -15,6 +15,7 @@ pub struct Store {
     // Cached computed data
     nodes_by_id: HashMap<String, cmd::Node>,
     channels_by_id: HashMap<(String, String), cmd::Channel>,
+    peer_notes: HashMap<String, String>,
     now: DateTime<Utc>,
 }
 
@@ -47,6 +48,19 @@ impl Store {
             .map(|e| ((e.short_channel_id.clone(), e.source.clone()), e.clone()))
             .collect();
 
+        // Query peer notes from datastore
+        let mut peer_notes = HashMap::new();
+        for peer in &peers.peers {
+            if let Ok(datastore) = cmd::listdatastore(Some(&["lightdash", "peer_note", &peer.id])) {
+                if let Some(entry) = datastore.datastore.first() {
+                    if let Some(note) = &entry.string {
+                        peer_notes.insert(peer.id.clone(), note.clone());
+                    }
+                }
+            }
+        }
+        log::debug!("Loaded {} peer notes from datastore", peer_notes.len());
+
         let store = Self {
             info,
             channels,
@@ -57,6 +71,7 @@ impl Store {
             closed_channels,
             nodes_by_id,
             channels_by_id,
+            peer_notes,
             now,
         };
 
@@ -302,6 +317,11 @@ impl Store {
     /// Get the number of closed channels
     pub fn closed_channels_len(&self) -> usize {
         self.closed_channels.closedchannels.len()
+    }
+
+    /// Get peer note from datastore if it exists
+    pub fn get_peer_note(&self, peer_id: &str) -> Option<&String> {
+        self.peer_notes.get(peer_id)
     }
 }
 

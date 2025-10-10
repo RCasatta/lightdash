@@ -290,6 +290,13 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
                     span class="value" { (peer.features) }
                 }
 
+                @if let Some(note) = store.get_peer_note(&peer.id) {
+                    div class="info-item" {
+                        span class="label" { "Note: " }
+                        span class="value" { (note) }
+                    }
+                }
+
                 @if let Some(node_info) = store.nodes.nodes.iter().find(|n| n.nodeid == peer.id) {
                     div class="info-item" {
                         span class="label" { "Alias: " }
