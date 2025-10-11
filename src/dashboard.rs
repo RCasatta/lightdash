@@ -1453,7 +1453,6 @@ pub fn run_dashboard(store: &Store, directory: String) {
     }
 
     let total_forwards = store.forwards_len();
-    let settled_24h = store.filter_settled_forwards_by_hours(24);
 
     // let jobs = sling_jobsettings();
     let forwards_perc = (settled.len() as f64 / total_forwards as f64) * 100.0;
@@ -1716,14 +1715,6 @@ pub fn run_dashboard(store: &Store, directory: String) {
         let last_update_delta = cut_days(now.signed_duration_since(last_update).num_days());
         let short_channel_id = fund.short_channel_id();
 
-        let (_new_fee, cmd) = calc_setchannel(
-            &short_channel_id,
-            &channel.alias_or_id(),
-            &fund,
-            our.as_ref(),
-            &settled_24h,
-        );
-
         let ever_forw = *per_channel_ever_forwards
             .get(&short_channel_id)
             .unwrap_or(&0u64);
@@ -1779,7 +1770,7 @@ pub fn run_dashboard(store: &Store, directory: String) {
         let s = format!(
             "{min_max:>12} {our_base_fee:1} {our_fee:>5} {short_channel_id:>15} {amount:8} {perc:>3}% {their_fee:>5} {their_base_fee:>3} {last_timestamp_delta:>3} {last_update_delta:>3} {ever_forw:>3} {ever_forw_fee:>5}s {ever_forw_fee_incom:>5}s {gain:>5}g {is_sink_perc:>4} {is_sink_last_month_perc:>4}  {push_pull:4}  {alias_or_id}"
         );
-        lines.push((perc, s, cmd));
+        lines.push((perc, s));
     }
 
     let sum_perces: f64 = perces.iter().sum();
@@ -1806,16 +1797,9 @@ pub fn run_dashboard(store: &Store, directory: String) {
 
     log::debug!("min_max our_base_fee our_fee scid amount perc their_fee their_base_fee last_tstamp_delta last_upd_delta monthly_forw monthly_forw_fee is_sink push/pull alias_or_id");
 
-    for (_, l1, _) in lines.iter() {
+    for (_, l1) in lines.iter() {
         output_content.push_str(&format!("{l1}\n"));
         log::debug!("{l1}");
-    }
-
-    for (_, _, l2) in lines {
-        if let Some(l) = l2 {
-            output_content.push_str(&format!("{l}\n"));
-            log::debug!("{l}");
-        }
     }
 
     // Display sling jobs without executing

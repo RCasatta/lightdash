@@ -361,7 +361,7 @@ impl TryFrom<Forward> for SettledForward {
 // Datastore API methods
 
 /// Store data in the datastore with a given key and string value
-pub fn datastore_string(
+pub fn _datastore_string(
     key: &[&str],
     value: &str,
     mode: DatastoreMode,
@@ -383,7 +383,7 @@ pub fn datastore_string(
 }
 
 /// Store data in the datastore with a given key and hex value
-pub fn datastore_hex(
+pub fn _datastore_hex(
     key: &[&str],
     hex: &str,
     mode: DatastoreMode,
@@ -417,7 +417,7 @@ pub fn listdatastore(key: Option<&[&str]>) -> Result<ListDatastore, String> {
 }
 
 /// Delete data from the datastore
-pub fn deldatastore(key: &[&str]) -> Result<DatastoreResponse, String> {
+pub fn _deldatastore(key: &[&str]) -> Result<DatastoreResponse, String> {
     let key_json = serde_json::to_string(key).map_err(|e| e.to_string())?;
     let args = vec!["deldatastore", "-k", "key", &key_json];
 
@@ -425,6 +425,7 @@ pub fn deldatastore(key: &[&str]) -> Result<DatastoreResponse, String> {
     serde_json::from_str(&str).map_err(|e| format!("Failed to parse response: {}", e))
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub enum DatastoreMode {
     MustCreate,
@@ -435,6 +436,7 @@ pub enum DatastoreMode {
 }
 
 impl DatastoreMode {
+    #[allow(dead_code)]
     pub fn as_str(&self) -> &'static str {
         match self {
             DatastoreMode::MustCreate => "must-create",
