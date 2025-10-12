@@ -116,9 +116,11 @@ fn create_html_header(title: &str) -> Markup {
 
 /// Create common page header with navigation links
 fn create_page_header(title: &str, is_subdir: bool) -> Markup {
-    let (home_link, channels_link, forwards_link, apy_link, closed_link) = if is_subdir {
+    let (home_link, peers_link, channels_link, forwards_link, apy_link, closed_link) = if is_subdir
+    {
         (
             "../index.html",
+            "../peers/",
             "../channels/",
             "../forwards-week.html",
             "../apy.html",
@@ -127,6 +129,7 @@ fn create_page_header(title: &str, is_subdir: bool) -> Markup {
     } else {
         (
             "index.html",
+            "peers/",
             "channels/",
             "forwards-week.html",
             "apy.html",
@@ -139,6 +142,7 @@ fn create_page_header(title: &str, is_subdir: bool) -> Markup {
             h1 { (title) }
             div class="back-link" {
                 a href=(home_link) { "Home" } " | "
+                a href=(peers_link) { "Peers" } " | "
                 a href=(channels_link) { "Channels" } " | "
                 a href=(forwards_link) { "Forwards" } " | "
                 a href=(apy_link) { "APY" } " | "
@@ -234,6 +238,13 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
                             } @else {
                                 "No"
                             }
+                        }
+                    }
+
+                    @if let Some(note) = store.get_peer_note(&peer.id) {
+                        div class="info-item" {
+                            span class="label" { "Note: " }
+                            span class="value" { (note) }
                         }
                     }
                 }
