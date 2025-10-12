@@ -373,8 +373,8 @@ pub fn datastore_string(
     let args: Vec<String> = vec![
         "datastore".to_string(),
         "-k".to_string(),
-        format!("key='{}'", key_json),
-        format!("string='{}'", value),
+        format!("key={}", key_json),
+        format!("string={}", value),
         format!("mode={}", mode.as_str()),
     ];
 
