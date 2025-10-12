@@ -379,7 +379,10 @@ pub fn datastore_string(
     ];
 
     let str = cmd_result("lightning-cli", &args);
-    serde_json::from_str(&str).map_err(|e| format!("Failed to parse response: {}", e))
+    log::info!("datastore command args: {:?}", args);
+    log::info!("datastore response: {}", str);
+    serde_json::from_str(&str)
+        .map_err(|e| format!("Failed to parse response: {} - Response was: {}", e, str))
 }
 
 /// List/retrieve data from the datastore, optionally filtered by key
