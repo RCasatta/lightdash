@@ -673,6 +673,8 @@ fn create_channel_pages(
     store: &Store,
     now: &chrono::DateTime<chrono::Utc>,
     our_node_id: &String,
+    per_channel_last_forward_in: &HashMap<String, DateTime<Utc>>,
+    per_channel_last_forward_out: &HashMap<String, DateTime<Utc>>,
 ) {
     let channels_dir = format!("{}/channels", directory);
 
@@ -974,6 +976,50 @@ fn create_channel_pages(
                             span class="label" { "Delay: " }
                             span class="value" { (format!("{} blocks", channel_info.delay)) }
                         }
+                    }
+                }
+            }
+
+            // Forward Activity Information
+            div class="info-card" {
+                h2 { "Forward Activity" }
+
+                @if let Some(scid) = &channel.short_channel_id {
+                    @if let Some(last_inbound) = per_channel_last_forward_in.get(scid) {
+                        div class="info-item" {
+                            span class="label" { "Last Inbound Forward: " }
+                            span class="value" {
+                                (format!("{} ago", format_duration(now.signed_duration_since(*last_inbound))))
+                                br;
+                                (format!("({})", last_inbound.format("%Y-%m-%d %H:%M:%S UTC")))
+                            }
+                        }
+                    } @else {
+                        div class="info-item" {
+                            span class="label" { "Last Inbound Forward: " }
+                            span class="value" { "Never" }
+                        }
+                    }
+
+                    @if let Some(last_outbound) = per_channel_last_forward_out.get(scid) {
+                        div class="info-item" {
+                            span class="label" { "Last Outbound Forward: " }
+                            span class="value" {
+                                (format!("{} ago", format_duration(now.signed_duration_since(*last_outbound))))
+                                br;
+                                (format!("({})", last_outbound.format("%Y-%m-%d %H:%M:%S UTC")))
+                            }
+                        }
+                    } @else {
+                        div class="info-item" {
+                            span class="label" { "Last Outbound Forward: " }
+                            span class="value" { "Never" }
+                        }
+                    }
+                } @else {
+                    div class="info-item" {
+                        span class="label" { "Forward Activity: " }
+                        span class="value" { "Channel ID not available" }
                     }
                 }
             }
@@ -1496,6 +1542,9 @@ pub fn run_dashboard(store: &Store, directory: String) {
     let mut per_channel_forwards_in_last_month: HashMap<String, u64> = HashMap::new();
     let mut per_channel_forwards_out_last_month: HashMap<String, u64> = HashMap::new();
 
+    let mut per_channel_last_forward_in: HashMap<String, DateTime<Utc>> = HashMap::new();
+    let mut per_channel_last_forward_out: HashMap<String, DateTime<Utc>> = HashMap::new();
+
     for s in settled.iter() {
         let d = s.resolved_time;
         first = first.min(d);
@@ -1506,6 +1555,25 @@ pub fn run_dashboard(store: &Store, directory: String) {
         *per_channel_forwards_out
             .entry(s.out_channel.to_string())
             .or_default() += 1;
+
+        // Track the most recent forward timestamp for each channel
+        per_channel_last_forward_in
+            .entry(s.in_channel.to_string())
+            .and_modify(|existing| {
+                if s.resolved_time > *existing {
+                    *existing = s.resolved_time;
+                }
+            })
+            .or_insert(s.resolved_time);
+
+        per_channel_last_forward_out
+            .entry(s.out_channel.to_string())
+            .and_modify(|existing| {
+                if s.resolved_time > *existing {
+                    *existing = s.resolved_time;
+                }
+            })
+            .or_insert(s.resolved_time);
 
         *per_channel_ever_forwards
             .entry(s.out_channel.to_string())
@@ -1843,7 +1911,15 @@ pub fn run_dashboard(store: &Store, directory: String) {
     create_peer_pages(&directory, &store, &now);
 
     // Create channels directory and individual channel pages
-    create_channel_pages(&directory, &normal_channels, &store, &now, &store.info.id);
+    create_channel_pages(
+        &directory,
+        &normal_channels,
+        &store,
+        &now,
+        &store.info.id,
+        &per_channel_last_forward_in,
+        &per_channel_last_forward_out,
+    );
 
     // Create forwards page
     create_forwards_page(&directory, &store, &now, &store.info.id);

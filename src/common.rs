@@ -129,7 +129,7 @@ pub fn calc_setchannel(
     let result = if current_ppm != new_ppm {
         let cmd = "lightning-cli";
         let args =
-            format!("setchannel {short_channel_id} 0 {new_ppm} {MIN_HTLC}sat {max_htlc_sat}");
+            format!("setchannel {short_channel_id} 1000 {new_ppm} {MIN_HTLC}sat {max_htlc_sat}");
 
         // Always execute fee adjustments
         let splitted_args: Vec<&str> = args.split(' ').collect();
@@ -163,5 +163,26 @@ pub fn cut_days(d: i64) -> String {
         "99+".to_string()
     } else {
         format!("{d:>2}d")
+    }
+}
+
+use chrono::Duration;
+
+/// Format a duration in a human-readable way
+pub fn format_duration(duration: Duration) -> String {
+    let total_seconds = duration.num_seconds().abs();
+    let days = total_seconds / 86400;
+    let hours = (total_seconds % 86400) / 3600;
+    let minutes = (total_seconds % 3600) / 60;
+    let seconds = total_seconds % 60;
+
+    if days > 0 {
+        format!("{}d {}h {}m", days, hours, minutes)
+    } else if hours > 0 {
+        format!("{}h {}m {}s", hours, minutes, seconds)
+    } else if minutes > 0 {
+        format!("{}m {}s", minutes, seconds)
+    } else {
+        format!("{}s", seconds)
     }
 }
