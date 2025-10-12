@@ -362,27 +362,48 @@ impl TryFrom<Forward> for SettledForward {
 }
 
 // Datastore API methods
-
-/// Store data in the datastore with a given key and string value
+/// Store data in the datastore with a given key and string value.
+/// This version correctly formats BOTH the key and the string value as JSON.
 pub fn datastore_string(
     key: &[&str],
     value: &str,
     mode: DatastoreMode,
 ) -> Result<DatastoreResponse, String> {
-    let key_json = serde_json::to_string(key).map_err(|e| e.to_string())?;
+    // 1. JSON-encode the key array.
+    //    Example: &["lightdash", "last_run"] -> "[\"lightdash\",\"last_run\"]"
+    let key_json = serde_json::to_string(key)
+        .map_err(|e| format!("Failed to serialize key to JSON: {}", e))?;
+
+    // 2. JSON-encode the string value. THIS IS THE CRITICAL FIX.
+    //    Example: "1760287752" -> "\"1760287752\"" (Note the added quotes)
+    let value_json = serde_json::to_string(value)
+        .map_err(|e| format!("Failed to serialize value to JSON: {}", e))?;
+
     let args: Vec<String> = vec![
         "datastore".to_string(),
         "-k".to_string(),
+        // Correct format: key=["lightdash","last_run"]
         format!("key={}", key_json),
-        format!("string={}", value),
+        // Correct format: string="1760287752"
+        format!("string={}", value_json), // <-- This line is now correct
         format!("mode={}", mode.as_str()),
     ];
 
-    let str = cmd_result("lightning-cli", &args);
-    log::info!("datastore command args: {:?}", args);
-    log::info!("datastore response: {}", str);
-    serde_json::from_str(&str)
-        .map_err(|e| format!("Failed to parse response: {} - Response was: {}", e, str))
+    log::info!("Executing lightning-cli with args: {:?}", args);
+    let response_str = cmd_result("lightning-cli", &args);
+    log::info!("Received response: {}", response_str);
+
+    // It's also good practice to check for an error response before parsing
+    if response_str.contains("\"code\":") {
+        return Err(format!("lightning-cli returned an error: {}", response_str));
+    }
+
+    serde_json::from_str(&response_str).map_err(|e| {
+        format!(
+            "Failed to parse successful response JSON: {} - Response was: {}",
+            e, response_str
+        )
+    })
 }
 
 /// List/retrieve data from the datastore, optionally filtered by key
