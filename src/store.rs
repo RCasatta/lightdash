@@ -69,7 +69,6 @@ impl Store {
                 }
             }
         }
-        log::info!("Loaded {} peer notes from datastore", peer_notes.len());
 
         // Query setchannel timestamps from datastore
         let mut setchannel_timestamps = HashMap::new();
@@ -93,10 +92,6 @@ impl Store {
                 }
             }
         }
-        log::info!(
-            "Loaded {} setchannel timestamps from datastore",
-            setchannel_timestamps.len()
-        );
 
         let store = Self {
             info,
