@@ -1,4 +1,4 @@
-use crate::cmd::{self, SettledForward};
+use crate::cmd::{self, datastore_string, DatastoreMode, SettledForward};
 use crate::common::ChannelFee;
 use chrono::{DateTime, Datelike, Utc};
 use std::collections::{HashMap, HashSet};
@@ -92,6 +92,14 @@ impl Store {
                 }
             }
         }
+
+        let timestamp = Utc::now().timestamp().to_string();
+        datastore_string(
+            &["lightdash", "last_run", &timestamp],
+            &timestamp,
+            DatastoreMode::CreateOrReplace,
+        )
+        .unwrap();
 
         let store = Self {
             info,
