@@ -94,12 +94,14 @@ impl Store {
         }
 
         let timestamp = Utc::now().timestamp().to_string();
-        datastore_string(
+        let result = datastore_string(
             &["lightdash", "last_run", &timestamp],
             &timestamp,
             DatastoreMode::CreateOrReplace,
         )
         .unwrap();
+
+        log::info!("Last run timestamp saved: {:?}", result);
 
         let store = Self {
             info,
