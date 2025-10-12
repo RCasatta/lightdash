@@ -16,6 +16,7 @@ pub struct Store {
     nodes_by_id: HashMap<String, cmd::Node>,
     channels_by_id: HashMap<(String, String), cmd::Channel>,
     peer_notes: HashMap<String, String>,
+    setchannel_timestamps: HashMap<String, i64>,
     now: DateTime<Utc>,
 }
 
@@ -70,6 +71,33 @@ impl Store {
         }
         log::info!("Loaded {} peer notes from datastore", peer_notes.len());
 
+        // Query setchannel timestamps from datastore
+        let mut setchannel_timestamps = HashMap::new();
+        if let Ok(datastore) = cmd::listdatastore(Some(&["lightdash", "last_setchannel"])) {
+            log::info!(
+                "Loaded {} setchannel timestamps from datastore",
+                datastore.datastore.len()
+            );
+            for entry in datastore.datastore {
+                // The key format is ["lightdash", "last_setchannel", "short_channel_id"]
+                if entry.key.len() == 3
+                    && entry.key[0] == "lightdash"
+                    && entry.key[1] == "last_setchannel"
+                {
+                    let short_channel_id = &entry.key[2];
+                    if let Some(timestamp_str) = &entry.string {
+                        if let Ok(timestamp) = timestamp_str.parse::<i64>() {
+                            setchannel_timestamps.insert(short_channel_id.clone(), timestamp);
+                        }
+                    }
+                }
+            }
+        }
+        log::info!(
+            "Loaded {} setchannel timestamps from datastore",
+            setchannel_timestamps.len()
+        );
+
         let store = Self {
             info,
             channels,
@@ -81,6 +109,7 @@ impl Store {
             nodes_by_id,
             channels_by_id,
             peer_notes,
+            setchannel_timestamps,
             now,
         };
 
@@ -331,6 +360,11 @@ impl Store {
     /// Get peer note from datastore if it exists
     pub fn get_peer_note(&self, peer_id: &str) -> Option<&String> {
         self.peer_notes.get(peer_id)
+    }
+
+    /// Get setchannel timestamp from datastore if it exists
+    pub fn get_setchannel_timestamp(&self, short_channel_id: &str) -> Option<i64> {
+        self.setchannel_timestamps.get(short_channel_id).copied()
     }
 }
 

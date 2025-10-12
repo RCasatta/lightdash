@@ -1023,6 +1023,41 @@ fn create_channel_pages(
                     }
                 }
             }
+
+            // Channel Management Information
+            div class="info-card" {
+                h2 { "Channel Management" }
+
+                @if let Some(scid) = &channel.short_channel_id {
+                    @if let Some(timestamp) = store.get_setchannel_timestamp(scid) {
+                        @if let Some(datetime) = chrono::DateTime::from_timestamp(timestamp, 0) {
+                            div class="info-item" {
+                                span class="label" { "Last Fee Adjustment: " }
+                                span class="value" {
+                                    (format!("{} ago", format_duration(now.signed_duration_since(datetime))))
+                                    br;
+                                    (format!("({})", datetime.format("%Y-%m-%d %H:%M:%S UTC")))
+                                }
+                            }
+                        } @else {
+                            div class="info-item" {
+                                span class="label" { "Last Fee Adjustment: " }
+                                span class="value" { "Invalid timestamp" }
+                            }
+                        }
+                    } @else {
+                        div class="info-item" {
+                            span class="label" { "Last Fee Adjustment: " }
+                            span class="value" { "Never" }
+                        }
+                    }
+                } @else {
+                    div class="info-item" {
+                        span class="label" { "Channel Management: " }
+                        span class="value" { "Channel ID not available" }
+                    }
+                }
+            }
         };
 
         let channel_file_name = if let Some(scid) = &channel.short_channel_id {
