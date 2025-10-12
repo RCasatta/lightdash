@@ -84,9 +84,12 @@ pub fn get_route(id: &str) -> Option<GetRoute> {
     serde_json::from_str(&str).ok()
 }
 
-pub fn cmd_result(cmd: &str, args: &[&str]) -> String {
+pub fn cmd_result(cmd: &str, args: &[impl AsRef<str>]) -> String {
     // println!("cmd:{cmd} args:{args:?}");
-    let data = std::process::Command::new(cmd).args(args).output().unwrap();
+    let data = std::process::Command::new(cmd)
+        .args(args.iter().map(|s| s.as_ref()))
+        .output()
+        .unwrap();
     std::str::from_utf8(&data.stdout).unwrap().to_string()
 }
 
@@ -361,43 +364,18 @@ impl TryFrom<Forward> for SettledForward {
 // Datastore API methods
 
 /// Store data in the datastore with a given key and string value
-pub fn _datastore_string(
+pub fn datastore_string(
     key: &[&str],
     value: &str,
     mode: DatastoreMode,
 ) -> Result<DatastoreResponse, String> {
     let key_json = serde_json::to_string(key).map_err(|e| e.to_string())?;
-    let args = vec![
-        "datastore",
-        "-k",
-        "key",
-        &key_json,
-        "string",
-        value,
-        "mode",
-        mode.as_str(),
-    ];
-
-    let str = cmd_result("lightning-cli", &args);
-    serde_json::from_str(&str).map_err(|e| format!("Failed to parse response: {}", e))
-}
-
-/// Store data in the datastore with a given key and hex value
-pub fn _datastore_hex(
-    key: &[&str],
-    hex: &str,
-    mode: DatastoreMode,
-) -> Result<DatastoreResponse, String> {
-    let key_json = serde_json::to_string(key).map_err(|e| e.to_string())?;
-    let args = vec![
-        "datastore",
-        "-k",
-        "key",
-        &key_json,
-        "hex",
-        hex,
-        "mode",
-        mode.as_str(),
+    let args: Vec<String> = vec![
+        "datastore".to_string(),
+        "-k".to_string(),
+        format!("key={}", key_json),
+        format!("string={}", value),
+        format!("mode={}", mode.as_str()),
     ];
 
     let str = cmd_result("lightning-cli", &args);

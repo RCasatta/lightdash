@@ -1,3 +1,4 @@
+use chrono::Utc;
 use std::collections::HashSet;
 
 pub const PPM_MIN: u64 = 10; // minimum between 100% and 50%
@@ -135,6 +136,20 @@ pub fn calc_setchannel(
         let splitted_args: Vec<&str> = args.split(' ').collect();
         let _result = crate::cmd::cmd_result(cmd, &splitted_args);
         // println!("{result}");
+
+        // Save timestamp to datastore
+        let timestamp = Utc::now().timestamp().to_string();
+        if let Err(e) = crate::cmd::datastore_string(
+            &["lightdash", "last_setchannel", short_channel_id],
+            &timestamp,
+            crate::cmd::DatastoreMode::CreateOrReplace,
+        ) {
+            eprintln!(
+                "Failed to save setchannel timestamp for {}: {}",
+                short_channel_id, e
+            );
+        }
+
         let truncated_min_str = if truncated_min { "truncated_min" } else { "" };
 
         Some(format!(
