@@ -408,7 +408,7 @@ pub fn _datastore_hex(
 pub fn listdatastore(key: Option<&[&str]>) -> Result<ListDatastore, String> {
     let str = if let Some(k) = key {
         let key_json = serde_json::to_string(k).map_err(|e| e.to_string())?;
-        cmd_result("lightning-cli", &["listdatastore", "-k", "key", &key_json])
+        cmd_result("lightning-cli", &["listdatastore", "-k", &key_json])
     } else {
         cmd_result("lightning-cli", &["listdatastore"])
     };
