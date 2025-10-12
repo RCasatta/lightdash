@@ -698,9 +698,43 @@ fn create_channel_pages(
         a_id.cmp(b_id)
     });
 
+    // Calculate global channel statistics
+    let total_inbound: u64 = channels.iter().map(|c| c.our_amount_msat / 1000).sum();
+    let total_outbound: u64 = channels
+        .iter()
+        .map(|c| (c.amount_msat - c.our_amount_msat) / 1000)
+        .sum();
+    let total_liquidity = total_inbound + total_outbound;
+    let global_balance_percentage = if total_liquidity > 0 {
+        (total_inbound as f64 / total_liquidity as f64) * 100.0
+    } else {
+        0.0
+    };
+
     // Create channels index page
     let channels_index_content = html! {
         (create_page_header("Channels", true))
+
+        div class="info-card" {
+            h2 { "Channel Liquidity Summary" }
+            div class="info-item" {
+                span class="label" { "Total Inbound Available: " }
+                span class="value" { (format!("{} sats", total_inbound)) }
+            }
+            div class="info-item" {
+                span class="label" { "Total Outbound Available: " }
+                span class="value" { (format!("{} sats", total_outbound)) }
+            }
+            div class="info-item" {
+                span class="label" { "Global Balance: " }
+                span class="value" { (format!("{:.1}% inbound", global_balance_percentage)) }
+            }
+            div class="progress-bar" {
+                div class="progress-fill" style={
+                    (format!("width: {:.1}%", global_balance_percentage))
+                } {}
+            }
+        }
 
         div class="info-card" {
             h2 { "Channel List (Sorted by Balance percentage)" }
