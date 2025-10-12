@@ -50,12 +50,20 @@ impl Store {
 
         // Query peer notes from datastore
         let mut peer_notes = HashMap::new();
-        for peer in &peers.peers {
-            // TODO can query for just ["lightdash", "peer_note"] and then iterate over the results
-            if let Ok(datastore) = cmd::listdatastore(Some(&["lightdash", "peer_note", &peer.id])) {
-                if let Some(entry) = datastore.datastore.first() {
+        if let Ok(datastore) = cmd::listdatastore(Some(&["lightdash", "peer_note"])) {
+            log::info!(
+                "Loaded {} peer notes from datastore",
+                datastore.datastore.len()
+            );
+            for entry in datastore.datastore {
+                // The key format is ["lightdash", "peer_note", "peer_id"]
+                if entry.key.len() == 3
+                    && entry.key[0] == "lightdash"
+                    && entry.key[1] == "peer_note"
+                {
+                    let peer_id = &entry.key[2];
                     if let Some(note) = &entry.string {
-                        peer_notes.insert(peer.id.clone(), note.clone());
+                        peer_notes.insert(peer_id.clone(), note.clone());
                     }
                 }
             }
