@@ -369,6 +369,17 @@ pub fn datastore_string(
     value: &str,
     mode: DatastoreMode,
 ) -> Result<DatastoreResponse, String> {
+    // In debug mode, skip datastore operations
+    if cfg!(debug_assertions) {
+        log::debug!("Debug mode: Skipping datastore_string for key {:?}", key);
+        return Ok(DatastoreResponse {
+            key: key.iter().map(|s| s.to_string()).collect(),
+            generation: Some(1),
+            hex: None,
+            string: Some(value.to_string()),
+        });
+    }
+
     // 1. JSON-encode the key array.
     //    Example: &["lightdash", "last_run"] -> "[\"lightdash\",\"last_run\"]"
     let key_json = serde_json::to_string(key)
@@ -408,6 +419,12 @@ pub fn datastore_string(
 
 /// List/retrieve data from the datastore, optionally filtered by key
 pub fn listdatastore(key: Option<&[&str]>) -> Result<ListDatastore, String> {
+    // In debug mode, return empty datastore
+    if cfg!(debug_assertions) {
+        log::debug!("Debug mode: Skipping listdatastore for key {:?}", key);
+        return Ok(ListDatastore { datastore: vec![] });
+    }
+
     let str = if let Some(k) = key {
         let key_json = serde_json::to_string(k).map_err(|e| e.to_string())?;
         cmd_result("lightning-cli", &["listdatastore", &key_json])
@@ -420,6 +437,17 @@ pub fn listdatastore(key: Option<&[&str]>) -> Result<ListDatastore, String> {
 
 /// Delete data from the datastore
 pub fn _deldatastore(key: &[&str]) -> Result<DatastoreResponse, String> {
+    // In debug mode, skip datastore operations
+    if cfg!(debug_assertions) {
+        log::debug!("Debug mode: Skipping _deldatastore for key {:?}", key);
+        return Ok(DatastoreResponse {
+            key: key.iter().map(|s| s.to_string()).collect(),
+            generation: Some(1),
+            hex: None,
+            string: None,
+        });
+    }
+
     let key_json = serde_json::to_string(key).map_err(|e| e.to_string())?;
     let args = vec!["deldatastore", "-k", "key", &key_json];
 
