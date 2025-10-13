@@ -374,9 +374,6 @@ impl Store {
 
     /// Get fee distribution data for a specific peer based on its channels
     pub fn get_peer_fee_distribution(&self, peer_id: &str) -> FeeDistribution {
-        // Define PPM ranges
-        // Ranges: 0-10 by 1, 10-100 by 10, 100-1000 by 100, 1000-5000 by 1000
-
         let ppm_ranges = Self::generate_ppm_ranges();
 
         let mut outgoing_amounts: Vec<u64> = vec![0; ppm_ranges.len()];
@@ -411,43 +408,25 @@ impl Store {
 
     fn generate_ppm_ranges() -> Vec<(u64, u64, String)> {
         vec![
-            // 0 to 10 by 1
-            (0, 0, "0 ppm".to_string()),
-            (1, 1, "1 ppm".to_string()),
-            (2, 2, "2 ppm".to_string()),
-            (3, 3, "3 ppm".to_string()),
-            (4, 4, "4 ppm".to_string()),
-            (5, 5, "5 ppm".to_string()),
-            (6, 6, "6 ppm".to_string()),
-            (7, 7, "7 ppm".to_string()),
-            (8, 8, "8 ppm".to_string()),
-            (9, 9, "9 ppm".to_string()),
-            (10, 10, "10 ppm".to_string()),
-            // 11 to 100 by 10
-            (11, 20, "11-20 ppm".to_string()),
-            (21, 30, "21-30 ppm".to_string()),
-            (31, 40, "31-40 ppm".to_string()),
-            (41, 50, "41-50 ppm".to_string()),
-            (51, 60, "51-60 ppm".to_string()),
-            (61, 70, "61-70 ppm".to_string()),
-            (71, 80, "71-80 ppm".to_string()),
-            (81, 90, "81-90 ppm".to_string()),
-            (91, 100, "91-100 ppm".to_string()),
-            // 100 to 1000 by 100
-            (100, 199, "100-199 ppm".to_string()),
-            (200, 299, "200-299 ppm".to_string()),
-            (300, 399, "300-399 ppm".to_string()),
-            (400, 499, "400-499 ppm".to_string()),
-            (500, 599, "500-599 ppm".to_string()),
-            (600, 699, "600-699 ppm".to_string()),
-            (700, 799, "700-799 ppm".to_string()),
-            (800, 899, "800-899 ppm".to_string()),
-            (900, 999, "900-999 ppm".to_string()),
-            // 1000 to 5000 by 1000
-            (1000, 1999, "1000-1999 ppm".to_string()),
-            (2000, 2999, "2000-2999 ppm".to_string()),
-            (3000, 3999, "3000-3999 ppm".to_string()),
-            (4000, 4999, "4000-4999 ppm".to_string()),
+            // 0 to 10 by 2
+            (0, 1, "0-1 ppm".to_string()),
+            (2, 3, "2-3 ppm".to_string()),
+            (4, 5, "4-5 ppm".to_string()),
+            (6, 7, "6-7 ppm".to_string()),
+            (8, 10, "8-10 ppm".to_string()),
+            // 11 to 100 by 20
+            (11, 30, "11-30 ppm".to_string()),
+            (31, 50, "31-50 ppm".to_string()),
+            (51, 70, "51-70 ppm".to_string()),
+            (71, 100, "71-100 ppm".to_string()),
+            // 100 to 1000 by 200
+            (101, 300, "101-300 ppm".to_string()),
+            (301, 500, "301-500 ppm".to_string()),
+            (501, 700, "501-700 ppm".to_string()),
+            (701, 1000, "701-1000 ppm".to_string()),
+            // 1000 to 5000 by 2000
+            (1001, 3000, "1001-3000 ppm".to_string()),
+            (3001, 5000, "3001-5000 ppm".to_string()),
         ]
     }
 }

@@ -418,12 +418,9 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
                         }
                     }
                     div class="fee-chart-x-axis" {
-                        @for (i, label) in fee_dist.labels.iter().enumerate() {
-                            @let show_label = i == 0 || i == 3 || i == 7 || i == 10 || (i >= 11 && (i - 11) % 3 == 0) || (i >= 20 && (i - 20) % 3 == 0) || i == fee_dist.labels.len() - 1;
+                        @for (_i, label) in fee_dist.labels.iter().enumerate() {
                             div class="fee-chart-x-label" {
-                                @if show_label {
-                                    (label)
-                                }
+                                (label)
                             }
                         }
                     }
@@ -465,12 +462,9 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
                         }
                     }
                     div class="fee-chart-x-axis" {
-                        @for (i, label) in fee_dist.labels.iter().enumerate() {
-                            @let show_label = i == 0 || i == 3 || i == 7 || i == 10 || (i >= 11 && (i - 11) % 3 == 0) || (i >= 20 && (i - 20) % 3 == 0) || i == fee_dist.labels.len() - 1;
+                        @for (_i, label) in fee_dist.labels.iter().enumerate() {
                             div class="fee-chart-x-label" {
-                                @if show_label {
-                                    (label)
-                                }
+                                (label)
                             }
                         }
                     }
