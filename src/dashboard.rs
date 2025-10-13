@@ -387,6 +387,20 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
                 h2 { "Outgoing Fee Distribution" }
 
                 div class="fee-chart-container" {
+                    div class="fee-chart-y-axis" {
+                        @for i in (0..=4).rev() {
+                            @let value = (max_amount as f64 * i as f64 / 4.0) as u64;
+                            div class="fee-chart-y-label" {
+                                @if value >= 1_000_000 {
+                                    (format!("{}M", value / 1_000_000))
+                                } @else if value >= 1_000 {
+                                    (format!("{}K", value / 1_000))
+                                } @else {
+                                    (format!("{}", value))
+                                }
+                            }
+                        }
+                    }
                     div class="fee-chart-bars-container" {
                         @for (i, _label) in fee_dist.labels.iter().enumerate() {
                             @let outgoing = fee_dist.outgoing_amounts[i];
@@ -395,17 +409,7 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
                                     @if outgoing > 0 {
                                         div class="fee-bar outgoing" style={
                                             (format!("height: {}px", (outgoing as f64 / max_amount as f64 * 120.0) as u64))
-                                        } {
-                                            @if outgoing > 0 && (outgoing as f64 / max_amount as f64) > 0.15 {
-                                                @if outgoing >= 1_000_000 {
-                                                    div class="fee-bar-value" { (format!("{}M", outgoing / 1_000_000)) }
-                                                } @else if outgoing >= 1_000 {
-                                                    div class="fee-bar-value" { (format!("{}K", outgoing / 1_000)) }
-                                                } @else {
-                                                    div class="fee-bar-value" { (format!("{}", outgoing)) }
-                                                }
-                                            }
-                                        }
+                                        } {}
                                     } @else {
                                         div class="fee-bar-empty" {}
                                     }
@@ -430,6 +434,20 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
                 h2 { "Incoming Fee Distribution" }
 
                 div class="fee-chart-container" {
+                    div class="fee-chart-y-axis" {
+                        @for i in (0..=4).rev() {
+                            @let value = (max_amount as f64 * i as f64 / 4.0) as u64;
+                            div class="fee-chart-y-label" {
+                                @if value >= 1_000_000 {
+                                    (format!("{}M", value / 1_000_000))
+                                } @else if value >= 1_000 {
+                                    (format!("{}K", value / 1_000))
+                                } @else {
+                                    (format!("{}", value))
+                                }
+                            }
+                        }
+                    }
                     div class="fee-chart-bars-container" {
                         @for (i, _label) in fee_dist.labels.iter().enumerate() {
                             @let incoming = fee_dist.incoming_amounts[i];
@@ -438,17 +456,7 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
                                     @if incoming > 0 {
                                         div class="fee-bar incoming" style={
                                             (format!("height: {}px", (incoming as f64 / max_amount as f64 * 120.0) as u64))
-                                        } {
-                                            @if incoming > 0 && (incoming as f64 / max_amount as f64) > 0.15 {
-                                                @if incoming >= 1_000_000 {
-                                                    div class="fee-bar-value" { (format!("{}M", incoming / 1_000_000)) }
-                                                } @else if incoming >= 1_000 {
-                                                    div class="fee-bar-value" { (format!("{}K", incoming / 1_000)) }
-                                                } @else {
-                                                    div class="fee-bar-value" { (format!("{}", incoming)) }
-                                                }
-                                            }
-                                        }
+                                        } {}
                                     } @else {
                                         div class="fee-bar-empty" {}
                                     }
@@ -480,12 +488,44 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
                     position: relative;
                 }
 
+                .fee-chart-y-axis {
+                    position: absolute;
+                    left: 20px;
+                    top: 20px;
+                    height: 120px;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: space-between;
+                    z-index: 1;
+                }
+
+                .fee-chart-y-label {
+                    color: #a0aec0;
+                    font-size: 10px;
+                    text-align: right;
+                    padding-right: 8px;
+                    min-width: 40px;
+                    height: 0;
+                    position: relative;
+                }
+
+                .fee-chart-y-label::after {
+                    content: '';
+                    position: absolute;
+                    left: 48px;
+                    top: 0;
+                    width: calc(100vw - 100px);
+                    height: 1px;
+                    background-color: #2d3748;
+                    z-index: 0;
+                }
+
                 .fee-chart-bars-container {
                     display: flex;
                     justify-content: space-between;
                     align-items: flex-end;
-                    min-height: 140px;
-                    padding: 10px 5px 5px 5px;
+                    min-height: 120px;
+                    padding: 0 5px 0 55px;
                     position: relative;
                 }
 
@@ -495,6 +535,7 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
                     align-items: center;
                     flex: 1;
                     position: relative;
+                    z-index: 2;
                 }
 
                 .fee-bar-wrapper {
@@ -506,12 +547,9 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
                 }
 
                 .fee-bar {
-                    width: 8px;
+                    width: 16px;
                     min-height: 2px;
                     position: relative;
-                    display: flex;
-                    align-items: flex-start;
-                    justify-content: center;
                     transition: all 0.3s ease;
                     border-radius: 3px 3px 0 0;
                 }
@@ -529,24 +567,15 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
                 }
 
                 .fee-bar-empty {
-                    width: 8px;
+                    width: 16px;
                     height: 2px;
                     background-color: #2d3748;
-                }
-
-                .fee-bar-value {
-                    position: absolute;
-                    top: -15px;
-                    font-size: 9px;
-                    color: #f8f8f2;
-                    white-space: nowrap;
-                    font-weight: 500;
                 }
 
                 .fee-chart-x-axis {
                     display: flex;
                     justify-content: space-between;
-                    padding: 5px 5px 0 5px;
+                    padding: 5px 5px 0 55px;
                     margin-top: 5px;
                     border-top: 1px solid #4a5568;
                 }
