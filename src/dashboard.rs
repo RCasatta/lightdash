@@ -265,6 +265,16 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
     }
 
     for peer in store.peers() {
+        // Calculate fee distribution for this peer
+        let fee_dist = store.get_peer_fee_distribution(&peer.id);
+        let max_amount = fee_dist
+            .outgoing_amounts
+            .iter()
+            .chain(fee_dist.incoming_amounts.iter())
+            .max()
+            .copied()
+            .unwrap_or(1);
+
         let peer_content = html! {
             (create_page_header("Peer Details", true))
 
@@ -369,6 +379,187 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
                         }
                     }
                 }
+            }
+
+            // Fee Distribution Charts for this peer
+
+            div class="info-card" {
+                h2 { "Outgoing Fee Distribution" }
+
+                div class="fee-chart-container" {
+                    div class="fee-chart-bars-container" {
+                        @for (i, _label) in fee_dist.labels.iter().enumerate() {
+                            @let outgoing = fee_dist.outgoing_amounts[i];
+                            div class="fee-chart-group" {
+                                div class="fee-bar-wrapper" {
+                                    @if outgoing > 0 {
+                                        div class="fee-bar outgoing" style={
+                                            (format!("height: {}px", (outgoing as f64 / max_amount as f64 * 120.0) as u64))
+                                        } {
+                                            @if outgoing > 0 && (outgoing as f64 / max_amount as f64) > 0.15 {
+                                                @if outgoing >= 1_000_000 {
+                                                    div class="fee-bar-value" { (format!("{}M", outgoing / 1_000_000)) }
+                                                } @else if outgoing >= 1_000 {
+                                                    div class="fee-bar-value" { (format!("{}K", outgoing / 1_000)) }
+                                                } @else {
+                                                    div class="fee-bar-value" { (format!("{}", outgoing)) }
+                                                }
+                                            }
+                                        }
+                                    } @else {
+                                        div class="fee-bar-empty" {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    div class="fee-chart-x-axis" {
+                        @for (i, label) in fee_dist.labels.iter().enumerate() {
+                            @let show_label = i == 0 || i == 3 || i == 7 || i == 10 || (i >= 11 && (i - 11) % 3 == 0) || (i >= 20 && (i - 20) % 3 == 0) || i == fee_dist.labels.len() - 1;
+                            div class="fee-chart-x-label" {
+                                @if show_label {
+                                    (label)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            div class="info-card" {
+                h2 { "Incoming Fee Distribution" }
+
+                div class="fee-chart-container" {
+                    div class="fee-chart-bars-container" {
+                        @for (i, _label) in fee_dist.labels.iter().enumerate() {
+                            @let incoming = fee_dist.incoming_amounts[i];
+                            div class="fee-chart-group" {
+                                div class="fee-bar-wrapper" {
+                                    @if incoming > 0 {
+                                        div class="fee-bar incoming" style={
+                                            (format!("height: {}px", (incoming as f64 / max_amount as f64 * 120.0) as u64))
+                                        } {
+                                            @if incoming > 0 && (incoming as f64 / max_amount as f64) > 0.15 {
+                                                @if incoming >= 1_000_000 {
+                                                    div class="fee-bar-value" { (format!("{}M", incoming / 1_000_000)) }
+                                                } @else if incoming >= 1_000 {
+                                                    div class="fee-bar-value" { (format!("{}K", incoming / 1_000)) }
+                                                } @else {
+                                                    div class="fee-bar-value" { (format!("{}", incoming)) }
+                                                }
+                                            }
+                                        }
+                                    } @else {
+                                        div class="fee-bar-empty" {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    div class="fee-chart-x-axis" {
+                        @for (i, label) in fee_dist.labels.iter().enumerate() {
+                            @let show_label = i == 0 || i == 3 || i == 7 || i == 10 || (i >= 11 && (i - 11) % 3 == 0) || (i >= 20 && (i - 20) % 3 == 0) || i == fee_dist.labels.len() - 1;
+                            div class="fee-chart-x-label" {
+                                @if show_label {
+                                    (label)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            style {
+                r#"
+                .fee-chart-container {
+                    display: flex;
+                    flex-direction: column;
+                    padding: 20px;
+                    background-color: #1a202c;
+                    border-radius: 6px;
+                    position: relative;
+                }
+
+                .fee-chart-bars-container {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: flex-end;
+                    min-height: 140px;
+                    padding: 10px 5px 5px 5px;
+                    position: relative;
+                }
+
+                .fee-chart-group {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    flex: 1;
+                    position: relative;
+                }
+
+                .fee-bar-wrapper {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: flex-end;
+                    height: 100%;
+                }
+
+                .fee-bar {
+                    width: 8px;
+                    min-height: 2px;
+                    position: relative;
+                    display: flex;
+                    align-items: flex-start;
+                    justify-content: center;
+                    transition: all 0.3s ease;
+                    border-radius: 3px 3px 0 0;
+                }
+
+                .fee-bar.outgoing {
+                    background-color: #63b3ed;
+                }
+
+                .fee-bar.incoming {
+                    background-color: #48bb78;
+                }
+
+                .fee-bar:hover {
+                    opacity: 0.8;
+                }
+
+                .fee-bar-empty {
+                    width: 8px;
+                    height: 2px;
+                    background-color: #2d3748;
+                }
+
+                .fee-bar-value {
+                    position: absolute;
+                    top: -15px;
+                    font-size: 9px;
+                    color: #f8f8f2;
+                    white-space: nowrap;
+                    font-weight: 500;
+                }
+
+                .fee-chart-x-axis {
+                    display: flex;
+                    justify-content: space-between;
+                    padding: 5px 5px 0 5px;
+                    margin-top: 5px;
+                    border-top: 1px solid #4a5568;
+                }
+
+                .fee-chart-x-label {
+                    color: #a0aec0;
+                    font-size: 10px;
+                    text-align: center;
+                    min-height: 14px;
+                    flex: 1;
+                    padding-top: 5px;
+                }
+                "#
             }
         };
 
