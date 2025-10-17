@@ -1506,7 +1506,15 @@ fn create_closed_channels_page(
                         @for channel_info in &closed_channels_info {
                             tr {
                                 td { (channel_info.channel.short_channel_id_display()) }
-                                td { (channel_info.alias) }
+                                td {
+                                    @if let Some(peer_id) = &channel_info.channel.peer_id {
+                                        a href={(format!("../peers/{}.html", peer_id))} {
+                                            (channel_info.alias)
+                                        }
+                                    } @else {
+                                        (channel_info.alias)
+                                    }
+                                }
                                 td {
                                     @if let Some(peer_id) = &channel_info.channel.peer_id {
                                         a href={(format!("https://mempool.space/lightning/node/{}", peer_id))} target="_blank" {
