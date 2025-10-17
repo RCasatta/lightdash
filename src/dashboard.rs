@@ -980,7 +980,9 @@ fn create_channel_pages(
                                 }
                             }
                             td {
-                                (store.get_node_alias(&channel.peer_id))
+                                a href={(format!("../peers/{}.html", channel.peer_id))} {
+                                    (store.get_node_alias(&channel.peer_id))
+                                }
                             }
                             td style="text-align: right;" {
                                 (format!("{:.1}", channel.perc_float() * 100.0))
@@ -1045,7 +1047,9 @@ fn create_channel_pages(
                                 }
                             }
                             td {
-                                (store.get_node_alias(&channel.peer_id))
+                                a href={(format!("../peers/{}.html", channel.peer_id))} {
+                                    (store.get_node_alias(&channel.peer_id))
+                                }
                             }
                             td style="text-align: right;" {
                                 (format!("{:.1}", channel.perc_float() * 100.0))
