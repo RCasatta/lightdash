@@ -1479,21 +1479,6 @@ fn create_closed_channels_page(
     let mut causes: Vec<_> = cause_counts.into_iter().collect();
     causes.sort_by(|a, b| b.1.cmp(&a.1));
 
-    // Calculate duration statistics
-    let durations: Vec<i64> = closed_channels_info
-        .iter()
-        .filter_map(|c| c.duration_days)
-        .collect();
-
-    let avg_duration = if !durations.is_empty() {
-        durations.iter().sum::<i64>() as f64 / durations.len() as f64
-    } else {
-        0.0
-    };
-
-    let min_duration = durations.iter().min().copied().unwrap_or(0);
-    let max_duration = durations.iter().max().copied().unwrap_or(0);
-
     let closed_channels_content = html! {
         (create_page_header("Closed Channels", false))
 
@@ -1511,8 +1496,8 @@ fn create_closed_channels_page(
                             th { "Close Cause" }
                             th { "Opener" }
                             th { "Closer" }
+                            th { "Funding / Closing" }
                             th style="text-align: right;" { "Opening Block" }
-                            th style="text-align: right;" { "Duration (Days)" }
                             th style="text-align: right;" { "Final Amount (sats)" }
                             th style="text-align: right;" { "Total HTLCs Sent" }
                         }
@@ -1540,16 +1525,22 @@ fn create_closed_channels_page(
                                         "N/A"
                                     }
                                 }
-                                td style="text-align: right;" {
-                                    @if let Some(block) = channel_info.opening_block {
-                                        (block)
+                                td {
+                                    a href={(format!("https://fbbe.info/t/{}", channel_info.channel.funding_txid))}  {
+                                        "F"
+                                    }
+                                    " / "
+                                    @if let Some(last_commitment_txid) = &channel_info.channel.last_commitment_txid {
+                                        a href={(format!("https://fbbe.info/t/{}", last_commitment_txid))} {
+                                            "C"
+                                        }
                                     } @else {
-                                        "N/A"
+                                        "C"
                                     }
                                 }
                                 td style="text-align: right;" {
-                                    @if let Some(days) = channel_info.duration_days {
-                                        (format!("{}", days))
+                                    @if let Some(block) = channel_info.opening_block {
+                                        (block)
                                     } @else {
                                         "N/A"
                                     }
@@ -1596,27 +1587,6 @@ fn create_closed_channels_page(
                 }
             }
 
-            div class="section" {
-                h3 class="section-title" { "Duration Analysis" }
-                @if !closed_channels_info.is_empty() {
-                    div class="info-item" {
-                        span class="label" { "Average Duration: " }
-                        span class="value" { (format!("{:.1} days", avg_duration)) }
-                    }
-
-                    div class="info-item" {
-                        span class="label" { "Shortest Duration: " }
-                        span class="value" { (format!("{} days", min_duration)) }
-                    }
-
-                    div class="info-item" {
-                        span class="label" { "Longest Duration: " }
-                        span class="value" { (format!("{} days", max_duration)) }
-                    }
-                } @else {
-                    p { "No duration data available." }
-                }
-            }
         }
 
         style {

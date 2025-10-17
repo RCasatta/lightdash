@@ -319,9 +319,8 @@ impl Store {
         }
     }
 
-    /// Get closed channels with enriched information (alias, duration)
+    /// Get closed channels with enriched information (alias)
     pub fn get_closed_channels_info(&self) -> Vec<ClosedChannelInfo> {
-        let current_block = self.info.blockheight;
         let mut closed_channels: Vec<ClosedChannelInfo> = self
             .closed_channels
             .closedchannels
@@ -333,16 +332,11 @@ impl Store {
                     "Unknown Peer".to_string()
                 };
                 let opening_block = channel.block_born();
-                let duration_days = opening_block.map(|block_born| {
-                    // Estimate duration: assuming ~10 minutes per block = ~144 blocks per day
-                    ((current_block.saturating_sub(block_born)) as f64 / 144.0).round() as i64
-                });
 
                 ClosedChannelInfo {
                     channel: channel.clone(),
                     alias,
                     opening_block,
-                    duration_days,
                 }
             })
             .collect();
@@ -451,7 +445,6 @@ pub struct ClosedChannelInfo {
     pub channel: cmd::ClosedChannel,
     pub alias: String,
     pub opening_block: Option<u64>,
-    pub duration_days: Option<i64>,
 }
 
 /// Fee distribution data structure for histogram visualization
