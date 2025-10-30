@@ -1704,6 +1704,11 @@ pub fn run_dashboard(store: &Store, directory: String) {
                 span class="value" { (store.info.blockheight) }
             }
 
+            div class="info-item" {
+                span class="label" { "Onchain Balance: " }
+                span class="value" { (format!("{:.8} BTC", store.onchain_balance_btc())) }
+            }
+
         }
 
         div class="info-card" {

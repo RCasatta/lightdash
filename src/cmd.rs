@@ -181,6 +181,7 @@ pub struct Node {
 #[derive(Deserialize, Debug)]
 pub struct ListFunds {
     pub channels: Vec<Fund>,
+    pub outputs: Vec<Output>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -194,6 +195,12 @@ pub struct Fund {
     pub amount_msat: u64,
     pub funding_txid: String,
     pub funding_output: u32,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct Output {
+    pub amount_msat: u64,
+    pub scriptpubkey: String,
 }
 
 impl Fund {

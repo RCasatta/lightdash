@@ -281,6 +281,13 @@ impl Store {
             .sum()
     }
 
+    /// Get total onchain balance in BTC
+    pub fn onchain_balance_btc(&self) -> f64 {
+        let total_msat: u64 = self.funds.outputs.iter().map(|o| o.amount_msat).sum();
+        // Convert from msat to sats, then to BTC
+        (total_msat as f64) / 1_000.0 / 100_000_000.0
+    }
+
     /// Calculate projected yearly APY percentage for given time period
     pub fn calculate_apy_percent(&self, months: i64) -> f64 {
         let fees_earned = self.fees_earned_last_months(months);
