@@ -1268,6 +1268,29 @@ fn create_channel_pages(
                             span class="value" { "Never" }
                         }
                     }
+
+                    // Channel Forward Statistics
+                    div class="info-item" {
+                        span class="label" { "Total Forwards: " }
+                        span class="value" { (store.get_channel_total_forwards(scid)) }
+                    }
+
+                    div class="info-item" {
+                        span class="label" { "Total Fees Earned: " }
+                        span class="value" { (format!("{} sats", store.get_channel_total_fees(scid))) }
+                    }
+
+                    @if let Some(age_days) = store.get_channel_age_days(scid) {
+                        @if age_days > 0 {
+                            div class="info-item" {
+                                span class="label" { "Avg. Sat/Day Earned: " }
+                                span class="value" {
+                                    (format!("{:.2} sats/day",
+                                        store.get_channel_total_fees(scid) as f64 / age_days as f64))
+                                }
+                            }
+                        }
+                    }
                 } @else {
                     div class="info-item" {
                         span class="label" { "Forward Activity: " }

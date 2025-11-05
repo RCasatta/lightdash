@@ -430,6 +430,45 @@ impl Store {
             (3001, 5000, "3001-5000 ppm".to_string()),
         ]
     }
+
+    /// Get total number of forwards for a specific channel (both inbound and outbound)
+    pub fn get_channel_total_forwards(&self, short_channel_id: &str) -> usize {
+        self.settled_forwards()
+            .iter()
+            .filter(|f| f.in_channel == short_channel_id || f.out_channel == short_channel_id)
+            .count()
+    }
+
+    /// Get total fees earned for a specific channel (from outbound forwards)
+    pub fn get_channel_total_fees(&self, short_channel_id: &str) -> u64 {
+        self.settled_forwards()
+            .iter()
+            .filter(|f| f.out_channel == short_channel_id)
+            .map(|f| f.fee_sat)
+            .sum()
+    }
+
+    /// Get channel age in days from block height (approximate)
+    pub fn get_channel_age_days(&self, short_channel_id: &str) -> Option<i64> {
+        // Find the channel in the funds
+        let normal_channels = self.normal_channels();
+        let channel = normal_channels
+            .iter()
+            .find(|c| c.short_channel_id.as_ref().map(|s| s.as_str()) == Some(short_channel_id))?;
+
+        // Get block height from short_channel_id
+        let block_height = channel.block_born()?;
+
+        // Approximate blocks per day (144 blocks per day on average)
+        let blocks_per_day = 144;
+
+        // Calculate approximate age in days
+        // Note: This is approximate since we don't have the exact genesis block time
+        // and block times can vary. For a more accurate calculation, we'd need
+        // access to block timestamps.
+        let age_blocks = self.info.blockheight.saturating_sub(block_height);
+        Some((age_blocks / blocks_per_day) as i64)
+    }
 }
 
 /// APY calculation data

@@ -26,7 +26,7 @@
       }
    ],
    "version": "v23.08.1",
-   "blockheight": 850276,
+   "blockheight": 950276,
    "network": "bitcoin",
    "fees_collected_msat": 7623513,
    "lightning-dir": "/home/casatta/.lightning/bitcoin",
