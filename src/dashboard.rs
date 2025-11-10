@@ -912,6 +912,32 @@ fn create_channel_pages(
         a_id.cmp(b_id)
     });
 
+    // Sort channels by sats/day (descending) - only channels 1+ year old
+    let mut sorted_channels_by_sats_per_day = channels
+        .iter()
+        .filter(|c| {
+            if let Some(scid) = &c.short_channel_id {
+                store.get_channel_age_days(scid).unwrap_or(0) >= 365
+            } else {
+                false
+            }
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    sorted_channels_by_sats_per_day.sort_by(|a, b| {
+        let a_sats = a
+            .short_channel_id
+            .as_ref()
+            .and_then(|scid| store.get_channel_sats_per_day(scid))
+            .unwrap_or(0.0);
+        let b_sats = b
+            .short_channel_id
+            .as_ref()
+            .and_then(|scid| store.get_channel_sats_per_day(scid))
+            .unwrap_or(0.0);
+        b_sats.partial_cmp(&a_sats).unwrap() // descending order
+    });
+
     // Calculate global channel statistics
     let total_inbound: u64 = channels.iter().map(|c| c.our_amount_msat / 1000).sum();
     let total_outbound: u64 = channels
@@ -1096,6 +1122,98 @@ fn create_channel_pages(
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(sats_per_day) = store.get_channel_sats_per_day(scid) {
                                         (format!("{:.2}", sats_per_day))
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        div class="info-card" {
+            h2 { "Channel List (Sorted by Sats/Day - Channels 1+ Year Old)" }
+            p { "Total qualifying channels: " (sorted_channels_by_sats_per_day.len()) }
+
+            table {
+                thead {
+                    tr {
+                        th { "Channel ID" }
+                        th { "Node Alias" }
+                        th style="text-align: right;" { "Balance %" }
+                        th style="text-align: right;" { "Amount (sats)" }
+                        th style="text-align: right;" { "My PPM" }
+                        th style="text-align: right;" { "Inbound PPM" }
+                        th style="text-align: right;" { "Sats/Day" }
+                        th style="text-align: right;" { "Age (days)" }
+                    }
+                }
+                tbody {
+                    @for channel in sorted_channels_by_sats_per_day {
+                        tr {
+                            td {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    a href={(format!("{}.html", scid))} {
+                                        (scid)
+                                    }
+                                } @else {
+                                    a href={(format!("{}.html", channel.channel_id))} {
+                                        (&channel.channel_id[..16])
+                                    }
+                                }
+                            }
+                            td {
+                                a href={(format!("../peers/{}.html", channel.peer_id))} {
+                                    (store.get_node_alias(&channel.peer_id))
+                                }
+                            }
+                            td style="text-align: right;" {
+                                (format!("{:.1}", channel.perc_float() * 100.0))
+                            }
+                            td style="text-align: right;" {
+                                (channel.amount_msat / 1000)
+                            }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(channel_info) = store.get_channel(scid, &store.info.id) {
+                                        (channel_info.fee_per_millionth)
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
+                            }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(channel_info) = store.get_channel(scid, &channel.peer_id) {
+                                        (channel_info.fee_per_millionth)
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
+                            }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(sats_per_day) = store.get_channel_sats_per_day(scid) {
+                                        (format!("{:.2}", sats_per_day))
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
+                            }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(age_days) = store.get_channel_age_days(scid) {
+                                        (age_days)
                                     } @else {
                                         "-"
                                     }
