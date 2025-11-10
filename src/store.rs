@@ -469,6 +469,17 @@ impl Store {
         let age_blocks = self.info.blockheight.saturating_sub(block_height);
         Some((age_blocks / blocks_per_day) as i64)
     }
+
+    /// Get average satoshis earned per day for a specific channel
+    pub fn get_channel_sats_per_day(&self, short_channel_id: &str) -> Option<f64> {
+        let age_days = self.get_channel_age_days(short_channel_id)?;
+        if age_days <= 0 {
+            return Some(0.0);
+        }
+
+        let total_fees = self.get_channel_total_fees(short_channel_id);
+        Some(total_fees as f64 / age_days as f64)
+    }
 }
 
 /// APY calculation data

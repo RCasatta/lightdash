@@ -963,6 +963,7 @@ fn create_channel_pages(
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
                         th style="text-align: right;" { "Inbound PPM" }
+                        th style="text-align: right;" { "Sats/Day" }
                     }
                 }
                 tbody {
@@ -1012,6 +1013,17 @@ fn create_channel_pages(
                                     "-"
                                 }
                             }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(sats_per_day) = store.get_channel_sats_per_day(scid) {
+                                        (format!("{:.2}", sats_per_day))
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
+                            }
                         }
                     }
                 }
@@ -1030,6 +1042,7 @@ fn create_channel_pages(
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
                         th style="text-align: right;" { "Inbound PPM" }
+                        th style="text-align: right;" { "Sats/Day" }
                     }
                 }
                 tbody {
@@ -1072,6 +1085,17 @@ fn create_channel_pages(
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(channel_info) = store.get_channel(scid, &channel.peer_id) {
                                         (channel_info.fee_per_millionth)
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
+                            }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(sats_per_day) = store.get_channel_sats_per_day(scid) {
+                                        (format!("{:.2}", sats_per_day))
                                     } @else {
                                         "-"
                                     }
@@ -1280,14 +1304,11 @@ fn create_channel_pages(
                         span class="value" { (format!("{} sats", store.get_channel_total_fees(scid))) }
                     }
 
-                    @if let Some(age_days) = store.get_channel_age_days(scid) {
-                        @if age_days > 0 {
-                            div class="info-item" {
-                                span class="label" { "Avg. Sat/Day Earned: " }
-                                span class="value" {
-                                    (format!("{:.2} sats/day",
-                                        store.get_channel_total_fees(scid) as f64 / age_days as f64))
-                                }
+                    @if let Some(sats_per_day) = store.get_channel_sats_per_day(scid) {
+                        div class="info-item" {
+                            span class="label" { "Avg. Sat/Day Earned: " }
+                            span class="value" {
+                                (format!("{:.2} sats/day", sats_per_day))
                             }
                         }
                     }
