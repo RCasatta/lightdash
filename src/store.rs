@@ -480,6 +480,14 @@ impl Store {
         let total_fees = self.get_channel_total_fees(short_channel_id);
         Some(total_fees as f64 / age_days as f64)
     }
+
+    /// Get all settled forwards for a specific channel (both inbound and outbound)
+    pub fn get_channel_forwards(&self, short_channel_id: &str) -> Vec<SettledForward> {
+        self.settled_forwards()
+            .into_iter()
+            .filter(|f| f.in_channel == short_channel_id || f.out_channel == short_channel_id)
+            .collect()
+    }
 }
 
 /// APY calculation data

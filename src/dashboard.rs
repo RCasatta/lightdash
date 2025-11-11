@@ -912,12 +912,23 @@ fn create_channel_pages(
         a_id.cmp(b_id)
     });
 
-    // Sort channels by sats/day (descending) - only channels 1+ year old
+    // Sort channels by sats/day (descending) - only channels 1+ year old AND no forwards in last 2 months
     let mut sorted_channels_by_sats_per_day = channels
         .iter()
         .filter(|c| {
             if let Some(scid) = &c.short_channel_id {
-                store.get_channel_age_days(scid).unwrap_or(0) >= 365
+                let is_old_enough = store.get_channel_age_days(scid).unwrap_or(0) >= 365;
+                if !is_old_enough {
+                    return false;
+                }
+
+                // Check if channel has had any forwards in the last 60 days
+                let channel_forwards = store.get_channel_forwards(scid);
+                let has_recent_forwards = channel_forwards
+                    .iter()
+                    .any(|f| now.signed_duration_since(f.resolved_time).num_days() <= 60);
+
+                !has_recent_forwards
             } else {
                 false
             }
@@ -1136,8 +1147,8 @@ fn create_channel_pages(
         }
 
         div class="info-card" {
-            h2 { "Channel List (Sorted by Sats/Day - Channels 1+ Year Old)" }
-            p { "Total qualifying channels: " (sorted_channels_by_sats_per_day.len()) }
+            h2 { "Channel List (Sorted by Sats/Day - Mature Inactive Channels)" }
+            p { "Channels 1+ year old with no forwards in last 2 months: " (sorted_channels_by_sats_per_day.len()) }
 
             table {
                 thead {
@@ -1469,6 +1480,69 @@ fn create_channel_pages(
                     div class="info-item" {
                         span class="label" { "Channel Management: " }
                         span class="value" { "Channel ID not available" }
+                    }
+                }
+            }
+
+            // Channel Forwards Section
+            @if let Some(scid) = &channel.short_channel_id {
+                @let channel_forwards = store.get_channel_forwards(scid);
+                @if !channel_forwards.is_empty() {
+                    div class="info-card" {
+                        h2 { "Channel Forwards" }
+                        p { "Total forwards: " (channel_forwards.len()) }
+
+                        table {
+                            thead {
+                                tr {
+                                    th { "Direction" }
+                                    th { "Amount (sats)" }
+                                    th { "Fee (sats)" }
+                                    th { "Fee PPM" }
+                                    th { "Received Time" }
+                                    th { "Elapsed (s)" }
+                                }
+                            }
+                            tbody {
+                                @for forward in channel_forwards.iter().rev().take(100) { // Show latest 100 forwards
+                                    tr {
+                                        td {
+                                            @if forward.out_channel == *scid {
+                                                span style="color: #48bb78;" { "→ Outbound" }
+                                            } @else {
+                                                span style="color: #63b3ed;" { "← Inbound" }
+                                            }
+                                        }
+                                        td style="text-align: right;" {
+                                            (format!("{:.1}", forward.out_sat as f64))
+                                        }
+                                        td style="text-align: right;" {
+                                            (format!("{:.1}", forward.fee_sat as f64))
+                                        }
+                                        td style="text-align: right;" {
+                                            (forward.fee_ppm)
+                                        }
+                                        td {
+                                            (forward.received_time.format("%Y-%m-%d %H:%M:%S").to_string())
+                                        }
+                                        td style="text-align: right;" {
+                                            (format!("{:.1}", (forward.resolved_time - forward.received_time).num_seconds() as f64))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        @if channel_forwards.len() > 100 {
+                            p style="font-style: italic; color: #a0aec0;" {
+                                "Showing latest 100 forwards out of " (channel_forwards.len()) " total."
+                            }
+                        }
+                    }
+                } @else {
+                    div class="info-card" {
+                        h2 { "Channel Forwards" }
+                        p { "No forwards found for this channel." }
                     }
                 }
             }
