@@ -797,7 +797,7 @@ fn create_forwards_html_content(
                         @for forward in forwards {
                             tr {
                                 td {
-                                    a href={(format!("../channels/{}.html", forward.out_channel))} { "C" }
+                                    a href={(format!("channels/{}.html", forward.out_channel))} { "C" }
                                 }
                                 td { (get_channel_alias(&forward.in_channel)) }
                                 td { (get_channel_alias(&forward.out_channel)) }
