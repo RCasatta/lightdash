@@ -980,6 +980,15 @@ fn create_channel_pages(
                 span class="label" { "Global Balance: " }
                 span class="value" { (format!("{:.1}% inbound", global_balance_percentage)) }
             }
+            @let (avg_fee, median_fee) = store.network_channel_fees();
+            div class="info-item" {
+                span class="label" { "Network Avg Fee: " }
+                span class="value" { (format!("{} ppm ({:.3}%)", avg_fee as u64, avg_fee / 10000.0)) }
+            }
+            div class="info-item" {
+                span class="label" { "Network Median Fee: " }
+                span class="value" { (format!("{} ppm ({:.3}%)", median_fee as u64, median_fee / 10000.0)) }
+            }
             div class="progress-bar" {
                 div class="progress-fill" style={
                     (format!("width: {:.1}%", global_balance_percentage))

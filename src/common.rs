@@ -5,7 +5,7 @@ pub const PPM_MIN: u64 = 10; // minimum between 100% and 50%
 pub const PPM_MAX: u64 = 2000; // when channel 0%, between 0% and 50% increase linearly
 pub const SLING_AMOUNT: u64 = 50000; // amount used for rebalancing
 pub const MIN_HTLC: u64 = 100; // minimum htlc amount in sats
-pub const STEP_PERC: f64 = 0.05; // percentage change when channel is doing routing (+) in the last 24 hours or not doing it (-)
+pub const STEP_PERC: f64 = 0.1; // percentage change when channel is doing routing (+) in the last 24 hours or not doing it (-)
 
 /// Compute the minimum ppm of the channel according to the percentual owned by us
 /// The intention is to signal via an high fee the channel depletion

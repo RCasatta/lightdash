@@ -488,6 +488,32 @@ impl Store {
             .filter(|f| f.in_channel == short_channel_id || f.out_channel == short_channel_id)
             .collect()
     }
+
+    pub fn network_channel_fees(&self) -> (f64, f64) {
+        let mut fees: Vec<u64> = self
+            .channels()
+            .filter(|c| c.base_fee_millisatoshi == 0 && c.fee_per_millionth <= 10000)
+            .map(|c| c.fee_per_millionth)
+            .collect();
+
+        if fees.is_empty() {
+            return (0.0, 0.0);
+        }
+
+        let sum: u64 = fees.iter().sum();
+        let average = sum as f64 / fees.len() as f64;
+
+        fees.sort_unstable();
+        let median = if fees.len() % 2 == 0 {
+            let mid = fees.len() / 2;
+            (fees[mid - 1] as f64 + fees[mid] as f64) / 2.0
+        } else {
+            let mid = fees.len() / 2;
+            fees[mid] as f64
+        };
+
+        (average, median)
+    }
 }
 
 /// APY calculation data
