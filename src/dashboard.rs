@@ -250,11 +250,7 @@ fn create_node_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
 
         // Default values for non-peers
         let connected = peer_map.contains_key(&nodeid);
-        let num_channels = if let Some(peer) = peer_map.get(&nodeid) {
-            peer.num_channels
-        } else {
-            0
-        };
+        let num_channels = store.node_total_channels(&nodeid);
         let features = if let Some(peer) = peer_map.get(&nodeid) {
             peer.features.clone()
         } else {
@@ -309,7 +305,7 @@ fn create_node_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
                 }
 
                 div class="info-item" {
-                    span class="label" { "Number of Channels: " }
+                    span class="label" { "Total Channels: " }
                     span class="value" { (num_channels) }
                 }
 

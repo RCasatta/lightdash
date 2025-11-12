@@ -203,6 +203,12 @@ impl Store {
             .count()
     }
 
+    pub fn node_total_channels(&self, nodeid: &str) -> usize {
+        self.channels()
+            .filter(|c| c.source == *nodeid || c.destination == *nodeid)
+            .count()
+    }
+
     /// Get a channel by short_channel_id and source
     pub fn get_channel(&self, short_channel_id: &str, source: &str) -> Option<&cmd::Channel> {
         self.channels_by_id
