@@ -201,6 +201,7 @@ fn create_node_pages(
         .nodes()
         .filter(|n| store.node_total_channels(&n.nodeid) >= min_channels)
         .collect();
+    log::info!("Filtered nodes: {}", filtered_nodes.len());
     filtered_nodes.sort_by(|a, b| {
         store
             .get_node_alias(&a.nodeid)
@@ -761,7 +762,7 @@ fn create_forwards_html_content(
                 table {
                     thead {
                         tr {
-                            th { "F" }
+                            th { "C" }
                             th { "In Node" }
                             th { "Out Node" }
                             th { "Fee (sats)" }
@@ -775,11 +776,7 @@ fn create_forwards_html_content(
                         @for forward in forwards {
                             tr {
                                 td {
-                                    @if let Some(scid) = forward.out_channel.split('x').next() {
-                                        a href={(format!("../channels/{}.html", scid))} { "F" }
-                                    } @else {
-                                        "F"
-                                    }
+                                    a href={(format!("../channels/{}.html", forward.out_channel))} { "C" }
                                 }
                                 td { (get_channel_alias(&forward.in_channel)) }
                                 td { (get_channel_alias(&forward.out_channel)) }
