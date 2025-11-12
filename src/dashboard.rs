@@ -753,6 +753,7 @@ fn create_forwards_html_content(
                 table {
                     thead {
                         tr {
+                            th { "F" }
                             th { "In Node" }
                             th { "Out Node" }
                             th { "Fee (sats)" }
@@ -765,6 +766,13 @@ fn create_forwards_html_content(
                     tbody {
                         @for forward in forwards {
                             tr {
+                                td {
+                                    @if let Some(scid) = forward.out_channel.split('x').next() {
+                                        a href={(format!("../channels/{}.html", scid))} { "F" }
+                                    } @else {
+                                        "F"
+                                    }
+                                }
                                 td { (get_channel_alias(&forward.in_channel)) }
                                 td { (get_channel_alias(&forward.out_channel)) }
                                 td class="align-right" {
