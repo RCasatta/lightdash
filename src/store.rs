@@ -190,6 +190,19 @@ impl Store {
         self.nodes.nodes.len()
     }
 
+    pub fn nodes(&self) -> impl Iterator<Item = &cmd::Node> {
+        self.nodes.nodes.iter()
+    }
+
+    pub fn nodes_with_channels_len(&self) -> usize {
+        self.nodes()
+            .filter(|n| {
+                self.channels()
+                    .any(|c| c.source == n.nodeid || c.destination == n.nodeid)
+            })
+            .count()
+    }
+
     /// Get a channel by short_channel_id and source
     pub fn get_channel(&self, short_channel_id: &str, source: &str) -> Option<&cmd::Channel> {
         self.channels_by_id

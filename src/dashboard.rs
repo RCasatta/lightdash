@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::fs;
 
+use crate::cmd::{self, Node, Peer};
 use crate::{common::*, store::Store};
 use maud::{html, Markup, DOCTYPE};
 
@@ -116,11 +117,11 @@ fn create_html_header(title: &str) -> Markup {
 
 /// Create common page header with navigation links
 fn create_page_header(title: &str, is_subdir: bool) -> Markup {
-    let (home_link, peers_link, channels_link, forwards_link, apy_link, closed_link) = if is_subdir
+    let (home_link, nodes_link, channels_link, forwards_link, apy_link, closed_link) = if is_subdir
     {
         (
             "../index.html",
-            "../peers/",
+            "../nodes/",
             "../channels/",
             "../forwards-week.html",
             "../apy.html",
@@ -129,7 +130,7 @@ fn create_page_header(title: &str, is_subdir: bool) -> Markup {
     } else {
         (
             "index.html",
-            "peers/",
+            "nodes/",
             "channels/",
             "forwards-week.html",
             "apy.html",
@@ -142,7 +143,7 @@ fn create_page_header(title: &str, is_subdir: bool) -> Markup {
             h1 { (title) }
             div class="back-link" {
                 a href=(home_link) { "Home" } " | "
-                a href=(peers_link) { "Peers" } " | "
+                a href=(nodes_link) { "Nodes" } " | "
                 a href=(channels_link) { "Channels" } " | "
                 a href=(forwards_link) { "Forwards" } " | "
                 a href=(apy_link) { "APY" } " | "
@@ -179,94 +180,95 @@ fn wrap_in_html_page(title: &str, content: Markup, timestamp: &str) -> Markup {
     }
 }
 
-fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chrono::Utc>) {
-    let peers_dir = format!("{}/peers", directory);
+fn create_node_pages(directory: &str, store: &Store, now: &chrono::DateTime<chrono::Utc>) {
+    let nodes_dir = format!("{}/nodes", directory);
 
-    // Create peers directory
-    if let Err(e) = fs::create_dir_all(&peers_dir) {
-        log::debug!("Error creating peers directory {}: {}", peers_dir, e);
+    // Create nodes directory
+    if let Err(e) = fs::create_dir_all(&nodes_dir) {
+        log::debug!("Error creating nodes directory {}: {}", nodes_dir, e);
         return;
     }
 
-    log::debug!("Creating peer pages in: {}", peers_dir);
+    log::debug!("Creating node pages in: {}", nodes_dir);
 
-    // Create peers index page
-    let peers_index_content = html! {
-        (create_page_header("Peers", true))
+    // Filter and sort nodes: only those with channels, sorted by alias
+    let mut filtered_nodes: Vec<&cmd::Node> = store
+        .nodes()
+        .filter(|n| {
+            store
+                .channels()
+                .any(|c| c.source == n.nodeid || c.destination == n.nodeid)
+        })
+        .collect();
+    filtered_nodes.sort_by(|a, b| {
+        store
+            .get_node_alias(&a.nodeid)
+            .cmp(&store.get_node_alias(&b.nodeid))
+    });
+
+    // Create nodes index page with comma-separated links (sorted)
+    let nodes_index_content = html! {
+        (create_page_header("Nodes", true))
 
         div class="info-card" {
-            h2 { "Peer List" }
-            p { "Total peers: " (store.peers_len()) }
+            h2 { "Node List" }
+            p { "Total nodes with channels: " (filtered_nodes.len()) }
 
-            @for peer in store.peers() {
-                div class="section" {
-                    div class="info-item" {
-                        span class="label" {
-                            @if peer.connected {
-                                "🟢 "
-                            } @else {
-                                "🔴 "
-                            }
-                            "Peer: "
-                        }
-                        span class="value" {
-                            a href={(format!("{}.html", peer.id))} {
-                                (store.get_node_alias(&peer.id))
-                            }
-                        }
-                    }
-
-                    div class="info-item" {
-                        span class="label" { "ID: " }
-                        span class="value" {
-                            a href={(format!("https://mempool.space/lightning/node/{}", peer.id))} target="_blank" {
-                                (&peer.id)
-                            }
-                        }
-                    }
-
-                    div class="info-item" {
-                        span class="label" { "Channels: " }
-                        span class="value" { (peer.num_channels) }
-                    }
-
-                    div class="info-item" {
-                        span class="label" { "Connected: " }
-                        span class="value" {
-                            @if peer.connected {
-                                "Yes"
-                            } @else {
-                                "No"
-                            }
-                        }
-                    }
-
-                    @if let Some(note) = store.get_peer_note(&peer.id) {
-                        div class="info-item" {
-                            span class="label" { "Note: " }
-                            span class="value" { (note) }
-                        }
+            div class="node-links" {
+                @for (i, node) in filtered_nodes.iter().enumerate() {
+                    @if i > 0 { ", " }
+                    a href={(format!("{}.html", node.nodeid))} {
+                        (store.get_node_alias(&node.nodeid))
                     }
                 }
             }
         }
     };
 
-    let peers_index_html = wrap_in_html_page(
-        "Peers Directory",
-        peers_index_content,
+    let nodes_index_html = wrap_in_html_page(
+        "Nodes Directory",
+        nodes_index_content,
         &now.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
     );
-    let peers_index_path = format!("{}/index.html", peers_dir);
+    let nodes_index_path = format!("{}/index.html", nodes_dir);
 
-    match fs::write(&peers_index_path, peers_index_html.into_string()) {
-        Ok(_) => log::debug!("Peers index page generated: {}", peers_index_path),
-        Err(e) => log::debug!("Error writing peers index page: {}", e),
+    match fs::write(&nodes_index_path, nodes_index_html.into_string()) {
+        Ok(_) => log::debug!("Nodes index page generated: {}", nodes_index_path),
+        Err(e) => log::debug!("Error writing nodes index page: {}", e),
     }
 
+    // Precompute peer map for quick lookup of connected peers
+    let mut peer_map: HashMap<String, &cmd::Peer> = HashMap::new();
     for peer in store.peers() {
-        // Calculate fee distribution for this peer
-        let fee_dist = store.get_peer_fee_distribution(&peer.id);
+        peer_map.insert(peer.id.clone(), peer);
+    }
+
+    // Create individual pages for filtered nodes
+    for node in filtered_nodes {
+        let nodeid = node.nodeid.clone();
+        let alias = store.get_node_alias(&nodeid);
+
+        // Default values for non-peers
+        let connected = peer_map.contains_key(&nodeid);
+        let num_channels = if let Some(peer) = peer_map.get(&nodeid) {
+            peer.num_channels
+        } else {
+            0
+        };
+        let features = if let Some(peer) = peer_map.get(&nodeid) {
+            peer.features.clone()
+        } else {
+            String::new()
+        };
+        let note = store.get_peer_note(&nodeid);
+        let peer_channels = if let Some(peer) = peer_map.get(&nodeid) {
+            peer.channels.clone()
+        } else {
+            vec![]
+        };
+
+        // Fee distribution based on channels to this node
+        let fee_dist = store.get_peer_fee_distribution(&nodeid);
         let max_amount = fee_dist
             .outgoing_amounts
             .iter()
@@ -275,25 +277,30 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
             .copied()
             .unwrap_or(1);
 
-        let peer_content = html! {
-            (create_page_header("Peer Details", true))
+        let node_content = html! {
+            (create_page_header("Node Details", true))
 
             div class="info-card" {
-                h2 { "Peer Information" }
+                h2 { "Node Information" }
 
                 div class="info-item" {
-                    span class="label" { "Peer ID: " }
+                    span class="label" { "Node ID: " }
                     span class="value" {
-                        a href={(format!("https://mempool.space/lightning/node/{}", peer.id))} target="_blank" {
-                            (peer.id)
+                        a href={(format!("https://mempool.space/lightning/node/{}", nodeid))} target="_blank" {
+                            (nodeid)
                         }
                     }
                 }
 
                 div class="info-item" {
+                    span class="label" { "Alias: " }
+                    span class="value" { (alias) }
+                }
+
+                div class="info-item" {
                     span class="label" { "Connected: " }
                     span class="value" {
-                        @if peer.connected {
+                        @if connected {
                             "Yes"
                         } @else {
                             "No"
@@ -303,44 +310,37 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
 
                 div class="info-item" {
                     span class="label" { "Number of Channels: " }
-                    span class="value" { (peer.num_channels) }
+                    span class="value" { (num_channels) }
                 }
 
                 div class="info-item" {
                     span class="label" { "Features: " }
-                    span class="value" { (peer.features) }
+                    span class="value" { (features) }
                 }
 
-                @if let Some(note) = store.get_peer_note(&peer.id) {
+                @if let Some(note_val) = note {
                     div class="info-item" {
                         span class="label" { "Note: " }
-                        span class="value" { (note) }
+                        span class="value" { (note_val) }
                     }
                 }
 
-                @if let Some(node_info) = store.nodes.nodes.iter().find(|n| n.nodeid == peer.id) {
+                @if let Some(last_timestamp) = node.last_timestamp {
                     div class="info-item" {
-                        span class="label" { "Alias: " }
-                        span class="value" { (node_info.alias.as_deref().unwrap_or("N/A")) }
-                    }
-
-                    @if let Some(last_timestamp) = node_info.last_timestamp {
-                        div class="info-item" {
-                            span class="label" { "Last Seen: " }
-                            span class="value" {
-                                (chrono::DateTime::from_timestamp(last_timestamp as i64, 0)
-                                    .map(|dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
-                                    .unwrap_or_else(|| "Unknown".to_string()))
-                            }
+                        span class="label" { "Last Seen: " }
+                        span class="value" {
+                            (chrono::DateTime::from_timestamp(last_timestamp as i64, 0)
+                                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
+                                .unwrap_or_else(|| "Unknown".to_string()))
                         }
                     }
                 }
             }
 
-            @if !peer.channels.is_empty() {
+            @if !peer_channels.is_empty() {
                 div class="info-card" {
                     h2 { "Channels" }
-                    @for channel in &peer.channels {
+                    @for channel in &peer_channels {
                         div class="section" {
                             h3 { "Channel" }
 
@@ -381,8 +381,7 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
                 }
             }
 
-            // Fee Distribution Charts for this peer
-
+            // Outgoing Fee Distribution Chart
             div class="info-card" {
                 h2 { "Outgoing Fee Distribution" }
 
@@ -427,6 +426,7 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
                 }
             }
 
+            // Incoming Fee Distribution Chart
             div class="info-card" {
                 h2 { "Incoming Fee Distribution" }
 
@@ -582,20 +582,31 @@ fn create_peer_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
                     flex: 1;
                     padding-top: 5px;
                 }
+
+                .node-links {
+                    margin-top: 10px;
+                    padding: 10px;
+                    background-color: #2d3748;
+                    border-radius: 4px;
+                    word-break: break-all;
+                }
+                .node-links a {
+                    color: #63b3ed;
+                }
                 "#
             }
         };
 
-        let peer_html = wrap_in_html_page(
-            &format!("Peer {}", &peer.id[..8]),
-            peer_content,
+        let node_html = wrap_in_html_page(
+            &format!("Node {}", &nodeid[..8]),
+            node_content,
             &now.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
         );
-        let peer_file_path = format!("{}/{}.html", peers_dir, peer.id);
+        let node_file_path = format!("{}/{}.html", nodes_dir, nodeid);
 
-        match fs::write(&peer_file_path, peer_html.into_string()) {
-            Ok(_) => log::debug!("Peer page generated: {}", peer_file_path),
-            Err(e) => log::debug!("Error writing peer page {}: {}", peer_file_path, e),
+        match fs::write(&node_file_path, node_html.into_string()) {
+            Ok(_) => log::debug!("Node page generated: {}", node_file_path),
+            Err(e) => log::debug!("Error writing node page {}: {}", node_file_path, e),
         }
     }
 }
@@ -1035,7 +1046,7 @@ fn create_channel_pages(
                                 }
                             }
                             td {
-                                a href={(format!("../peers/{}.html", channel.peer_id))} {
+                                a href={(format!("../nodes/{}.html", channel.peer_id))} {
                                     (store.get_node_alias(&channel.peer_id))
                                 }
                             }
@@ -1114,7 +1125,7 @@ fn create_channel_pages(
                                 }
                             }
                             td {
-                                a href={(format!("../peers/{}.html", channel.peer_id))} {
+                                a href={(format!("../nodes/{}.html", channel.peer_id))} {
                                     (store.get_node_alias(&channel.peer_id))
                                 }
                             }
@@ -1195,7 +1206,7 @@ fn create_channel_pages(
                                 }
                             }
                             td {
-                                a href={(format!("../peers/{}.html", channel.peer_id))} {
+                                a href={(format!("../nodes/{}.html", channel.peer_id))} {
                                     (store.get_node_alias(&channel.peer_id))
                                 }
                             }
@@ -1761,7 +1772,7 @@ fn create_closed_channels_page(
                                 td { (channel_info.channel.short_channel_id_display()) }
                                 td {
                                     @if let Some(peer_id) = &channel_info.channel.peer_id {
-                                        a href={(format!("../peers/{}.html", peer_id))} {
+                                        a href={(format!("../nodes/{}.html", peer_id))} {
                                             (channel_info.alias)
                                         }
                                     } @else {
@@ -1966,8 +1977,8 @@ pub fn run_dashboard(store: &Store, directory: String) {
 
         div class="info-card" {
             h3 {
-                a href="peers/" {
-                    (format!("{} Peers", store.peers_len()))
+                a href="nodes/" {
+                    (format!("{} Nodes with Channels", store.nodes_with_channels_len()))
                 }
             }
             h3 {
@@ -2010,17 +2021,17 @@ pub fn run_dashboard(store: &Store, directory: String) {
 
     let mut output_content = String::new();
     output_content.push_str(&format!(
-        "network channels:{} nodes:{} peers:{}\n",
+        "network channels:{} nodes:{} nodes:{}\n",
         store.channels_len(),
         store.nodes_len(),
-        store.peers_len(),
+        store.nodes_len(),
     ));
 
     log::debug!(
-        "network channels:{} nodes:{} peers:{}",
+        "network channels:{} nodes:{} nodes:{}",
         store.channels_len(),
         store.nodes_len(),
-        store.peers_len(),
+        store.nodes_len(),
     );
 
     let mut chan_meta_per_node = HashMap::new();
@@ -2430,9 +2441,6 @@ pub fn run_dashboard(store: &Store, directory: String) {
         Err(e) => log::debug!("Error writing HTML file: {}", e),
     }
 
-    // Create peers directory and individual peer pages
-    create_peer_pages(&directory, &store, &now);
-
     // Create channels directory and individual channel pages
     create_channel_pages(
         &directory,
@@ -2461,4 +2469,7 @@ pub fn run_dashboard(store: &Store, directory: String) {
 
     // Create closed channels page
     create_closed_channels_page(&directory, &store, &now);
+
+    // Create node pages
+    create_node_pages(&directory, &store, &now);
 }
