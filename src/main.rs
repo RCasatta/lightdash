@@ -26,6 +26,9 @@ enum Commands {
     Dashboard {
         /// Directory for dashboard files
         directory: String,
+        /// Minimum number of channels a node must have to be included
+        #[arg(long, default_value = "1")]
+        min_channels: usize,
     },
     /// Calculate and display routing information
     Routes,
@@ -41,9 +44,12 @@ fn main() {
     let store = Store::new();
 
     match cli.command {
-        Commands::Dashboard { directory } => {
+        Commands::Dashboard {
+            directory,
+            min_channels,
+        } => {
             log::debug!("Dashboard directory: {}", directory);
-            dashboard::run_dashboard(&store, directory);
+            dashboard::run_dashboard(&store, directory, min_channels);
         }
         Commands::Routes => {
             routes::run_routes(&store);

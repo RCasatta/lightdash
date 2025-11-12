@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::fs;
 
-use crate::cmd::{self, Node, Peer};
+use crate::cmd;
 use crate::{common::*, store::Store};
 use maud::{html, Markup, DOCTYPE};
 
@@ -180,7 +180,12 @@ fn wrap_in_html_page(title: &str, content: Markup, timestamp: &str) -> Markup {
     }
 }
 
-fn create_node_pages(directory: &str, store: &Store, now: &chrono::DateTime<chrono::Utc>) {
+fn create_node_pages(
+    directory: &str,
+    store: &Store,
+    now: &chrono::DateTime<chrono::Utc>,
+    min_channels: usize,
+) {
     let nodes_dir = format!("{}/nodes", directory);
 
     // Create nodes directory
@@ -191,14 +196,10 @@ fn create_node_pages(directory: &str, store: &Store, now: &chrono::DateTime<chro
 
     log::debug!("Creating node pages in: {}", nodes_dir);
 
-    // Filter and sort nodes: only those with channels, sorted by alias
+    // Filter and sort nodes: only those with at least min_channels, sorted by alias
     let mut filtered_nodes: Vec<&cmd::Node> = store
         .nodes()
-        .filter(|n| {
-            store
-                .channels()
-                .any(|c| c.source == n.nodeid || c.destination == n.nodeid)
-        })
+        .filter(|n| store.node_total_channels(&n.nodeid) >= min_channels)
         .collect();
     filtered_nodes.sort_by(|a, b| {
         store
@@ -1936,10 +1937,11 @@ fn create_closed_channels_page(
 ///
 /// # Parameters
 /// * `directory` - The directory path where HTML files will be generated
+/// * `min_channels` - Minimum number of channels a node must have to be included
 ///
 /// # Panics
 /// Panics if unable to create the output directory or write HTML files
-pub fn run_dashboard(store: &Store, directory: String) {
+pub fn run_dashboard(store: &Store, directory: String, min_channels: usize) {
     let now = Utc::now();
     log::debug!("{}", now);
     log::debug!("my id:{}", store.info.id);
@@ -2437,7 +2439,7 @@ pub fn run_dashboard(store: &Store, directory: String) {
         Err(e) => log::debug!("Error writing HTML file: {}", e),
     }
 
-    // Create channels directory and individual channel pages
+    log::info!("Creating channels directory and individual channel pages");
     create_channel_pages(
         &directory,
         &normal_channels,
@@ -2448,24 +2450,26 @@ pub fn run_dashboard(store: &Store, directory: String) {
         &per_channel_last_forward_out,
     );
 
-    // Create forwards page
+    log::info!("Creating forwards page");
     create_forwards_page(&directory, &store, &now, &store.info.id);
 
-    // Create weekly forwards page
+    log::info!("Creating weekly forwards page");
     create_forwards_week_page(&directory, &store, &now, &store.info.id);
 
-    // Create yearly forwards page
+    log::info!("Creating yearly forwards page");
     create_forwards_year_page(&directory, &store, &now, &store.info.id);
 
-    // Create weekday chart page
+    log::info!("Creating weekday chart page");
     create_weekday_chart_page(&directory, &store, &now);
 
-    // Create APY page
+    log::info!("Creating APY page");
     create_apy_page(&directory, &store, &now);
 
-    // Create closed channels page
+    log::info!("Creating closed channels page");
     create_closed_channels_page(&directory, &store, &now);
 
-    // Create node pages
-    create_node_pages(&directory, &store, &now);
+    log::info!("Creating node pages");
+    create_node_pages(&directory, &store, &now, min_channels);
+
+    log::info!("Dashboard generated successfully");
 }
