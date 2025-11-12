@@ -426,6 +426,78 @@ impl Store {
         }
     }
 
+    /// Get fee statistics (mean and median) for a specific peer
+    pub fn get_peer_fee_stats(&self, peer_id: &str) -> FeeStats {
+        // Collect all outgoing channel fees (peer is destination) with their amounts
+        let mut outgoing_fees: Vec<(u64, u64)> = self
+            .channels
+            .channels
+            .iter()
+            .filter(|c| c.destination == peer_id)
+            .map(|c| (c.fee_per_millionth, c.amount_msat / 1000))
+            .collect();
+
+        // Collect all incoming channel fees (peer is source) with their amounts
+        let mut incoming_fees: Vec<(u64, u64)> = self
+            .channels
+            .channels
+            .iter()
+            .filter(|c| c.source == peer_id)
+            .map(|c| (c.fee_per_millionth, c.amount_msat / 1000))
+            .collect();
+
+        FeeStats {
+            outgoing_mean: Self::calculate_weighted_mean(&outgoing_fees),
+            outgoing_median: Self::calculate_weighted_median(&mut outgoing_fees),
+            incoming_mean: Self::calculate_weighted_mean(&incoming_fees),
+            incoming_median: Self::calculate_weighted_median(&mut incoming_fees),
+        }
+    }
+
+    /// Calculate weighted mean from (fee, amount) pairs
+    fn calculate_weighted_mean(fees: &[(u64, u64)]) -> u64 {
+        if fees.is_empty() {
+            return 0;
+        }
+
+        let total_weighted: u64 = fees.iter().map(|(fee, amount)| fee * amount).sum();
+        let total_amount: u64 = fees.iter().map(|(_, amount)| amount).sum();
+
+        if total_amount == 0 {
+            0
+        } else {
+            total_weighted / total_amount
+        }
+    }
+
+    /// Calculate weighted median from (fee, amount) pairs
+    fn calculate_weighted_median(fees: &mut [(u64, u64)]) -> u64 {
+        if fees.is_empty() {
+            return 0;
+        }
+
+        // Sort by fee
+        fees.sort_by_key(|(fee, _)| *fee);
+
+        let total_amount: u64 = fees.iter().map(|(_, amount)| amount).sum();
+        if total_amount == 0 {
+            return 0;
+        }
+
+        let half_total = total_amount / 2;
+        let mut cumulative = 0u64;
+
+        for (fee, amount) in fees.iter() {
+            cumulative += amount;
+            if cumulative >= half_total {
+                return *fee;
+            }
+        }
+
+        // Fallback to last fee (shouldn't reach here)
+        fees.last().map(|(fee, _)| *fee).unwrap_or(0)
+    }
+
     fn generate_ppm_ranges() -> Vec<(u64, u64, String)> {
         vec![
             // 0 to 10 by 2
@@ -562,4 +634,12 @@ pub struct FeeDistribution {
     pub labels: Vec<String>,
     pub outgoing_amounts: Vec<u64>,
     pub incoming_amounts: Vec<u64>,
+}
+
+/// Fee statistics for a peer
+pub struct FeeStats {
+    pub outgoing_mean: u64,
+    pub outgoing_median: u64,
+    pub incoming_mean: u64,
+    pub incoming_median: u64,
 }

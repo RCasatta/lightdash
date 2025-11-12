@@ -267,6 +267,7 @@ fn create_node_pages(
 
         // Fee distribution based on channels to this node
         let fee_dist = store.get_peer_fee_distribution(&nodeid);
+        let fee_stats = store.get_peer_fee_stats(&nodeid);
         let max_amount = fee_dist
             .outgoing_amounts
             .iter()
@@ -383,6 +384,16 @@ fn create_node_pages(
             div class="info-card" {
                 h2 { "Outgoing Fee Distribution" }
 
+                div class="info-item" {
+                    span class="label" { "Mean Fee: " }
+                    span class="value" { (format!("{} ppm", fee_stats.outgoing_mean)) }
+                }
+
+                div class="info-item" {
+                    span class="label" { "Median Fee: " }
+                    span class="value" { (format!("{} ppm", fee_stats.outgoing_median)) }
+                }
+
                 div class="fee-chart-container" {
                     div class="fee-chart-y-axis" {
                         @for i in (0..=4).rev() {
@@ -427,6 +438,16 @@ fn create_node_pages(
             // Incoming Fee Distribution Chart
             div class="info-card" {
                 h2 { "Incoming Fee Distribution" }
+
+                div class="info-item" {
+                    span class="label" { "Mean Fee: " }
+                    span class="value" { (format!("{} ppm", fee_stats.incoming_mean)) }
+                }
+
+                div class="info-item" {
+                    span class="label" { "Median Fee: " }
+                    span class="value" { (format!("{} ppm", fee_stats.incoming_median)) }
+                }
 
                 div class="fee-chart-container" {
                     div class="fee-chart-y-axis" {
