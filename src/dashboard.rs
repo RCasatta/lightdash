@@ -786,7 +786,6 @@ fn create_forwards_html_content(
                 table {
                     thead {
                         tr {
-                            th { "C" }
                             th { "In Node" }
                             th { "Out Node" }
                             th { "Fee (sats)" }
@@ -802,14 +801,13 @@ fn create_forwards_html_content(
                             @let (out_alias, out_node_id) = get_channel_info(&forward.out_channel);
                             tr {
                                 td {
-                                    a href={(format!("channels/{}.html", forward.out_channel))} { "C" }
-                                }
-                                td {
                                     @if let Some(node_id) = in_node_id {
                                         a href={(format!("nodes/{}.html", node_id))} { (in_alias) }
                                     } @else {
                                         (in_alias)
                                     }
+                                    " "
+                                    a href={(format!("channels/{}.html", forward.in_channel))} { "(C)" }
                                 }
                                 td {
                                     @if let Some(node_id) = out_node_id {
@@ -817,6 +815,8 @@ fn create_forwards_html_content(
                                     } @else {
                                         (out_alias)
                                     }
+                                    " "
+                                    a href={(format!("channels/{}.html", forward.out_channel))} { "(C)" }
                                 }
                                 td class="align-right" {
                                     (format!("{:.1}", forward.fee_sat as f64))
