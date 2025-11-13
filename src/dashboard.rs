@@ -1547,7 +1547,7 @@ fn create_channel_pages(
                                 }
                             }
                             tbody {
-                                @for forward in channel_forwards.iter().rev().take(100) { // Show latest 100 forwards
+                                @for forward in channel_forwards.iter().take(100) {
                                     tr {
                                         td {
                                             @if forward.out_channel == *scid {
