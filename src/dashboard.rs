@@ -758,18 +758,21 @@ fn create_forwards_html_content(
     store: &Store,
     our_node_id: &String,
 ) -> Markup {
-    // Helper function to get node alias for a channel
-    let get_channel_alias = |channel_id: &str| -> String {
+    // Helper function to get node alias and ID for a channel
+    let get_channel_info = |channel_id: &str| -> (String, Option<String>) {
         let channel_id_string = channel_id.to_string();
 
         // Try to find the channel in our channels (we're the source)
         if let Some(channel) = store.get_channel(&channel_id_string, our_node_id) {
             // We're the source, so the destination is the remote node
-            return store.get_node_alias(&channel.destination);
+            return (
+                store.get_node_alias(&channel.destination),
+                Some(channel.destination.clone()),
+            );
         }
 
         // If we can't find the channel, return the original channel ID
-        channel_id.to_string()
+        (channel_id.to_string(), None)
     };
 
     html! {
@@ -795,12 +798,26 @@ fn create_forwards_html_content(
                     }
                     tbody {
                         @for forward in forwards {
+                            @let (in_alias, in_node_id) = get_channel_info(&forward.in_channel);
+                            @let (out_alias, out_node_id) = get_channel_info(&forward.out_channel);
                             tr {
                                 td {
                                     a href={(format!("channels/{}.html", forward.out_channel))} { "C" }
                                 }
-                                td { (get_channel_alias(&forward.in_channel)) }
-                                td { (get_channel_alias(&forward.out_channel)) }
+                                td {
+                                    @if let Some(node_id) = in_node_id {
+                                        a href={(format!("nodes/{}.html", node_id))} { (in_alias) }
+                                    } @else {
+                                        (in_alias)
+                                    }
+                                }
+                                td {
+                                    @if let Some(node_id) = out_node_id {
+                                        a href={(format!("nodes/{}.html", node_id))} { (out_alias) }
+                                    } @else {
+                                        (out_alias)
+                                    }
+                                }
                                 td class="align-right" {
                                     (format!("{:.1}", forward.fee_sat as f64))
                                 }
