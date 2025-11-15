@@ -959,6 +959,7 @@ fn create_failures_page(
     };
 
     let stats = store.get_forward_statistics();
+    let history_days = store.forward_history_days();
 
     let failures_content = html! {
         (create_page_header("Forward Failures Analysis", false))
@@ -1009,8 +1010,13 @@ fn create_failures_page(
                         td class="align-right" { (stats.total_local_failed) }
                         td class="align-right" { (stats.total_all) }
                         td class="align-right" { (format!("{:.2}%", stats.total_success_ratio())) }
-                        td class="align-right" { "—" }
-                        td class="align-right" { "—" }
+                        td class="align-right" { (format!("{:.1}", stats.total_settled as f64 / history_days)) }
+                        td class="align-right" {
+                            (format!(
+                                "{:.1}",
+                                (stats.total_failed + stats.total_local_failed) as f64 / history_days
+                            ))
+                        }
                     }
                 }
             }
@@ -1027,18 +1033,18 @@ fn create_failures_page(
                 table {
                     thead {
                         tr {
-                            th { "Rank" }
                             th { "Count" }
+                            th { "Count / Day" }
                             th { "Channel ID" }
                             th { "Node Alias" }
                         }
                     }
                     tbody {
-                        @for (rank, (channel_id, count)) in local_failed_data.iter().take(20).enumerate() {
+                        @for (channel_id, count) in local_failed_data.iter().take(20) {
                             @let (alias, node_id) = get_channel_info(channel_id);
                             tr {
-                                td class="align-right" { (rank + 1) }
                                 td class="align-right" { (count) }
+                                td class="align-right" { (format!("{:.2}", *count as f64 / history_days)) }
                                 td {
                                     a href={(format!("channels/{}.html", channel_id))} { (channel_id) }
                                 }
@@ -1069,18 +1075,18 @@ fn create_failures_page(
                 table {
                     thead {
                         tr {
-                            th { "Rank" }
                             th { "Count" }
+                            th { "Count / Day" }
                             th { "Channel ID" }
                             th { "Node Alias" }
                         }
                     }
                     tbody {
-                        @for (rank, (channel_id, count)) in failed_data.iter().take(20).enumerate() {
+                        @for (channel_id, count) in failed_data.iter().take(20) {
                             @let (alias, node_id) = get_channel_info(channel_id);
                             tr {
-                                td class="align-right" { (rank + 1) }
                                 td class="align-right" { (count) }
+                                td class="align-right" { (format!("{:.2}", *count as f64 / history_days)) }
                                 td {
                                     a href={(format!("channels/{}.html", channel_id))} { (channel_id) }
                                 }

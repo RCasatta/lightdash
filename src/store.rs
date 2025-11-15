@@ -679,6 +679,28 @@ impl Store {
         }
     }
 
+    /// Get the total number of days covered by forward history (minimum 1 day)
+    pub fn forward_history_days(&self) -> f64 {
+        let earliest_forward = self
+            .forwards
+            .forwards
+            .iter()
+            .filter(|f| f.received_time > 0.0)
+            .filter_map(|f| DateTime::from_timestamp(f.received_time as i64, 0))
+            .min();
+
+        if let Some(first) = earliest_forward {
+            let days = self.now.signed_duration_since(first).num_days();
+            if days < 1 {
+                1.0
+            } else {
+                days as f64
+            }
+        } else {
+            1.0
+        }
+    }
+
     pub fn network_channel_fees(&self) -> (f64, f64) {
         let mut fees: Vec<u64> = self
             .channels()
