@@ -1045,6 +1045,7 @@ fn create_failures_page(
                     thead {
                         tr {
                             th { "Count" }
+                            th { "Days" }
                             th { "Count / Day" }
                             th { "Channel ID" }
                             th { "Node Alias" }
@@ -1053,9 +1054,11 @@ fn create_failures_page(
                     tbody {
                         @for (channel_id, count) in local_failed_data.iter().take(20) {
                             @let (alias, node_id) = get_channel_info(channel_id);
+                            @let channel_days = store.get_channel_age_days(channel_id).unwrap_or(1);
                             tr {
                                 td class="align-right" { (count) }
-                                td class="align-right" { (format!("{:.2}", *count as f64 / history_days)) }
+                                td class="align-right" { (channel_days) }
+                                td class="align-right" { (format!("{:.2}", *count as f64 / channel_days as f64)) }
                                 td {
                                     a href={(format!("channels/{}.html", channel_id))} { (channel_id) }
                                 }
@@ -1087,6 +1090,7 @@ fn create_failures_page(
                     thead {
                         tr {
                             th { "Count" }
+                            th { "Days" }
                             th { "Count / Day" }
                             th { "Channel ID" }
                             th { "Node Alias" }
@@ -1095,9 +1099,11 @@ fn create_failures_page(
                     tbody {
                         @for (channel_id, count) in failed_data.iter().take(20) {
                             @let (alias, node_id) = get_channel_info(channel_id);
+                            @let channel_days = store.get_channel_age_days(channel_id).unwrap_or(1);
                             tr {
                                 td class="align-right" { (count) }
-                                td class="align-right" { (format!("{:.2}", *count as f64 / history_days)) }
+                                td class="align-right" { (channel_days) }
+                                td class="align-right" { (format!("{:.2}", *count as f64 / channel_days as f64)) }
                                 td {
                                     a href={(format!("channels/{}.html", channel_id))} { (channel_id) }
                                 }

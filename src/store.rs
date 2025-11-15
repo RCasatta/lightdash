@@ -541,14 +541,8 @@ impl Store {
 
     /// Get channel age in days from block height (approximate)
     pub fn get_channel_age_days(&self, short_channel_id: &str) -> Option<i64> {
-        // Find the channel in the funds
-        let normal_channels = self.normal_channels();
-        let channel = normal_channels
-            .iter()
-            .find(|c| c.short_channel_id.as_ref().map(|s| s.as_str()) == Some(short_channel_id))?;
-
-        // Get block height from short_channel_id
-        let block_height = channel.block_born()?;
+        // Parse block height directly from short_channel_id (format: "block_height x tx_index x output_index")
+        let block_height: u64 = short_channel_id.split('x').next()?.parse().ok()?;
 
         // Approximate blocks per day (144 blocks per day on average)
         let blocks_per_day = 144;
@@ -697,23 +691,20 @@ impl Store {
 
     /// Get the total number of days covered by forward history (minimum 1 day)
     pub fn forward_history_days(&self) -> f64 {
-        let earliest_forward = self
-            .forwards
-            .forwards
-            .iter()
-            .filter(|f| f.received_time > 0.0)
-            .filter_map(|f| DateTime::from_timestamp(f.received_time as i64, 0))
-            .min();
+        // Return the maximum age of any channel in days
+        // This represents the total operational days for channel analysis
+        let mut max_age_days: f64 = 0.0;
 
-        if let Some(first) = earliest_forward {
-            let days = self.now.signed_duration_since(first).num_days();
-            if days < 1 {
-                1.0
-            } else {
-                days as f64
+        for channel in self.channels.channels.iter() {
+            if let Some(age_days) = self.get_channel_age_days(&channel.short_channel_id) {
+                max_age_days = max_age_days.max(age_days as f64);
             }
-        } else {
+        }
+
+        if max_age_days < 1.0 {
             1.0
+        } else {
+            max_age_days
         }
     }
 
