@@ -958,8 +958,63 @@ fn create_failures_page(
         (channel_id.to_string(), None)
     };
 
+    let stats = store.get_forward_statistics();
+
     let failures_content = html! {
         (create_page_header("Forward Failures Analysis", false))
+
+        // Statistics Overview
+        div class="info-card" {
+            h2 { "Forward Statistics Overview" }
+            p { "Track your routing success ratio over time to measure the impact of channel management decisions." }
+
+            table {
+                thead {
+                    tr {
+                        th { "Time Period" }
+                        th { "Settled" }
+                        th { "Failed" }
+                        th { "Local Failed" }
+                        th { "Total Attempts" }
+                        th { "Success Ratio" }
+                        th { "Settled/Day" }
+                        th { "Failed/Day" }
+                    }
+                }
+                tbody {
+                    tr {
+                        td { strong { "Last Week" } }
+                        td class="align-right" { (stats.week_settled) }
+                        td class="align-right" { (stats.week_failed) }
+                        td class="align-right" { (stats.week_local_failed) }
+                        td class="align-right" { (stats.week_all) }
+                        td class="align-right" { (format!("{:.2}%", stats.week_success_ratio())) }
+                        td class="align-right" { (format!("{:.1}", stats.week_per_day(stats.week_settled))) }
+                        td class="align-right" { (format!("{:.1}", stats.week_per_day(stats.week_failed + stats.week_local_failed))) }
+                    }
+                    tr {
+                        td { strong { "Last Year" } }
+                        td class="align-right" { (stats.year_settled) }
+                        td class="align-right" { (stats.year_failed) }
+                        td class="align-right" { (stats.year_local_failed) }
+                        td class="align-right" { (stats.year_all) }
+                        td class="align-right" { (format!("{:.2}%", stats.year_success_ratio())) }
+                        td class="align-right" { (format!("{:.1}", stats.year_per_day(stats.year_settled))) }
+                        td class="align-right" { (format!("{:.1}", stats.year_per_day(stats.year_failed + stats.year_local_failed))) }
+                    }
+                    tr {
+                        td { strong { "All Time" } }
+                        td class="align-right" { (stats.total_settled) }
+                        td class="align-right" { (stats.total_failed) }
+                        td class="align-right" { (stats.total_local_failed) }
+                        td class="align-right" { (stats.total_all) }
+                        td class="align-right" { (format!("{:.2}%", stats.total_success_ratio())) }
+                        td class="align-right" { "—" }
+                        td class="align-right" { "—" }
+                    }
+                }
+            }
+        }
 
         // Table 1: Local Failed Forwards with WIRE_TEMPORARY_CHANNEL_FAILURE (liquidity issues on our side)
         div class="info-card" {

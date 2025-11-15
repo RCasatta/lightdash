@@ -617,6 +617,68 @@ impl Store {
         result
     }
 
+    /// Get count of forwards by status
+    pub fn count_forwards_by_status(&self, status: &str) -> usize {
+        self.forwards
+            .forwards
+            .iter()
+            .filter(|f| f.status == status)
+            .count()
+    }
+
+    /// Get count of forwards by status within the last N days
+    pub fn count_forwards_by_status_days(&self, status: &str, days: i64) -> usize {
+        self.forwards
+            .forwards
+            .iter()
+            .filter(|f| {
+                f.status == status && f.received_time > 0.0 && {
+                    if let Some(dt) = DateTime::from_timestamp(f.received_time as i64, 0) {
+                        self.now.signed_duration_since(dt).num_days() <= days
+                    } else {
+                        false
+                    }
+                }
+            })
+            .count()
+    }
+
+    /// Get forward statistics for different time periods
+    pub fn get_forward_statistics(&self) -> ForwardStatistics {
+        // Total counts
+        let total_settled = self.count_forwards_by_status("settled");
+        let total_failed = self.count_forwards_by_status("failed");
+        let total_local_failed = self.count_forwards_by_status("local_failed");
+        let total_all = total_settled + total_failed + total_local_failed;
+
+        // Last week
+        let week_settled = self.count_forwards_by_status_days("settled", 7);
+        let week_failed = self.count_forwards_by_status_days("failed", 7);
+        let week_local_failed = self.count_forwards_by_status_days("local_failed", 7);
+        let week_all = week_settled + week_failed + week_local_failed;
+
+        // Last year
+        let year_settled = self.count_forwards_by_status_days("settled", 365);
+        let year_failed = self.count_forwards_by_status_days("failed", 365);
+        let year_local_failed = self.count_forwards_by_status_days("local_failed", 365);
+        let year_all = year_settled + year_failed + year_local_failed;
+
+        ForwardStatistics {
+            total_settled,
+            total_failed,
+            total_local_failed,
+            total_all,
+            week_settled,
+            week_failed,
+            week_local_failed,
+            week_all,
+            year_settled,
+            year_failed,
+            year_local_failed,
+            year_all,
+        }
+    }
+
     pub fn network_channel_fees(&self) -> (f64, f64) {
         let mut fees: Vec<u64> = self
             .channels()
@@ -656,6 +718,54 @@ pub struct ApyData {
     pub apy_6_months: f64,
     pub apy_12_months: f64,
     pub transacted_last_month: u64,
+}
+
+/// Forward statistics for different time periods
+pub struct ForwardStatistics {
+    pub total_settled: usize,
+    pub total_failed: usize,
+    pub total_local_failed: usize,
+    pub total_all: usize,
+    pub week_settled: usize,
+    pub week_failed: usize,
+    pub week_local_failed: usize,
+    pub week_all: usize,
+    pub year_settled: usize,
+    pub year_failed: usize,
+    pub year_local_failed: usize,
+    pub year_all: usize,
+}
+
+impl ForwardStatistics {
+    /// Calculate success ratio as percentage
+    pub fn success_ratio(&self, settled: usize, total: usize) -> f64 {
+        if total == 0 {
+            0.0
+        } else {
+            (settled as f64 / total as f64) * 100.0
+        }
+    }
+
+    pub fn total_success_ratio(&self) -> f64 {
+        self.success_ratio(self.total_settled, self.total_all)
+    }
+
+    pub fn week_success_ratio(&self) -> f64 {
+        self.success_ratio(self.week_settled, self.week_all)
+    }
+
+    pub fn year_success_ratio(&self) -> f64 {
+        self.success_ratio(self.year_settled, self.year_all)
+    }
+
+    /// Calculate per-day averages
+    pub fn week_per_day(&self, count: usize) -> f64 {
+        count as f64 / 7.0
+    }
+
+    pub fn year_per_day(&self, count: usize) -> f64 {
+        count as f64 / 365.0
+    }
 }
 
 /// Data structure for closed channel with enriched information
