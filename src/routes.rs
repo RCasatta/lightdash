@@ -148,10 +148,17 @@ fn render_routes_page(entries: &[RouteEntry], summary: &RoutesSummary, timestamp
                         white-space: pre-wrap;
                     }
                     section {
-                        background-color: #1a202c;
+                        background-color: #2d3748;
                         padding: 20px;
                         border-radius: 8px;
                         margin-bottom: 20px;
+                    }
+                    a {
+                        color: #63b3ed;
+                        text-decoration: none;
+                    }
+                    a:hover {
+                        text-decoration: underline;
                     }
                     section h2 {
                         color: #63b3ed;
@@ -191,9 +198,6 @@ fn render_routes_page(entries: &[RouteEntry], summary: &RoutesSummary, timestamp
                     }
                     .align-right {
                         text-align: right;
-                    }
-                    .monospace {
-                        font-family: 'Courier New', monospace;
                     }
                     footer {
                         text-align: center;
@@ -247,7 +251,6 @@ fn render_routes_page(entries: &[RouteEntry], summary: &RoutesSummary, timestamp
                                     tr {
                                         th { "Rank" }
                                         th { "Alias" }
-                                        th { "Node ID" }
                                         th { "Appearances" }
                                         th { "Avg Fee (ppm)" }
                                         th { "Fee Diversity" }
@@ -261,7 +264,6 @@ fn render_routes_page(entries: &[RouteEntry], summary: &RoutesSummary, timestamp
                                             td {
                                                 a href={(format!("nodes/{}.html", entry.node_id))} { (&entry.alias) }
                                             }
-                                            td class="monospace" { (&entry.node_id) }
                                             td class="align-right" { (entry.appearances) }
                                             td class="align-right" { (format!("{:.1}", entry.avg_fee)) }
                                             td class="align-right" { (format!("{:.3}", entry.fee_diversity)) }
