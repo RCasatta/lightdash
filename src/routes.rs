@@ -147,15 +147,19 @@ fn render_routes_page(entries: &[RouteEntry], summary: &RoutesSummary, timestamp
                         overflow-x: auto;
                         white-space: pre-wrap;
                     }
-                    .info-card {
-                        background-color: #2d3748;
+                    section {
+                        background-color: #1a202c;
                         padding: 20px;
                         border-radius: 8px;
                         margin-bottom: 20px;
                     }
-                    .info-card h2 {
+                    section h2 {
                         color: #63b3ed;
                         margin-top: 0;
+                    }
+                    section p {
+                        color: #a0aec0;
+                        margin: 10px 0;
                     }
                     .back-link {
                         display: inline-block;
@@ -208,13 +212,14 @@ fn render_routes_page(entries: &[RouteEntry], summary: &RoutesSummary, timestamp
                             a href="nodes/" { "Nodes" } " | "
                             a href="channels/" { "Channels" } " | "
                             a href="forwards-week.html" { "Forwards" } " | "
+                            a href="routes.html" { "Routes" } " | "
                             a href="failures.html" { "Failures" } " | "
                             a href="apy.html" { "APY" } " | "
                             a href="closed-channels.html" { "Closed" }
                         }
                     }
 
-                    div class="info-card" {
+                    section {
                         h2 { "Random Route Coverage" }
                         p {
                             "Average hops per route: "
@@ -230,7 +235,7 @@ fn render_routes_page(entries: &[RouteEntry], summary: &RoutesSummary, timestamp
                         }
                     }
 
-                    div class="info-card" {
+                    section {
                         h2 { "Top Potential Relay Partners" }
                         @if entries.is_empty() {
                             p {

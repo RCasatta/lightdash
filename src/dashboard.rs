@@ -117,28 +117,38 @@ fn create_html_header(title: &str) -> Markup {
 
 /// Create common page header with navigation links
 fn create_page_header(title: &str, is_subdir: bool) -> Markup {
-    let (home_link, nodes_link, channels_link, forwards_link, failures_link, apy_link, closed_link) =
-        if is_subdir {
-            (
-                "../index.html",
-                "../nodes/",
-                "../channels/",
-                "../forwards-week.html",
-                "../failures.html",
-                "../apy.html",
-                "../closed-channels.html",
-            )
-        } else {
-            (
-                "index.html",
-                "nodes/",
-                "channels/",
-                "forwards-week.html",
-                "failures.html",
-                "apy.html",
-                "closed-channels.html",
-            )
-        };
+    let (
+        home_link,
+        nodes_link,
+        channels_link,
+        forwards_link,
+        routes_link,
+        failures_link,
+        apy_link,
+        closed_link,
+    ) = if is_subdir {
+        (
+            "../index.html",
+            "../nodes/",
+            "../channels/",
+            "../forwards-week.html",
+            "../routes.html",
+            "../failures.html",
+            "../apy.html",
+            "../closed-channels.html",
+        )
+    } else {
+        (
+            "index.html",
+            "nodes/",
+            "channels/",
+            "forwards-week.html",
+            "routes.html",
+            "failures.html",
+            "apy.html",
+            "closed-channels.html",
+        )
+    };
 
     html! {
         div class="header" {
@@ -148,6 +158,7 @@ fn create_page_header(title: &str, is_subdir: bool) -> Markup {
                 a href=(nodes_link) { "Nodes" } " | "
                 a href=(channels_link) { "Channels" } " | "
                 a href=(forwards_link) { "Forwards" } " | "
+                a href=(routes_link) { "Routes" } " | "
                 a href=(failures_link) { "Failures" } " | "
                 a href=(apy_link) { "APY" } " | "
                 a href=(closed_link) { "Closed" }
