@@ -117,26 +117,28 @@ fn create_html_header(title: &str) -> Markup {
 
 /// Create common page header with navigation links
 fn create_page_header(title: &str, is_subdir: bool) -> Markup {
-    let (home_link, nodes_link, channels_link, forwards_link, apy_link, closed_link) = if is_subdir
-    {
-        (
-            "../index.html",
-            "../nodes/",
-            "../channels/",
-            "../forwards-week.html",
-            "../apy.html",
-            "../closed-channels.html",
-        )
-    } else {
-        (
-            "index.html",
-            "nodes/",
-            "channels/",
-            "forwards-week.html",
-            "apy.html",
-            "closed-channels.html",
-        )
-    };
+    let (home_link, nodes_link, channels_link, forwards_link, failures_link, apy_link, closed_link) =
+        if is_subdir {
+            (
+                "../index.html",
+                "../nodes/",
+                "../channels/",
+                "../forwards-week.html",
+                "../failures.html",
+                "../apy.html",
+                "../closed-channels.html",
+            )
+        } else {
+            (
+                "index.html",
+                "nodes/",
+                "channels/",
+                "forwards-week.html",
+                "failures.html",
+                "apy.html",
+                "closed-channels.html",
+            )
+        };
 
     html! {
         div class="header" {
@@ -146,6 +148,7 @@ fn create_page_header(title: &str, is_subdir: bool) -> Markup {
                 a href=(nodes_link) { "Nodes" } " | "
                 a href=(channels_link) { "Channels" } " | "
                 a href=(forwards_link) { "Forwards" } " | "
+                a href=(failures_link) { "Failures" } " | "
                 a href=(apy_link) { "APY" } " | "
                 a href=(closed_link) { "Closed" }
             }
@@ -929,6 +932,138 @@ fn create_forwards_year_page(
     match fs::write(&forwards_file_path, forwards_html.into_string()) {
         Ok(_) => log::debug!("Yearly forwards page generated: {}", forwards_file_path),
         Err(e) => log::debug!("Error writing yearly forwards page: {}", e),
+    }
+}
+
+fn create_failures_page(
+    directory: &str,
+    store: &Store,
+    now: &chrono::DateTime<chrono::Utc>,
+    our_node_id: &String,
+) {
+    // Helper function to get node alias and ID for a channel
+    let get_channel_info = |channel_id: &str| -> (String, Option<String>) {
+        let channel_id_string = channel_id.to_string();
+
+        // Try to find the channel in our channels (we're the source)
+        if let Some(channel) = store.get_channel(&channel_id_string, our_node_id) {
+            // We're the source, so the destination is the remote node
+            return (
+                store.get_node_alias(&channel.destination),
+                Some(channel.destination.clone()),
+            );
+        }
+
+        // If we can't find the channel, return the original channel ID
+        (channel_id.to_string(), None)
+    };
+
+    let failures_content = html! {
+        (create_page_header("Forward Failures Analysis", false))
+
+        // Table 1: Local Failed Forwards with WIRE_TEMPORARY_CHANNEL_FAILURE (liquidity issues on our side)
+        div class="info-card" {
+            h2 { "Local Failed Forwards - No Liquidity (WIRE_TEMPORARY_CHANNEL_FAILURE)" }
+            p { "These are payments that failed because we don't have enough liquidity in the outbound channel (our failure). Consider rebalancing these channels." }
+
+            @let local_failed_data = store.local_failed_temp_channel_failure_by_out_channel();
+            @if !local_failed_data.is_empty() {
+                p { "Total channels with local failures: " (local_failed_data.len()) }
+                table {
+                    thead {
+                        tr {
+                            th { "Rank" }
+                            th { "Count" }
+                            th { "Channel ID" }
+                            th { "Node Alias" }
+                        }
+                    }
+                    tbody {
+                        @for (rank, (channel_id, count)) in local_failed_data.iter().take(20).enumerate() {
+                            @let (alias, node_id) = get_channel_info(channel_id);
+                            tr {
+                                td class="align-right" { (rank + 1) }
+                                td class="align-right" { (count) }
+                                td {
+                                    a href={(format!("channels/{}.html", channel_id))} { (channel_id) }
+                                }
+                                td {
+                                    @if let Some(node_id) = node_id {
+                                        a href={(format!("nodes/{}.html", node_id))} { (alias) }
+                                    } @else {
+                                        (alias)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } @else {
+                p { "No local failed forwards with WIRE_TEMPORARY_CHANNEL_FAILURE found." }
+            }
+        }
+
+        // Table 2: All Failed Forwards (failures on the remote node's side)
+        div class="info-card" {
+            h2 { "All Failed Forwards - Remote Node Issues" }
+            p { "These are payments that failed not due to our fault but due to connected nodes. Consider closing channels with high failure counts." }
+
+            @let failed_data = store.failed_forwards_by_out_channel();
+            @if !failed_data.is_empty() {
+                p { "Total channels with failed forwards: " (failed_data.len()) }
+                table {
+                    thead {
+                        tr {
+                            th { "Rank" }
+                            th { "Count" }
+                            th { "Channel ID" }
+                            th { "Node Alias" }
+                        }
+                    }
+                    tbody {
+                        @for (rank, (channel_id, count)) in failed_data.iter().take(20).enumerate() {
+                            @let (alias, node_id) = get_channel_info(channel_id);
+                            tr {
+                                td class="align-right" { (rank + 1) }
+                                td class="align-right" { (count) }
+                                td {
+                                    a href={(format!("channels/{}.html", channel_id))} { (channel_id) }
+                                }
+                                td {
+                                    @if let Some(node_id) = node_id {
+                                        a href={(format!("nodes/{}.html", node_id))} { (alias) }
+                                    } @else {
+                                        (alias)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } @else {
+                p { "No failed forwards found." }
+            }
+        }
+
+        style {
+            r#"
+            .align-right {
+                text-align: right;
+            }
+            "#
+        }
+    };
+
+    let failures_html = wrap_in_html_page(
+        "Forward Failures Analysis",
+        failures_content,
+        &now.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+    );
+
+    let failures_file_path = format!("{}/failures.html", directory);
+    match fs::write(&failures_file_path, failures_html.into_string()) {
+        Ok(_) => log::debug!("Failures page generated: {}", failures_file_path),
+        Err(e) => log::debug!("Error writing failures page: {}", e),
     }
 }
 
@@ -2493,6 +2628,9 @@ pub fn run_dashboard(store: &Store, directory: String, min_channels: usize) {
 
     log::info!("Creating yearly forwards page");
     create_forwards_year_page(&directory, &store, &now, &store.info.id);
+
+    log::info!("Creating failures page");
+    create_failures_page(&directory, &store, &now, &store.info.id);
 
     log::info!("Creating weekday chart page");
     create_weekday_chart_page(&directory, &store, &now);

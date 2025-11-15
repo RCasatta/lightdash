@@ -315,6 +315,10 @@ pub struct Forward {
     pub status: String,
     pub received_time: f64,
     pub resolved_time: Option<f64>,
+    #[serde(default)]
+    pub failreason: Option<String>,
+    #[serde(default)]
+    pub failcode: Option<u32>,
 }
 
 #[derive(Clone, Debug)]

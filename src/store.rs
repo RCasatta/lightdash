@@ -580,6 +580,43 @@ impl Store {
             .collect()
     }
 
+    /// Get local_failed forwards with WIRE_TEMPORARY_CHANNEL_FAILURE grouped by out_channel
+    /// Returns a vector of (channel_id, count) tuples sorted by count descending
+    pub fn local_failed_temp_channel_failure_by_out_channel(&self) -> Vec<(String, usize)> {
+        let mut channel_counts: HashMap<String, usize> = HashMap::new();
+
+        for forward in &self.forwards.forwards {
+            if forward.status == "local_failed"
+                && forward.failreason.as_deref() == Some("WIRE_TEMPORARY_CHANNEL_FAILURE")
+                && forward.out_channel.is_some()
+            {
+                let channel = forward.out_channel.as_ref().unwrap();
+                *channel_counts.entry(channel.clone()).or_insert(0) += 1;
+            }
+        }
+
+        let mut result: Vec<(String, usize)> = channel_counts.into_iter().collect();
+        result.sort_by(|a, b| b.1.cmp(&a.1)); // Sort by count descending
+        result
+    }
+
+    /// Get all failed forwards grouped by out_channel
+    /// Returns a vector of (channel_id, count) tuples sorted by count descending
+    pub fn failed_forwards_by_out_channel(&self) -> Vec<(String, usize)> {
+        let mut channel_counts: HashMap<String, usize> = HashMap::new();
+
+        for forward in &self.forwards.forwards {
+            if forward.status == "failed" && forward.out_channel.is_some() {
+                let channel = forward.out_channel.as_ref().unwrap();
+                *channel_counts.entry(channel.clone()).or_insert(0) += 1;
+            }
+        }
+
+        let mut result: Vec<(String, usize)> = channel_counts.into_iter().collect();
+        result.sort_by(|a, b| b.1.cmp(&a.1)); // Sort by count descending
+        result
+    }
+
     pub fn network_channel_fees(&self) -> (f64, f64) {
         let mut fees: Vec<u64> = self
             .channels()
