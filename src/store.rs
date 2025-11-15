@@ -586,6 +586,14 @@ impl Store {
         let mut channel_counts: HashMap<String, usize> = HashMap::new();
 
         for forward in &self.forwards.forwards {
+            if let Some(received) = DateTime::from_timestamp(forward.received_time as i64, 0) {
+                if self.now.signed_duration_since(received).num_days() > 365 {
+                    continue;
+                }
+            } else {
+                continue;
+            }
+
             if forward.status == "local_failed"
                 && forward.failreason.as_deref() == Some("WIRE_TEMPORARY_CHANNEL_FAILURE")
                 && forward.out_channel.is_some()
@@ -606,6 +614,14 @@ impl Store {
         let mut channel_counts: HashMap<String, usize> = HashMap::new();
 
         for forward in &self.forwards.forwards {
+            if let Some(received) = DateTime::from_timestamp(forward.received_time as i64, 0) {
+                if self.now.signed_duration_since(received).num_days() > 365 {
+                    continue;
+                }
+            } else {
+                continue;
+            }
+
             if forward.status == "failed" && forward.out_channel.is_some() {
                 let channel = forward.out_channel.as_ref().unwrap();
                 *channel_counts.entry(channel.clone()).or_insert(0) += 1;
