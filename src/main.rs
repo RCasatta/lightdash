@@ -30,8 +30,11 @@ enum Commands {
         #[arg(long, default_value = "1")]
         min_channels: usize,
     },
-    /// Calculate and display routing information
-    Routes,
+    /// Generate routing analysis page
+    Routes {
+        /// Directory for routes output
+        directory: String,
+    },
     /// Execute sling jobs for rebalancing
     Sling,
     /// Execute fee adjustments
@@ -51,8 +54,8 @@ fn main() {
             log::debug!("Dashboard directory: {}", directory);
             dashboard::run_dashboard(&store, directory, min_channels);
         }
-        Commands::Routes => {
-            routes::run_routes(&store);
+        Commands::Routes { directory } => {
+            routes::run_routes(&store, &directory);
         }
         Commands::Sling => {
             sling::run_sling(&store);
