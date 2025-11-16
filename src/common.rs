@@ -103,6 +103,7 @@ pub fn calc_setchannel(
     fund: &crate::cmd::Fund,
     our: Option<&&crate::cmd::Channel>,
     settled_24h: &[crate::cmd::SettledForward],
+    local_failed_24h: &[crate::cmd::Forward],
 ) -> (u64, Option<String>) {
     let perc = fund.perc_float();
     // let amount = fund.amount_msat;
@@ -115,6 +116,7 @@ pub fn calc_setchannel(
     let current_ppm = our.map(|e| e.fee_per_millionth).unwrap_or(min_ppm);
 
     let forwards_last_24h = did_forward(short_channel_id, &settled_24h);
+    let failed_last_24h = did_local_failed(short_channel_id, &local_failed_24h);
     let did_forwards_last_24h = !forwards_last_24h.is_empty();
     let step = (current_ppm as f64 * STEP_PERC) as u64;
     let new_ppm = if did_forwards_last_24h {
@@ -153,8 +155,9 @@ pub fn calc_setchannel(
         let truncated_min_str = if truncated_min { "truncated_min" } else { "" };
 
         Some(format!(
-            "`{cmd} {args}` was:{current_ppm} perc:{perc:.2} min:{min_ppm} forward_last_24h:{} {truncated_min_str} {alias}",
-            forwards_last_24h.len()
+            "`{cmd} {args}` was:{current_ppm} perc:{perc:.2} min:{min_ppm} forward_last_24h:{} failed_last_24h:{} {truncated_min_str} {alias}",
+            forwards_last_24h.len(),
+            failed_last_24h.len()
         ))
     } else {
         None
@@ -170,6 +173,16 @@ pub fn did_forward<'a>(
     forwards
         .iter()
         .filter(|f| f.out_channel == short_channel_id)
+        .collect()
+}
+
+pub fn did_local_failed<'a>(
+    short_channel_id: &str,
+    forwards: &'a [crate::cmd::Forward],
+) -> Vec<&'a crate::cmd::Forward> {
+    forwards
+        .iter()
+        .filter(|f| f.out_channel.as_ref().unwrap_or(&"".to_string()) == short_channel_id)
         .collect()
 }
 

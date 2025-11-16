@@ -160,9 +160,22 @@ impl Store {
             .cloned()
             .collect();
         f.sort_by(|a, b| {
-            a.received_time.cmp(&b.received_time);
+            a.received_time
+                .partial_cmp(&b.received_time)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
         f
+    }
+
+    pub fn filter_local_failed_forwards_by_hours(&self, hours: i64) -> Vec<cmd::Forward> {
+        self.local_failed_forwards()
+            .into_iter()
+            .filter(|f| {
+                let received_time =
+                    DateTime::from_timestamp(f.received_time as i64, 0).unwrap_or(self.now);
+                self.now.signed_duration_since(received_time).num_hours() <= hours
+            })
+            .collect()
     }
 
     /// Filter settled forwards to only include those resolved within the last N hours

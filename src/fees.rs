@@ -4,7 +4,7 @@ use crate::store::Store;
 pub fn run_fees(store: &Store) {
     let normal_channels = store.normal_channels();
     let settled_24h = store.filter_settled_forwards_by_hours(24);
-
+    let local_failed_24h = store.filter_local_failed_forwards_by_hours(24);
     let mut lines = vec![];
 
     for fund in normal_channels.iter() {
@@ -18,6 +18,7 @@ pub fn run_fees(store: &Store) {
             &fund,
             our.as_ref(),
             &settled_24h,
+            &local_failed_24h,
         );
 
         lines.push(cmd);
