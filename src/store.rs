@@ -150,6 +150,21 @@ impl Store {
         f
     }
 
+    /// Get local_failed forwards by most recent first
+    pub fn local_failed_forwards(&self) -> Vec<cmd::Forward> {
+        let mut f: Vec<_> = self
+            .forwards
+            .forwards
+            .iter()
+            .filter(|e| e.status == "local_failed")
+            .cloned()
+            .collect();
+        f.sort_by(|a, b| {
+            a.received_time.cmp(&b.received_time);
+        });
+        f
+    }
+
     /// Filter settled forwards to only include those resolved within the last N hours
     pub fn filter_settled_forwards_by_hours(&self, hours: i64) -> Vec<SettledForward> {
         self.settled_forwards()
