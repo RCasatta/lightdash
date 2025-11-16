@@ -1045,7 +1045,7 @@ fn create_failures_page(
                     thead {
                         tr {
                             th { "Count" }
-                            th { "Last Month" }
+                            th { "Last Week" }
                             th { "Days" }
                             th { "Count / Day" }
                             th { "Channel ID" }
@@ -1092,7 +1092,7 @@ fn create_failures_page(
                     thead {
                         tr {
                             th { "Count" }
-                            th { "Last Month" }
+                            th { "Last Week" }
                             th { "Days" }
                             th { "Count / Day" }
                             th { "Channel ID" }
