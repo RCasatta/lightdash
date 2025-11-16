@@ -1045,6 +1045,7 @@ fn create_failures_page(
                     thead {
                         tr {
                             th { "Count" }
+                            th { "Last Month" }
                             th { "Days" }
                             th { "Count / Day" }
                             th { "Channel ID" }
@@ -1052,11 +1053,12 @@ fn create_failures_page(
                         }
                     }
                     tbody {
-                        @for (channel_id, count) in local_failed_data.iter().take(20) {
+                        @for (channel_id, count, monthly_count) in local_failed_data.iter().take(30) {
                             @let (alias, node_id) = get_channel_info(channel_id);
                             @let channel_days = store.get_channel_age_days(channel_id).unwrap_or(1);
                             tr {
                                 td class="align-right" { (count) }
+                                td class="align-right" { (monthly_count) }
                                 td class="align-right" { (channel_days) }
                                 td class="align-right" { (format!("{:.2}", *count as f64 / channel_days as f64)) }
                                 td {
@@ -1090,6 +1092,7 @@ fn create_failures_page(
                     thead {
                         tr {
                             th { "Count" }
+                            th { "Last Month" }
                             th { "Days" }
                             th { "Count / Day" }
                             th { "Channel ID" }
@@ -1097,11 +1100,12 @@ fn create_failures_page(
                         }
                     }
                     tbody {
-                        @for (channel_id, count) in failed_data.iter().take(20) {
+                        @for (channel_id, count, monthly_count) in failed_data.iter().take(30) {
                             @let (alias, node_id) = get_channel_info(channel_id);
                             @let channel_days = store.get_channel_age_days(channel_id).unwrap_or(1);
                             tr {
                                 td class="align-right" { (count) }
+                                td class="align-right" { (monthly_count) }
                                 td class="align-right" { (channel_days) }
                                 td class="align-right" { (format!("{:.2}", *count as f64 / channel_days as f64)) }
                                 td {
