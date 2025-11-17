@@ -130,7 +130,7 @@ pub fn calc_setchannel<'a>(
         "DEC"
     };
 
-    log::info!("Perc:{data} {perc:.1}% {short_channel_id} alias:{alias}  ppm:{current_ppm}->{new_ppm} max_htlc:{current_max_htlc_sat}->{new_max_htlc_sat}");
+    log::info!("{data} {short_channel_id} with {alias}. my_fund:{perc:.1}%  ppm:{current_ppm}->{new_ppm} max_htlc:{current_max_htlc_sat}->{new_max_htlc_sat}");
     if current_ppm != new_ppm || current_max_htlc_sat != new_max_htlc_sat {
         let cmd = "lightning-cli";
         let args = format!(
