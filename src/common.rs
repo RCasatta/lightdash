@@ -109,9 +109,10 @@ pub fn calc_setchannel<'a>(
     let current_channel_forwards = did_forward(short_channel_id, &forwards_24h);
     let current_ppm = our.fee_per_millionth;
     let current_max_htlc_sat = our.htlc_maximum_msat;
+    let our_amount_msat = fund.our_amount_msat;
 
     // Compute the largest power of 2 <= our_amount_msat for max HTLC
-    let new_max_htlc_msat = largest_power_of_two_leq(fund.our_amount_msat);
+    let new_max_htlc_msat = largest_power_of_two_leq(our_amount_msat);
     let new_ppm = if current_channel_forwards.len() == 0 {
         // no good or bad forwards, reduce fee
         // we reduce proportionally to how full is the channel, depleted channel (<10% never reduce)
@@ -137,7 +138,7 @@ pub fn calc_setchannel<'a>(
         "DEC"
     };
 
-    log::info!("{data} {short_channel_id} with {alias}. my_fund:{perc:.1}%  ppm:{current_ppm}->{new_ppm} max_htlc:{current_max_htlc_sat}->{new_max_htlc_msat}");
+    log::info!("{data} {short_channel_id} with {alias}. my_fund:{our_amount_msat} ({perc:.1}%)  ppm:{current_ppm}->{new_ppm} max_htlc:{current_max_htlc_sat}->{new_max_htlc_msat}");
     if current_ppm != new_ppm || current_max_htlc_sat != new_max_htlc_msat {
         let cmd = "lightning-cli";
         let args = format!(
