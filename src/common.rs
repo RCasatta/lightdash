@@ -87,6 +87,17 @@ pub fn calc_slingjobs(
     Some((cmd, details))
 }
 
+/// Returns the largest power of 2 that is less than or equal to n.
+/// For n = 0, returns 0.
+/// For n > 0, returns the highest power of 2 <= n.
+pub fn largest_power_of_two_leq(n: u64) -> u64 {
+    if n == 0 {
+        0
+    } else {
+        1u64 << (63 - n.leading_zeros())
+    }
+}
+
 pub fn calc_setchannel<'a>(
     short_channel_id: &str,
     alias: &str,
@@ -100,11 +111,7 @@ pub fn calc_setchannel<'a>(
     let current_max_htlc_sat = our.htlc_maximum_msat;
 
     // Compute the largest power of 2 <= our_amount_msat for max HTLC
-    let new_max_htlc_sat = if fund.our_amount_msat == 0 {
-        0
-    } else {
-        fund.our_amount_msat & !(fund.our_amount_msat - 1)
-    };
+    let new_max_htlc_msat = largest_power_of_two_leq(fund.our_amount_msat);
     let new_ppm = if current_channel_forwards.len() == 0 {
         // no good or bad forwards, reduce fee
         // we reduce proportionally to how full is the channel, depleted channel (<10% never reduce)
@@ -130,11 +137,11 @@ pub fn calc_setchannel<'a>(
         "DEC"
     };
 
-    log::info!("{data} {short_channel_id} with {alias}. my_fund:{perc:.1}%  ppm:{current_ppm}->{new_ppm} max_htlc:{current_max_htlc_sat}->{new_max_htlc_sat}");
-    if current_ppm != new_ppm || current_max_htlc_sat != new_max_htlc_sat {
+    log::info!("{data} {short_channel_id} with {alias}. my_fund:{perc:.1}%  ppm:{current_ppm}->{new_ppm} max_htlc:{current_max_htlc_sat}->{new_max_htlc_msat}");
+    if current_ppm != new_ppm || current_max_htlc_sat != new_max_htlc_msat {
         let cmd = "lightning-cli";
         let args = format!(
-            "setchannel {short_channel_id} {FEE_BASE} {new_ppm} {MIN_HTLC}sat {new_max_htlc_sat}sat"
+            "setchannel {short_channel_id} {FEE_BASE} {new_ppm} {MIN_HTLC}sat {new_max_htlc_msat}"
         );
         log::info!("executing `{cmd} {args}` {alias}");
 
@@ -201,5 +208,39 @@ pub fn format_duration(duration: Duration) -> String {
         format!("{}m {}s", minutes, seconds)
     } else {
         format!("{}s", seconds)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_largest_power_of_two_leq() {
+        // Test edge cases
+        assert_eq!(largest_power_of_two_leq(0), 0);
+        assert_eq!(largest_power_of_two_leq(1), 1);
+        assert_eq!(largest_power_of_two_leq(2), 2);
+        assert_eq!(largest_power_of_two_leq(3), 2);
+        assert_eq!(largest_power_of_two_leq(4), 4);
+        assert_eq!(largest_power_of_two_leq(5), 4);
+        assert_eq!(largest_power_of_two_leq(6), 4);
+        assert_eq!(largest_power_of_two_leq(7), 4);
+        assert_eq!(largest_power_of_two_leq(8), 8);
+        assert_eq!(largest_power_of_two_leq(9), 8);
+        assert_eq!(largest_power_of_two_leq(10), 8);
+        assert_eq!(largest_power_of_two_leq(15), 8);
+        assert_eq!(largest_power_of_two_leq(16), 16);
+        assert_eq!(largest_power_of_two_leq(17), 16);
+        assert_eq!(largest_power_of_two_leq(31), 16);
+        assert_eq!(largest_power_of_two_leq(32), 32);
+        assert_eq!(largest_power_of_two_leq(33), 32);
+
+        // Test larger values
+        assert_eq!(largest_power_of_two_leq(1000), 512);
+        assert_eq!(largest_power_of_two_leq(1024), 1024);
+        assert_eq!(largest_power_of_two_leq(1025), 1024);
+        assert_eq!(largest_power_of_two_leq(u64::MAX), 1 << 63); // 2^63, the highest bit
+        assert_eq!(largest_power_of_two_leq(2450000000), 2147483648);
     }
 }
