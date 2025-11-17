@@ -106,6 +106,7 @@ pub fn calc_setchannel<'a>(
     forwards_24h: &[Forward],
 ) {
     let perc = fund.perc_float(); // how full of our funds is the channel
+    let disp_perc = format!("{:.1}%", perc * 100.0);
     let current_channel_forwards = did_forward(short_channel_id, &forwards_24h);
     let current_ppm = our.fee_per_millionth;
     let current_max_htlc_sat = our.htlc_maximum_msat;
@@ -138,15 +139,13 @@ pub fn calc_setchannel<'a>(
         "DEC"
     };
 
-    log::info!("{data} {short_channel_id} with {alias}. my_fund:{our_amount_msat} ({perc:.1}%)  ppm:{current_ppm}->{new_ppm} max_htlc:{current_max_htlc_sat}->{new_max_htlc_msat}");
+    log::info!("{data} {short_channel_id} with {alias}. my_fund:{our_amount_msat} ({disp_perc})  ppm:{current_ppm}->{new_ppm} max_htlc:{current_max_htlc_sat}->{new_max_htlc_msat}");
     if current_ppm != new_ppm || current_max_htlc_sat != new_max_htlc_msat {
         let cmd = "lightning-cli";
         let args = format!(
             "setchannel {short_channel_id} {FEE_BASE} {new_ppm} {MIN_HTLC}sat {new_max_htlc_msat}"
         );
         log::info!("executing `{cmd} {args}` {alias}");
-
-        return; // TODO: remove me
 
         // Always execute fee adjustments
         let splitted_args: Vec<&str> = args.split(' ').collect();
