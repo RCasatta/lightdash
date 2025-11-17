@@ -5,7 +5,7 @@ use std::fs;
 
 use crate::cmd;
 use crate::{common::*, store::Store};
-use maud::{html, Markup, DOCTYPE};
+use maud::{html, Markup, PreEscaped, DOCTYPE};
 
 /// Create common HTML header with title
 fn create_html_header(title: &str) -> Markup {
@@ -1196,6 +1196,9 @@ fn generate_fee_chart_html(dates: &[String], in_ppm: &[f64], out_ppm: &[f64]) ->
     let out_ppm_json = serde_json::to_string(out_ppm).unwrap_or_else(|_| "[]".to_string());
 
     html! {
+        // Include Chart.js library first
+        script src="https://cdn.jsdelivr.net/npm/chart.js" {}
+
         div class="info-card" {
             h2 { "Channel Fee History" }
             p { "Historical fee rates for this channel over time." }
@@ -1203,7 +1206,7 @@ fn generate_fee_chart_html(dates: &[String], in_ppm: &[f64], out_ppm: &[f64]) ->
             canvas id="feeChart" width="400" height="200" {}
 
             script {
-                (format!(r#"
+                (PreEscaped(format!(r#"
                     const ctx = document.getElementById('feeChart').getContext('2d');
                     const feeChart = new Chart(ctx, {{
                         type: 'line',
@@ -1240,12 +1243,9 @@ fn generate_fee_chart_html(dates: &[String], in_ppm: &[f64], out_ppm: &[f64]) ->
                             }}
                         }}
                     }});
-                "#, dates_json, in_ppm_json, out_ppm_json))
+                "#, dates_json, in_ppm_json, out_ppm_json)))
             }
         }
-
-        // Include Chart.js library
-        script src="https://cdn.jsdelivr.net/npm/chart.js" {}
     }
 }
 
