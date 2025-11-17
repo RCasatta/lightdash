@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use csv;
 use std::collections::HashMap;
 use std::fs;
 
@@ -1149,6 +1150,105 @@ fn create_failures_page(
     }
 }
 
+/// Read CSV file with channel fee history and return chart data
+/// Returns (dates, in_ppm_values, out_ppm_values) for chart generation
+fn read_channel_fee_csv(
+    csv_path: &str,
+) -> Result<(Vec<String>, Vec<f64>, Vec<f64>), Box<dyn std::error::Error>> {
+    let mut dates = Vec::new();
+    let mut in_ppm_values = Vec::new();
+    let mut out_ppm_values = Vec::new();
+
+    let mut rdr = csv::Reader::from_path(csv_path)?;
+    for result in rdr.records() {
+        let record = result?;
+        if record.len() >= 3 {
+            // Parse timestamp to readable date format
+            if let Ok(timestamp) = record[0].parse::<i64>() {
+                let datetime = DateTime::from_timestamp(timestamp, 0).ok_or("Invalid timestamp")?;
+                dates.push(datetime.format("%Y-%m-%d").to_string());
+            } else {
+                dates.push(record[0].to_string());
+            }
+
+            // Parse in_ppm and out_ppm values
+            if let Ok(in_ppm) = record[1].parse::<f64>() {
+                in_ppm_values.push(in_ppm);
+            } else {
+                in_ppm_values.push(0.0);
+            }
+
+            if let Ok(out_ppm) = record[2].parse::<f64>() {
+                out_ppm_values.push(out_ppm);
+            } else {
+                out_ppm_values.push(0.0);
+            }
+        }
+    }
+
+    Ok((dates, in_ppm_values, out_ppm_values))
+}
+
+/// Generate HTML for a line chart using Chart.js
+fn generate_fee_chart_html(dates: &[String], in_ppm: &[f64], out_ppm: &[f64]) -> Markup {
+    let dates_json = serde_json::to_string(dates).unwrap_or_else(|_| "[]".to_string());
+    let in_ppm_json = serde_json::to_string(in_ppm).unwrap_or_else(|_| "[]".to_string());
+    let out_ppm_json = serde_json::to_string(out_ppm).unwrap_or_else(|_| "[]".to_string());
+
+    html! {
+        div class="info-card" {
+            h2 { "Channel Fee History" }
+            p { "Historical fee rates for this channel over time." }
+
+            canvas id="feeChart" width="400" height="200" {}
+
+            script {
+                (format!(r#"
+                    const ctx = document.getElementById('feeChart').getContext('2d');
+                    const feeChart = new Chart(ctx, {{
+                        type: 'line',
+                        data: {{
+                            labels: {},
+                            datasets: [{{
+                                label: 'In PPM',
+                                data: {},
+                                borderColor: 'rgb(75, 192, 192)',
+                                tension: 0.1
+                            }}, {{
+                                label: 'Out PPM',
+                                data: {},
+                                borderColor: 'rgb(255, 99, 132)',
+                                tension: 0.1
+                            }}]
+                        }},
+                        options: {{
+                            responsive: true,
+                            scales: {{
+                                y: {{
+                                    beginAtZero: true,
+                                    title: {{
+                                        display: true,
+                                        text: 'PPM'
+                                    }}
+                                }},
+                                x: {{
+                                    title: {{
+                                        display: true,
+                                        text: 'Date'
+                                    }}
+                                }}
+                            }}
+                        }}
+                    }});
+                "#, dates_json, in_ppm_json, out_ppm_json))
+            }
+        }
+
+        // Include Chart.js library
+        script src="https://cdn.jsdelivr.net/npm/chart.js" {}
+    }
+}
+
 fn create_channel_pages(
     directory: &str,
     channels: &[crate::cmd::Fund],
@@ -1157,6 +1257,7 @@ fn create_channel_pages(
     our_node_id: &String,
     per_channel_last_forward_in: &HashMap<String, DateTime<Utc>>,
     per_channel_last_forward_out: &HashMap<String, DateTime<Utc>>,
+    csv_dir: &Option<String>,
 ) {
     let channels_dir = format!("{}/channels", directory);
 
@@ -1626,6 +1727,23 @@ fn create_channel_pages(
                     div class="progress-fill" style={
                         (format!("width: {:.1}%", channel.perc_float() * 100.0))
                     } {}
+                }
+            }
+
+            // Add fee history chart if CSV file exists
+            @if let Some(csv_dir) = csv_dir {
+                @let csv_filename = if let Some(scid) = &channel.short_channel_id {
+                    format!("{}/{}.csv", csv_dir, scid)
+                } else {
+                    format!("{}/{}.csv", csv_dir, channel.channel_id)
+                };
+
+                @if std::path::Path::new(&csv_filename).exists() {
+                    @if let Ok((dates, in_ppm, out_ppm)) = read_channel_fee_csv(&csv_filename) {
+                        @if !dates.is_empty() {
+                            (generate_fee_chart_html(&dates, &in_ppm, &out_ppm))
+                        }
+                    }
                 }
             }
 
@@ -2193,7 +2311,12 @@ fn create_closed_channels_page(
 ///
 /// # Panics
 /// Panics if unable to create the output directory or write HTML files
-pub fn run_dashboard(store: &Store, directory: String, min_channels: usize) {
+pub fn run_dashboard(
+    store: &Store,
+    directory: String,
+    min_channels: usize,
+    csv_dir: Option<String>,
+) {
     let now = Utc::now();
     log::debug!("{}", now);
     log::debug!("my id:{}", store.info.id);
@@ -2700,6 +2823,7 @@ pub fn run_dashboard(store: &Store, directory: String, min_channels: usize) {
         &store.info.id,
         &per_channel_last_forward_in,
         &per_channel_last_forward_out,
+        &csv_dir,
     );
 
     log::info!("Creating forwards page");

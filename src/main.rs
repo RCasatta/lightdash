@@ -29,6 +29,9 @@ enum Commands {
         /// Minimum number of channels a node must have to be included
         #[arg(long, default_value = "1")]
         min_channels: usize,
+        /// Directory containing CSV files with channel fee history
+        #[arg(long)]
+        csv_dir: Option<String>,
     },
     /// Generate routing analysis page
     Routes {
@@ -50,9 +53,10 @@ fn main() {
         Commands::Dashboard {
             directory,
             min_channels,
+            csv_dir,
         } => {
             log::debug!("Dashboard directory: {}", directory);
-            dashboard::run_dashboard(&store, directory, min_channels);
+            dashboard::run_dashboard(&store, directory, min_channels, csv_dir);
         }
         Commands::Routes { directory } => {
             routes::run_routes(&store, &directory);
