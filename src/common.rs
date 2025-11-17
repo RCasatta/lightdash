@@ -1,22 +1,12 @@
 use chrono::Utc;
 use std::collections::HashSet;
 
-pub const PPM_MIN: u64 = 10; // minimum between 100% and 50%
-pub const PPM_MAX: u64 = 2000; // when channel 0%, between 0% and 50% increase linearly
+pub const PPM_MIN: u64 = 10;
+pub const PPM_MAX: u64 = 5000;
 pub const SLING_AMOUNT: u64 = 50000; // amount used for rebalancing
 pub const MIN_HTLC: u64 = 100; // minimum htlc amount in sats
 pub const STEP_PERC: f64 = 0.1; // percentage change when channel is doing routing (+) in the last 24 hours or not doing it (-)
-
-/// Compute the minimum ppm of the channel according to the percentual owned by us
-/// The intention is to signal via an high fee the channel depletion
-pub fn min_ppm(perc: f64) -> u64 {
-    if perc > 0.5 {
-        PPM_MIN
-    } else {
-        let delta = (PPM_MAX - PPM_MIN) as f64;
-        ((PPM_MAX as f64) + (2.0 * perc * -delta)) as u64 // since perc>0 this is positive
-    }
-}
+pub const FEE_BASE: u64 = 1000; // msat
 
 /// Helper struct to compute the average fee of the channels of a node
 #[derive(Default)]
@@ -97,47 +87,50 @@ pub fn calc_slingjobs(
     Some((cmd, details))
 }
 
-pub fn calc_setchannel(
+pub fn calc_setchannel<'a>(
     short_channel_id: &str,
     alias: &str,
     fund: &crate::cmd::Fund,
-    our: Option<&&crate::cmd::Channel>,
-    settled_24h: &[crate::cmd::SettledForward],
-    local_failed_24h: &[crate::cmd::Forward],
-) -> (u64, Option<String>) {
-    let perc = fund.perc_float();
-    // let amount = fund.amount_msat;
-    // let our_amount = fund.our_amount_msat;
-    let max_htlc_sat = ((fund.amount_msat as f64 / 1000.0) * 0.7) as u64; // we aim for 70% in rebalance
-    let max_htlc_sat = format!("{max_htlc_sat}sat");
+    our: &crate::cmd::Channel,
+    forwards_24h: &[Forward],
+) {
+    let perc = fund.perc_float(); // how full of our funds is the channel
+    let current_channel_forwards = did_forward(short_channel_id, &forwards_24h);
+    let current_ppm = our.fee_per_millionth;
+    let current_max_htlc_sat = our.htlc_maximum_msat;
 
-    let min_ppm = min_ppm(perc);
-
-    let current_ppm = our.map(|e| e.fee_per_millionth).unwrap_or(min_ppm);
-
-    let forwards_last_24h = did_forward(short_channel_id, &settled_24h);
-    let failed_last_24h = did_local_failed(short_channel_id, &local_failed_24h);
-    let did_forwards_last_24h = !forwards_last_24h.is_empty();
-    let step = (current_ppm as f64 * STEP_PERC) as u64;
-    let new_ppm = if did_forwards_last_24h {
-        current_ppm.saturating_add(step)
+    let new_max_htlc_sat = 0u64; // TODO: compute the biggest power of 2 lower than fund.our_amount_msat
+    let new_ppm = if current_channel_forwards.len() == 0 {
+        // no good or bad forwards, reduce fee
+        // we reduce proportionally to how full is the channel, depleted channel (<10% never reduce)
+        let mut saturating_sub_perc = perc - 0.1;
+        if saturating_sub_perc < 0.0 {
+            saturating_sub_perc = 0.0;
+        }
+        let reduce_perc = STEP_PERC * saturating_sub_perc;
+        current_ppm - (current_ppm as f64 * reduce_perc) as u64
     } else {
-        current_ppm.saturating_sub(step)
+        // there are forwards or errors, increase fee
+        let increase_perc = STEP_PERC;
+        current_ppm + (current_ppm as f64 * increase_perc) as u64
     };
 
-    let new_ppm = new_ppm.clamp(min_ppm, PPM_MAX);
+    let new_ppm = new_ppm.clamp(PPM_MIN, PPM_MAX);
 
-    let truncated_min = min_ppm == new_ppm;
-
-    let result = if current_ppm != new_ppm {
+    log::info!("current {short_channel_id} alias:{alias} ppm:{current_ppm}->{new_ppm} max_htlc:{current_max_htlc_sat}->{new_max_htlc_sat}");
+    if current_ppm != new_ppm || current_max_htlc_sat != new_max_htlc_sat {
         let cmd = "lightning-cli";
-        let args =
-            format!("setchannel {short_channel_id} 1000 {new_ppm} {MIN_HTLC}sat {max_htlc_sat}");
+        let args = format!(
+            "setchannel {short_channel_id} {FEE_BASE} {new_ppm} {MIN_HTLC}sat {new_max_htlc_sat}sat"
+        );
+        log::info!("executing `{cmd} {args}` {alias}");
+
+        return; // TODO: remove me
 
         // Always execute fee adjustments
         let splitted_args: Vec<&str> = args.split(' ').collect();
-        let _result = crate::cmd::cmd_result(cmd, &splitted_args);
-        // println!("{result}");
+        let result = crate::cmd::cmd_result(cmd, &splitted_args);
+        log::info!("cmd return: {result}");
 
         // Save timestamp to datastore
         let timestamp = Utc::now().timestamp().to_string();
@@ -146,37 +139,18 @@ pub fn calc_setchannel(
             &timestamp,
             crate::cmd::DatastoreMode::CreateOrReplace,
         ) {
-            eprintln!(
+            log::error!(
                 "Failed to save setchannel timestamp for {}: {}",
-                short_channel_id, e
+                short_channel_id,
+                e
             );
         }
-
-        let truncated_min_str = if truncated_min { "truncated_min" } else { "" };
-
-        Some(format!(
-            "`{cmd} {args}` was:{current_ppm} perc:{perc:.2} min:{min_ppm} forward_last_24h:{} failed_last_24h:{} {truncated_min_str} {alias}",
-            forwards_last_24h.len(),
-            failed_last_24h.len()
-        ))
     } else {
-        None
+        log::info!("skipping {short_channel_id}")
     };
-
-    (new_ppm, result)
 }
 
 pub fn did_forward<'a>(
-    short_channel_id: &str,
-    forwards: &'a [crate::cmd::SettledForward],
-) -> Vec<&'a crate::cmd::SettledForward> {
-    forwards
-        .iter()
-        .filter(|f| f.out_channel == short_channel_id)
-        .collect()
-}
-
-pub fn did_local_failed<'a>(
     short_channel_id: &str,
     forwards: &'a [crate::cmd::Forward],
 ) -> Vec<&'a crate::cmd::Forward> {
@@ -195,6 +169,8 @@ pub fn cut_days(d: i64) -> String {
 }
 
 use chrono::Duration;
+
+use crate::cmd::Forward;
 
 /// Format a duration in a human-readable way
 pub fn format_duration(duration: Duration) -> String {

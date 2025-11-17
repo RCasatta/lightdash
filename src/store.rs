@@ -1,4 +1,4 @@
-use crate::cmd::{self, datastore_string, DatastoreMode, SettledForward};
+use crate::cmd::{self, datastore_string, DatastoreMode, Forward, SettledForward};
 use crate::common::ChannelFee;
 use chrono::{DateTime, Datelike, Utc};
 use std::collections::{HashMap, HashSet};
@@ -150,42 +150,6 @@ impl Store {
         f
     }
 
-    /// Get local_failed forwards by most recent first
-    pub fn local_failed_forwards(&self) -> Vec<cmd::Forward> {
-        let mut f: Vec<_> = self
-            .forwards
-            .forwards
-            .iter()
-            .filter(|e| e.status == "local_failed")
-            .cloned()
-            .collect();
-        f.sort_by(|a, b| {
-            a.received_time
-                .partial_cmp(&b.received_time)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        f
-    }
-
-    pub fn filter_local_failed_forwards_by_hours(&self, hours: i64) -> Vec<cmd::Forward> {
-        self.local_failed_forwards()
-            .into_iter()
-            .filter(|f| {
-                let received_time =
-                    DateTime::from_timestamp(f.received_time as i64, 0).unwrap_or(self.now);
-                self.now.signed_duration_since(received_time).num_hours() <= hours
-            })
-            .collect()
-    }
-
-    /// Filter settled forwards to only include those resolved within the last N hours
-    pub fn filter_settled_forwards_by_hours(&self, hours: i64) -> Vec<SettledForward> {
-        self.settled_forwards()
-            .into_iter()
-            .filter(|f| self.now.signed_duration_since(f.resolved_time).num_hours() <= hours)
-            .collect()
-    }
-
     /// Filter settled forwards to only include those resolved within the last N days
     pub fn filter_settled_forwards_by_days(&self, days: i64) -> Vec<SettledForward> {
         self.settled_forwards()
@@ -200,10 +164,6 @@ impl Store {
 
     pub fn channels(&self) -> impl Iterator<Item = &cmd::Channel> {
         self.channels.channels.iter()
-    }
-
-    pub fn peers_len(&self) -> usize {
-        self.peers.peers.len()
     }
 
     pub fn peers(&self) -> impl Iterator<Item = &cmd::Peer> {
@@ -784,6 +744,19 @@ impl Store {
         };
 
         (average, median)
+    }
+
+    pub(crate) fn filter_forwards_by_hours(&self, hours: i64) -> Vec<Forward> {
+        self.forwards
+            .forwards
+            .iter()
+            .filter(move |f| {
+                let received_time =
+                    DateTime::from_timestamp(f.received_time as i64, 0).unwrap_or(self.now);
+                self.now.signed_duration_since(received_time).num_hours() <= hours
+            })
+            .cloned()
+            .collect()
     }
 }
 
