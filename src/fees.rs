@@ -62,12 +62,13 @@ pub fn calc_setchannel<'a>(
     let new_max_htlc_msat = largest_power_of_two_leq(our_amount_msat);
     let new_min_htlc_msat = std::cmp::min(MIN_HTLC, new_max_htlc_msat); // min_htlc cannot be greater than max_htlc
 
-    let perc_change = if forwards_all == 0 {
+    let perc_change = if forwards_all == 0 || (forwards_ok == 0 && forwards_ko < 10) {
         // REDUCE FEE
-        // no good or bad forwards, the channel is never selected -> lower rates.
+        // the channel is never succesfully selected and has few errors -> lower rates.
         // We reduce proportionally to how full is the channel
         let reduce_perc = -STEP_PERC * channel_fund_perc_ours;
-        if reduce_perc < 0.01 {
+        println!("{reduce_perc}");
+        if reduce_perc.abs() < 0.01 {
             // we don't bother to change less than 1%
             0.0
         } else {
@@ -75,16 +76,11 @@ pub fn calc_setchannel<'a>(
         }
     } else {
         // INCREASE FEE
-        // there are forwards or errors, increase fee
-        if forwards_ko < 10 && forwards_ko == 0 {
-            // we consider less than 10 errors ok and we do nothing in this case
-            0.0
-        } else {
-            STEP_PERC as f64
-        }
+        // there are forwards or many errors, increase fee
+        STEP_PERC as f64
     };
 
-    let new_ppm = current_ppm + (current_ppm as f64 * perc_change) as u64;
+    let new_ppm = (current_ppm as f64 + (current_ppm as f64 * perc_change)) as u64;
     let new_ppm = new_ppm.clamp(PPM_MIN, PPM_MAX);
 
     let changes = current_ppm != new_ppm
