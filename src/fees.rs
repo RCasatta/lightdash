@@ -43,14 +43,16 @@ pub fn calc_setchannel<'a>(
     our: &crate::cmd::Channel,
     forwards_24h: &[Forward],
 ) {
-    let perc = fund.perc_float(); // how full of our funds is the channel
-    let disp_perc = format!("{:.1}%", perc * 100.0);
+    let channel_fund_perc_ours = fund.perc_float(); // how full of our funds is the channel
+    let disp_perc = format!("{:.1}%", channel_fund_perc_ours * 100.0);
     let current_channel_forwards = did_forward(short_channel_id, &forwards_24h);
+    let forwads_all = current_channel_forwards.len();
     let forwards_ok = current_channel_forwards
         .iter()
         .filter(|e| e.status == "settled")
         .count();
-    let forwards_ko = current_channel_forwards.len() - forwards_ok;
+    let forwards_ko = forwads_all - forwards_ok;
+
     let current_ppm = our.fee_per_millionth;
     let current_max_htlc_sat = our.htlc_maximum_msat;
     let current_min_htlc_sat = our.htlc_minimum_msat;
@@ -59,23 +61,30 @@ pub fn calc_setchannel<'a>(
     // Compute the largest power of 2 <= our_amount_msat for max HTLC
     let new_max_htlc_msat = largest_power_of_two_leq(our_amount_msat);
     let new_min_htlc_msat = std::cmp::min(MIN_HTLC, new_max_htlc_msat); // min_htlc cannot be greater than max_htlc
-    let new_ppm = if current_channel_forwards.len() == 0 {
-        // no good or bad forwards, reduce fee
-        // we reduce proportionally to how full is the channel, depleted channel (<10% never reduce)
-        let mut saturating_sub_perc = perc - 0.1;
-        if saturating_sub_perc < 0.0 {
-            saturating_sub_perc = 0.0;
-        }
-        let reduce_perc = STEP_PERC * saturating_sub_perc;
-        current_ppm - (current_ppm as f64 * reduce_perc) as u64
-    } else {
-        // there are forwards or errors, increase fee
-        // TODO: tollerate some amount of errors and not increase fee in that case?
 
-        let increase_perc = STEP_PERC;
-        current_ppm + (current_ppm as f64 * increase_perc) as u64
+    let perc_change = if forwards_all == 0 {
+        // REDUCE FEE
+        // no good or bad forwards, the channel is never selected -> lower rates.
+        // We reduce proportionally to how full is the channel
+        let reduce_perc = -STEP_PERC * channel_fund_perc_ours;
+        if reduce_perc < 0.01 {
+            // we don't bother to change less than 1%
+            0.0;
+        } else {
+            reduce_perc
+        }
+    } else {
+        // INCREASE FEE
+        // there are forwards or errors, increase fee
+        if forwards_ko < 10 && forwards_ko == 0 {
+            // we consider less than 10 errors ok and we do nothing in this case
+            0.0
+        } else {
+            STEP_PERC as f64
+        }
     };
 
+    let new_ppm = current_ppm + (current_ppm as f64 * perc_change) as u64;
     let new_ppm = new_ppm.clamp(PPM_MIN, PPM_MAX);
 
     let changes = current_ppm != new_ppm
