@@ -46,6 +46,7 @@ pub fn calc_setchannel<'a>(
     let perc = fund.perc_float(); // how full of our funds is the channel
     let disp_perc = format!("{:.1}%", perc * 100.0);
     let current_channel_forwards = did_forward(short_channel_id, &forwards_24h);
+    // TODO count forwards by status ok
     let current_ppm = our.fee_per_millionth;
     let current_max_htlc_sat = our.htlc_maximum_msat;
     let current_min_htlc_sat = our.htlc_minimum_msat;
@@ -65,6 +66,8 @@ pub fn calc_setchannel<'a>(
         current_ppm - (current_ppm as f64 * reduce_perc) as u64
     } else {
         // there are forwards or errors, increase fee
+        // TODO: tollerate some amount of errors and not increase fee in that case
+
         let increase_perc = STEP_PERC;
         current_ppm + (current_ppm as f64 * increase_perc) as u64
     };
