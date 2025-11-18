@@ -46,12 +46,12 @@ pub fn calc_setchannel<'a>(
     let channel_fund_perc_ours = fund.perc_float(); // how full of our funds is the channel
     let disp_perc = format!("{:.1}%", channel_fund_perc_ours * 100.0);
     let current_channel_forwards = did_forward(short_channel_id, &forwards_24h);
-    let forwads_all = current_channel_forwards.len();
+    let forwards_all = current_channel_forwards.len();
     let forwards_ok = current_channel_forwards
         .iter()
         .filter(|e| e.status == "settled")
         .count();
-    let forwards_ko = forwads_all - forwards_ok;
+    let forwards_ko = forwards_all - forwards_ok;
 
     let current_ppm = our.fee_per_millionth;
     let current_max_htlc_sat = our.htlc_maximum_msat;
@@ -69,7 +69,7 @@ pub fn calc_setchannel<'a>(
         let reduce_perc = -STEP_PERC * channel_fund_perc_ours;
         if reduce_perc < 0.01 {
             // we don't bother to change less than 1%
-            0.0;
+            0.0
         } else {
             reduce_perc
         }
