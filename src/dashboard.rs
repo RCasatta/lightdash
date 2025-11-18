@@ -1041,20 +1041,22 @@ fn create_failures_page(
                 table {
                     thead {
                         tr {
-                            th { "Count" }
-                            th { "Last Week" }
+                            th { "Day" }
+                            th { "Week" }
+                            th { "Month" }
                             th { "Channel ID" }
                             th { "Node Alias" }
                         }
                     }
                     tbody {
-                        @for (channel_id, count, monthly_count) in local_failed_data.iter().take(30) {
-                            @let (alias, node_id) = get_channel_info(channel_id);
+                        @for channel_data in local_failed_data.iter().take(30) {
+                            @let (alias, node_id) = get_channel_info(&channel_data.channel_id);
                             tr {
-                                td class="align-right" { (count) }
-                                td class="align-right" { (monthly_count) }
+                                td class="align-right" { (channel_data.counts.day) }
+                                td class="align-right" { (channel_data.counts.week) }
+                                td class="align-right" { (channel_data.counts.month) }
                                 td {
-                                    a href={(format!("channels/{}.html", channel_id))} { (channel_id) }
+                                    a href={(format!("channels/{}.html", channel_data.channel_id))} { (&channel_data.channel_id) }
                                 }
                                 td {
                                     @if let Some(node_id) = node_id {
@@ -1083,20 +1085,22 @@ fn create_failures_page(
                 table {
                     thead {
                         tr {
-                            th { "Count" }
-                            th { "Last Week" }
+                            th { "Day" }
+                            th { "Week" }
+                            th { "Month" }
                             th { "Channel ID" }
                             th { "Node Alias" }
                         }
                     }
                     tbody {
-                        @for (channel_id, count, monthly_count) in failed_data.iter().take(30) {
-                            @let (alias, node_id) = get_channel_info(channel_id);
+                        @for channel_data in failed_data.iter().take(30) {
+                            @let (alias, node_id) = get_channel_info(&channel_data.channel_id);
                             tr {
-                                td class="align-right" { (count) }
-                                td class="align-right" { (monthly_count) }
+                                td class="align-right" { (channel_data.counts.day) }
+                                td class="align-right" { (channel_data.counts.week) }
+                                td class="align-right" { (channel_data.counts.month) }
                                 td {
-                                    a href={(format!("channels/{}.html", channel_id))} { (channel_id) }
+                                    a href={(format!("channels/{}.html", channel_data.channel_id))} { (&channel_data.channel_id) }
                                 }
                                 td {
                                     @if let Some(node_id) = node_id {

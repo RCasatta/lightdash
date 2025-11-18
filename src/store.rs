@@ -563,10 +563,11 @@ impl Store {
     }
 
     /// Get local_failed forwards with WIRE_TEMPORARY_CHANNEL_FAILURE grouped by out_channel
-    /// Returns a vector of (channel_id, count) tuples sorted by count descending
-    pub fn local_failed_temp_channel_failure_by_out_channel(&self) -> Vec<(String, usize, usize)> {
-        let mut channel_total_counts: HashMap<String, usize> = HashMap::new();
-        let mut channel_weekly_counts: HashMap<String, usize> = HashMap::new();
+    /// Returns a vector of ChannelFailureData sorted by month count descending
+    pub fn local_failed_temp_channel_failure_by_out_channel(&self) -> Vec<ChannelFailureData> {
+        let mut channel_day_counts: HashMap<String, usize> = HashMap::new();
+        let mut channel_week_counts: HashMap<String, usize> = HashMap::new();
+        let mut channel_month_counts: HashMap<String, usize> = HashMap::new();
 
         for forward in &self.forwards.forwards {
             if let Some(received) = DateTime::from_timestamp(forward.received_time as i64, 0) {
@@ -579,34 +580,50 @@ impl Store {
                     && forward.out_channel.is_some()
                 {
                     let channel = forward.out_channel.as_ref().unwrap();
+                    let hours_ago = self.now.signed_duration_since(received).num_hours();
 
-                    // Count total failures
-                    *channel_total_counts.entry(channel.clone()).or_insert(0) += 1;
-
-                    // Count failures in last week (7 days)
-                    if self.now.signed_duration_since(received).num_days() <= 7 {
-                        *channel_weekly_counts.entry(channel.clone()).or_insert(0) += 1;
+                    // Count failures by period
+                    if hours_ago <= 24 {
+                        *channel_day_counts.entry(channel.clone()).or_insert(0) += 1;
+                    }
+                    if hours_ago <= 7 * 24 {
+                        *channel_week_counts.entry(channel.clone()).or_insert(0) += 1;
+                    }
+                    if hours_ago <= 30 * 24 {
+                        *channel_month_counts.entry(channel.clone()).or_insert(0) += 1;
                     }
                 }
             }
         }
 
-        let mut result: Vec<(String, usize, usize)> = channel_total_counts
+        // Collect all channels that have at least one failure
+        let mut all_channels: HashSet<String> = HashSet::new();
+        all_channels.extend(channel_day_counts.keys().cloned());
+        all_channels.extend(channel_week_counts.keys().cloned());
+        all_channels.extend(channel_month_counts.keys().cloned());
+
+        let mut result: Vec<ChannelFailureData> = all_channels
             .into_iter()
-            .map(|(channel, total_count)| {
-                let weekly_count = *channel_weekly_counts.get(&channel).unwrap_or(&0);
-                (channel, total_count, weekly_count)
+            .map(|channel| ChannelFailureData {
+                channel_id: channel.clone(),
+                counts: PeriodCounts {
+                    day: *channel_day_counts.get(&channel).unwrap_or(&0),
+                    week: *channel_week_counts.get(&channel).unwrap_or(&0),
+                    month: *channel_month_counts.get(&channel).unwrap_or(&0),
+                },
             })
             .collect();
-        result.sort_by(|a, b| b.1.cmp(&a.1)); // Sort by total count descending
+
+        result.sort_by(|a, b| b.counts.month.cmp(&a.counts.month)); // Sort by month count descending
         result
     }
 
     /// Get all failed forwards grouped by out_channel
-    /// Returns a vector of (channel_id, total_count, weekly_count) tuples sorted by total count descending
-    pub fn failed_forwards_by_out_channel(&self) -> Vec<(String, usize, usize)> {
-        let mut channel_total_counts: HashMap<String, usize> = HashMap::new();
-        let mut channel_weekly_counts: HashMap<String, usize> = HashMap::new();
+    /// Returns a vector of ChannelFailureData sorted by month count descending
+    pub fn failed_forwards_by_out_channel(&self) -> Vec<ChannelFailureData> {
+        let mut channel_day_counts: HashMap<String, usize> = HashMap::new();
+        let mut channel_week_counts: HashMap<String, usize> = HashMap::new();
+        let mut channel_month_counts: HashMap<String, usize> = HashMap::new();
 
         for forward in &self.forwards.forwards {
             if let Some(received) = DateTime::from_timestamp(forward.received_time as i64, 0) {
@@ -616,26 +633,41 @@ impl Store {
 
                 if forward.status == "failed" && forward.out_channel.is_some() {
                     let channel = forward.out_channel.as_ref().unwrap();
+                    let hours_ago = self.now.signed_duration_since(received).num_hours();
 
-                    // Count total failures
-                    *channel_total_counts.entry(channel.clone()).or_insert(0) += 1;
-
-                    // Count failures in last week (7 days)
-                    if self.now.signed_duration_since(received).num_days() <= 7 {
-                        *channel_weekly_counts.entry(channel.clone()).or_insert(0) += 1;
+                    // Count failures by period
+                    if hours_ago <= 24 {
+                        *channel_day_counts.entry(channel.clone()).or_insert(0) += 1;
+                    }
+                    if hours_ago <= 7 * 24 {
+                        *channel_week_counts.entry(channel.clone()).or_insert(0) += 1;
+                    }
+                    if hours_ago <= 30 * 24 {
+                        *channel_month_counts.entry(channel.clone()).or_insert(0) += 1;
                     }
                 }
             }
         }
 
-        let mut result: Vec<(String, usize, usize)> = channel_total_counts
+        // Collect all channels that have at least one failure
+        let mut all_channels: HashSet<String> = HashSet::new();
+        all_channels.extend(channel_day_counts.keys().cloned());
+        all_channels.extend(channel_week_counts.keys().cloned());
+        all_channels.extend(channel_month_counts.keys().cloned());
+
+        let mut result: Vec<ChannelFailureData> = all_channels
             .into_iter()
-            .map(|(channel, total_count)| {
-                let weekly_count = *channel_weekly_counts.get(&channel).unwrap_or(&0);
-                (channel, total_count, weekly_count)
+            .map(|channel| ChannelFailureData {
+                channel_id: channel.clone(),
+                counts: PeriodCounts {
+                    day: *channel_day_counts.get(&channel).unwrap_or(&0),
+                    week: *channel_week_counts.get(&channel).unwrap_or(&0),
+                    month: *channel_month_counts.get(&channel).unwrap_or(&0),
+                },
             })
             .collect();
-        result.sort_by(|a, b| b.1.cmp(&a.1)); // Sort by total count descending
+
+        result.sort_by(|a, b| b.counts.month.cmp(&a.counts.month)); // Sort by month count descending
         result
     }
 
@@ -865,4 +897,19 @@ pub struct FeeStats {
     pub outgoing_median: u64,
     pub incoming_mean: u64,
     pub incoming_median: u64,
+}
+
+/// Period counts for channel failures
+#[derive(Debug, Clone)]
+pub struct PeriodCounts {
+    pub day: usize,
+    pub week: usize,
+    pub month: usize,
+}
+
+/// Channel failure data with period-based counts
+#[derive(Debug, Clone)]
+pub struct ChannelFailureData {
+    pub channel_id: String,
+    pub counts: PeriodCounts,
 }
