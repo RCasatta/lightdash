@@ -656,7 +656,7 @@ impl Store {
             .filter(|f| {
                 f.status == status && f.received_time > 0.0 && {
                     if let Some(dt) = DateTime::from_timestamp(f.received_time as i64, 0) {
-                        self.now.signed_duration_since(dt).num_days() <= days
+                        self.now.signed_duration_since(dt).num_hours() <= days * 24
                     } else {
                         false
                     }
@@ -673,31 +673,41 @@ impl Store {
         let total_local_failed = self.count_forwards_by_status("local_failed");
         let total_all = total_settled + total_failed + total_local_failed;
 
+        // Last day
+        let day_settled = self.count_forwards_by_status_days("settled", 1);
+        let day_failed = self.count_forwards_by_status_days("failed", 1);
+        let day_local_failed = self.count_forwards_by_status_days("local_failed", 1);
+        let day_all = day_settled + day_failed + day_local_failed;
+
         // Last week
         let week_settled = self.count_forwards_by_status_days("settled", 7);
         let week_failed = self.count_forwards_by_status_days("failed", 7);
         let week_local_failed = self.count_forwards_by_status_days("local_failed", 7);
         let week_all = week_settled + week_failed + week_local_failed;
 
-        // Last year
-        let year_settled = self.count_forwards_by_status_days("settled", 365);
-        let year_failed = self.count_forwards_by_status_days("failed", 365);
-        let year_local_failed = self.count_forwards_by_status_days("local_failed", 365);
-        let year_all = year_settled + year_failed + year_local_failed;
+        // Last month (30 days)
+        let month_settled = self.count_forwards_by_status_days("settled", 30);
+        let month_failed = self.count_forwards_by_status_days("failed", 30);
+        let month_local_failed = self.count_forwards_by_status_days("local_failed", 30);
+        let month_all = month_settled + month_failed + month_local_failed;
 
         ForwardStatistics {
             total_settled,
             total_failed,
             total_local_failed,
             total_all,
+            day_settled,
+            day_failed,
+            day_local_failed,
+            day_all,
             week_settled,
             week_failed,
             week_local_failed,
             week_all,
-            year_settled,
-            year_failed,
-            year_local_failed,
-            year_all,
+            month_settled,
+            month_failed,
+            month_local_failed,
+            month_all,
         }
     }
 
@@ -780,14 +790,18 @@ pub struct ForwardStatistics {
     pub total_failed: usize,
     pub total_local_failed: usize,
     pub total_all: usize,
+    pub day_settled: usize,
+    pub day_failed: usize,
+    pub day_local_failed: usize,
+    pub day_all: usize,
     pub week_settled: usize,
     pub week_failed: usize,
     pub week_local_failed: usize,
     pub week_all: usize,
-    pub year_settled: usize,
-    pub year_failed: usize,
-    pub year_local_failed: usize,
-    pub year_all: usize,
+    pub month_settled: usize,
+    pub month_failed: usize,
+    pub month_local_failed: usize,
+    pub month_all: usize,
 }
 
 impl ForwardStatistics {
@@ -804,21 +818,29 @@ impl ForwardStatistics {
         self.success_ratio(self.total_settled, self.total_all)
     }
 
+    pub fn day_success_ratio(&self) -> f64 {
+        self.success_ratio(self.day_settled, self.day_all)
+    }
+
     pub fn week_success_ratio(&self) -> f64 {
         self.success_ratio(self.week_settled, self.week_all)
     }
 
-    pub fn year_success_ratio(&self) -> f64 {
-        self.success_ratio(self.year_settled, self.year_all)
+    pub fn month_success_ratio(&self) -> f64 {
+        self.success_ratio(self.month_settled, self.month_all)
     }
 
     /// Calculate per-day averages
+    pub fn day_per_day(&self, count: usize) -> f64 {
+        count as f64 / 1.0
+    }
+
     pub fn week_per_day(&self, count: usize) -> f64 {
         count as f64 / 7.0
     }
 
-    pub fn year_per_day(&self, count: usize) -> f64 {
-        count as f64 / 365.0
+    pub fn month_per_day(&self, count: usize) -> f64 {
+        count as f64 / 30.0
     }
 }
 

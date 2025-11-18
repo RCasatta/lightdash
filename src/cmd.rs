@@ -50,7 +50,7 @@ pub fn list_peers() -> ListPeers {
 
 pub fn list_forwards() -> ListForwards {
     let str = if cfg!(debug_assertions) {
-        cmd_result("zcat", &["test-json/listforwards.gz"])
+        cmd_result("xzcat", &["test-json/listforwards.xz"])
     } else {
         cmd_result("lightning-cli", &["listforwards"])
     };

@@ -996,7 +996,17 @@ fn create_failures_page(
                 }
                 tbody {
                     tr {
-                        td { strong { "Last Week" } }
+                        td { strong { "Day" } }
+                        td class="align-right" { (stats.day_settled) }
+                        td class="align-right" { (stats.day_failed) }
+                        td class="align-right" { (stats.day_local_failed) }
+                        td class="align-right" { (stats.day_all) }
+                        td class="align-right" { (format!("{:.2}%", stats.day_success_ratio())) }
+                        td class="align-right" { (format!("{:.1}", stats.day_per_day(stats.day_settled))) }
+                        td class="align-right" { (format!("{:.1}", stats.day_per_day(stats.day_failed + stats.day_local_failed))) }
+                    }
+                    tr {
+                        td { strong { "Week" } }
                         td class="align-right" { (stats.week_settled) }
                         td class="align-right" { (stats.week_failed) }
                         td class="align-right" { (stats.week_local_failed) }
@@ -1006,30 +1016,16 @@ fn create_failures_page(
                         td class="align-right" { (format!("{:.1}", stats.week_per_day(stats.week_failed + stats.week_local_failed))) }
                     }
                     tr {
-                        td { strong { "Last Year" } }
-                        td class="align-right" { (stats.year_settled) }
-                        td class="align-right" { (stats.year_failed) }
-                        td class="align-right" { (stats.year_local_failed) }
-                        td class="align-right" { (stats.year_all) }
-                        td class="align-right" { (format!("{:.2}%", stats.year_success_ratio())) }
-                        td class="align-right" { (format!("{:.1}", stats.year_per_day(stats.year_settled))) }
-                        td class="align-right" { (format!("{:.1}", stats.year_per_day(stats.year_failed + stats.year_local_failed))) }
+                        td { strong { "Month" } }
+                        td class="align-right" { (stats.month_settled) }
+                        td class="align-right" { (stats.month_failed) }
+                        td class="align-right" { (stats.month_local_failed) }
+                        td class="align-right" { (stats.month_all) }
+                        td class="align-right" { (format!("{:.2}%", stats.month_success_ratio())) }
+                        td class="align-right" { (format!("{:.1}", stats.month_per_day(stats.month_settled))) }
+                        td class="align-right" { (format!("{:.1}", stats.month_per_day(stats.month_failed + stats.month_local_failed))) }
                     }
-                    tr {
-                        td { strong { "All Time" } }
-                        td class="align-right" { (stats.total_settled) }
-                        td class="align-right" { (stats.total_failed) }
-                        td class="align-right" { (stats.total_local_failed) }
-                        td class="align-right" { (stats.total_all) }
-                        td class="align-right" { (format!("{:.2}%", stats.total_success_ratio())) }
-                        td class="align-right" { (format!("{:.1}", stats.total_settled as f64 / history_days)) }
-                        td class="align-right" {
-                            (format!(
-                                "{:.1}",
-                                (stats.total_failed + stats.total_local_failed) as f64 / history_days
-                            ))
-                        }
-                    }
+
                 }
             }
         }
@@ -1037,7 +1033,7 @@ fn create_failures_page(
         // Table 1: Local Failed Forwards with WIRE_TEMPORARY_CHANNEL_FAILURE (liquidity issues on our side)
         div class="info-card" {
             h2 { "Local Failed Forwards - No Liquidity (WIRE_TEMPORARY_CHANNEL_FAILURE)" }
-            p { "These are payments that failed because we don't have enough liquidity in the outbound channel (our failure). Consider rebalancing these channels." }
+            p { "These are payments that failed because we don't have enough liquidity in the outbound channel (our failure)." }
 
             @let local_failed_data = store.local_failed_temp_channel_failure_by_out_channel();
             @if !local_failed_data.is_empty() {
@@ -1047,8 +1043,6 @@ fn create_failures_page(
                         tr {
                             th { "Count" }
                             th { "Last Week" }
-                            th { "Days" }
-                            th { "Count / Day" }
                             th { "Channel ID" }
                             th { "Node Alias" }
                         }
@@ -1056,12 +1050,9 @@ fn create_failures_page(
                     tbody {
                         @for (channel_id, count, monthly_count) in local_failed_data.iter().take(30) {
                             @let (alias, node_id) = get_channel_info(channel_id);
-                            @let channel_days = store.get_channel_age_days(channel_id).unwrap_or(1);
                             tr {
                                 td class="align-right" { (count) }
                                 td class="align-right" { (monthly_count) }
-                                td class="align-right" { (channel_days) }
-                                td class="align-right" { (format!("{:.2}", *count as f64 / channel_days as f64)) }
                                 td {
                                     a href={(format!("channels/{}.html", channel_id))} { (channel_id) }
                                 }
@@ -1094,8 +1085,6 @@ fn create_failures_page(
                         tr {
                             th { "Count" }
                             th { "Last Week" }
-                            th { "Days" }
-                            th { "Count / Day" }
                             th { "Channel ID" }
                             th { "Node Alias" }
                         }
@@ -1103,12 +1092,9 @@ fn create_failures_page(
                     tbody {
                         @for (channel_id, count, monthly_count) in failed_data.iter().take(30) {
                             @let (alias, node_id) = get_channel_info(channel_id);
-                            @let channel_days = store.get_channel_age_days(channel_id).unwrap_or(1);
                             tr {
                                 td class="align-right" { (count) }
                                 td class="align-right" { (monthly_count) }
-                                td class="align-right" { (channel_days) }
-                                td class="align-right" { (format!("{:.2}", *count as f64 / channel_days as f64)) }
                                 td {
                                     a href={(format!("channels/{}.html", channel_id))} { (channel_id) }
                                 }
