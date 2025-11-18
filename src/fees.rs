@@ -88,25 +88,30 @@ pub fn calc_setchannel<'a>(
         let args = format!(
             "setchannel {short_channel_id} {FEE_BASE} {new_ppm} {new_min_htlc_msat} {new_max_htlc_msat}"
         );
-        log::info!("executing `{cmd} {args}` {alias}");
 
-        // Always execute fee adjustments
-        let splitted_args: Vec<&str> = args.split(' ').collect();
-        let result = crate::cmd::cmd_result(cmd, &splitted_args);
-        log::info!("cmd return: {result}");
+        if std::env::var("EXECUTE_SETCHANNEL").is_ok() {
+            log::info!("executing `{cmd} {args}` {alias}");
 
-        // Save timestamp to datastore
-        let timestamp = Utc::now().timestamp().to_string();
-        if let Err(e) = crate::cmd::datastore_string(
-            &["lightdash", "last_setchannel", short_channel_id],
-            &timestamp,
-            crate::cmd::DatastoreMode::CreateOrReplace,
-        ) {
-            log::error!(
-                "Failed to save setchannel timestamp for {}: {}",
-                short_channel_id,
-                e
-            );
+            // Always execute fee adjustments
+            let splitted_args: Vec<&str> = args.split(' ').collect();
+            let result = crate::cmd::cmd_result(cmd, &splitted_args);
+            log::info!("cmd return: {result}");
+
+            // Save timestamp to datastore
+            let timestamp = Utc::now().timestamp().to_string();
+            if let Err(e) = crate::cmd::datastore_string(
+                &["lightdash", "last_setchannel", short_channel_id],
+                &timestamp,
+                crate::cmd::DatastoreMode::CreateOrReplace,
+            ) {
+                log::error!(
+                    "Failed to save setchannel timestamp for {}: {}",
+                    short_channel_id,
+                    e
+                );
+            }
+        } else {
+            log::info!("would execute `{cmd} {args}` {alias}");
         }
     } else {
         log::info!("skipping {short_channel_id}")
