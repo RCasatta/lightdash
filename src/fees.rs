@@ -46,7 +46,11 @@ pub fn calc_setchannel<'a>(
     let perc = fund.perc_float(); // how full of our funds is the channel
     let disp_perc = format!("{:.1}%", perc * 100.0);
     let current_channel_forwards = did_forward(short_channel_id, &forwards_24h);
-    // TODO count forwards by status ok
+    let forwards_ok = current_channel_forwards
+        .iter()
+        .filter(|e| e.status == "settled")
+        .count();
+    let forwards_ko = current_channel_forwards.len() - forwards_ok;
     let current_ppm = our.fee_per_millionth;
     let current_max_htlc_sat = our.htlc_maximum_msat;
     let current_min_htlc_sat = our.htlc_minimum_msat;
@@ -66,13 +70,17 @@ pub fn calc_setchannel<'a>(
         current_ppm - (current_ppm as f64 * reduce_perc) as u64
     } else {
         // there are forwards or errors, increase fee
-        // TODO: tollerate some amount of errors and not increase fee in that case
+        // TODO: tollerate some amount of errors and not increase fee in that case?
 
         let increase_perc = STEP_PERC;
         current_ppm + (current_ppm as f64 * increase_perc) as u64
     };
 
     let new_ppm = new_ppm.clamp(PPM_MIN, PPM_MAX);
+
+    let changes = current_ppm != new_ppm
+        || current_max_htlc_sat != new_max_htlc_msat
+        || current_min_htlc_sat != new_min_htlc_msat;
 
     let data = if new_ppm == current_ppm {
         "EQU"
@@ -82,11 +90,9 @@ pub fn calc_setchannel<'a>(
         "DEC"
     };
 
-    log::info!("{data} {short_channel_id} with {alias}. my_fund:{our_amount_msat} ({disp_perc})  ppm:{current_ppm}->{new_ppm} max_htlc:{current_max_htlc_sat}->{new_max_htlc_msat} min_htlc:{current_min_htlc_sat}->{new_min_htlc_msat}");
-    if current_ppm != new_ppm
-        || current_max_htlc_sat != new_max_htlc_msat
-        || current_min_htlc_sat != new_min_htlc_msat
-    {
+    if changes {
+        log::info!("{data} {short_channel_id} with {alias}. my_fund:{our_amount_msat} ({disp_perc})  ppm:{current_ppm}->{new_ppm} max_htlc:{current_max_htlc_sat}->{new_max_htlc_msat} min_htlc:{current_min_htlc_sat}->{new_min_htlc_msat}");
+
         let cmd = "lightning-cli";
         let args = format!(
             "setchannel {short_channel_id} {FEE_BASE} {new_ppm} {new_min_htlc_msat} {new_max_htlc_msat}"
@@ -117,7 +123,7 @@ pub fn calc_setchannel<'a>(
             log::info!("would execute `{cmd} {args}` {alias}");
         }
     } else {
-        log::info!("skipping {short_channel_id}")
+        log::info!("no changes in {short_channel_id} with {alias}, skipping")
     };
 }
 
