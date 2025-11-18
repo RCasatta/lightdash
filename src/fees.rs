@@ -91,7 +91,7 @@ pub fn calc_setchannel<'a>(
     };
 
     if changes {
-        log::info!("{data} {short_channel_id} with {alias}. my_fund:{our_amount_msat} ({disp_perc})  ppm:{current_ppm}->{new_ppm} max_htlc:{current_max_htlc_sat}->{new_max_htlc_msat} min_htlc:{current_min_htlc_sat}->{new_min_htlc_msat}");
+        log::info!("{data} ok:{forwards_ok} ko:{forwards_ko} {short_channel_id} with {alias}. my_fund:{our_amount_msat} ({disp_perc})  ppm:{current_ppm}->{new_ppm} max_htlc:{current_max_htlc_sat}->{new_max_htlc_msat} min_htlc:{current_min_htlc_sat}->{new_min_htlc_msat}");
 
         let cmd = "lightning-cli";
         let args = format!(
