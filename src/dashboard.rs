@@ -1759,17 +1759,17 @@ fn create_channel_pages(
 
                         div class="info-item" {
                             span class="label" { "Base Fee: " }
-                            span class="value" { (format!("{} msat", channel_info.base_fee_millisatoshi)) }
+                            span class="value" { (format!("{} sat", channel_info.base_fee_millisatoshi/1000)) }
                         }
 
                         div class="info-item" {
                             span class="label" { "Min HTLC: " }
-                            span class="value" { (format!("{} msat", channel_info.htlc_minimum_msat)) }
+                            span class="value" { (format!("{} sat", channel_info.htlc_minimum_msat/1000)) }
                         }
 
                         div class="info-item" {
                             span class="label" { "Max HTLC: " }
-                            span class="value" { (format!("{} msat", channel_info.htlc_maximum_msat)) }
+                            span class="value" { (format!("{} sat", channel_info.htlc_maximum_msat/1000)) }
                         }
 
                         div class="info-item" {
