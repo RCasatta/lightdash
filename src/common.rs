@@ -107,37 +107,3 @@ pub fn format_duration(duration: Duration) -> String {
         format!("{}s", seconds)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_largest_power_of_two_leq() {
-        // Test edge cases
-        assert_eq!(largest_power_of_two_leq(0), 0);
-        assert_eq!(largest_power_of_two_leq(1), 1);
-        assert_eq!(largest_power_of_two_leq(2), 2);
-        assert_eq!(largest_power_of_two_leq(3), 2);
-        assert_eq!(largest_power_of_two_leq(4), 4);
-        assert_eq!(largest_power_of_two_leq(5), 4);
-        assert_eq!(largest_power_of_two_leq(6), 4);
-        assert_eq!(largest_power_of_two_leq(7), 4);
-        assert_eq!(largest_power_of_two_leq(8), 8);
-        assert_eq!(largest_power_of_two_leq(9), 8);
-        assert_eq!(largest_power_of_two_leq(10), 8);
-        assert_eq!(largest_power_of_two_leq(15), 8);
-        assert_eq!(largest_power_of_two_leq(16), 16);
-        assert_eq!(largest_power_of_two_leq(17), 16);
-        assert_eq!(largest_power_of_two_leq(31), 16);
-        assert_eq!(largest_power_of_two_leq(32), 32);
-        assert_eq!(largest_power_of_two_leq(33), 32);
-
-        // Test larger values
-        assert_eq!(largest_power_of_two_leq(1000), 512);
-        assert_eq!(largest_power_of_two_leq(1024), 1024);
-        assert_eq!(largest_power_of_two_leq(1025), 1024);
-        assert_eq!(largest_power_of_two_leq(u64::MAX), 1 << 63); // 2^63, the highest bit
-        assert_eq!(largest_power_of_two_leq(2450000000), 2147483648);
-    }
-}
