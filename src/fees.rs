@@ -13,6 +13,10 @@ pub fn run_fees(store: &Store) {
     let normal_channels = store.normal_channels();
     let forwards_24h = store.filter_forwards_by_hours(24);
 
+    let mut equ_count = 0;
+    let mut inc_count = 0;
+    let mut dec_count = 0;
+
     for fund in normal_channels.iter() {
         let short_channel_id = fund.short_channel_id();
         let our = match store.get_channel(&short_channel_id, &store.info.id) {
@@ -21,8 +25,15 @@ pub fn run_fees(store: &Store) {
         };
         let alias_or_id = store.get_node_alias(&fund.peer_id);
 
-        calc_setchannel(&short_channel_id, &alias_or_id, &fund, our, &forwards_24h);
+        let trend = calc_setchannel(&short_channel_id, &alias_or_id, &fund, our, &forwards_24h);
+        match trend {
+            "EQU" => equ_count += 1,
+            "INC" => inc_count += 1,
+            "DEC" => dec_count += 1,
+            _ => {}
+        }
     }
+    log::info!("setchannel trend: EQU:{equ_count} INC:{inc_count} DEC:{dec_count}");
 }
 
 /// Returns the largest power of 2 that is less than or equal to n.
@@ -42,7 +53,7 @@ pub fn calc_setchannel<'a>(
     fund: &crate::cmd::Fund,
     our: &crate::cmd::Channel,
     forwards_24h: &[Forward],
-) {
+) -> &'static str {
     let channel_fund_perc_ours = fund.perc_float(); // how full of our funds is the channel
     let disp_perc = format!("{:.1}%", channel_fund_perc_ours * 100.0);
     let current_channel_forwards = did_forward(short_channel_id, &forwards_24h);
@@ -144,6 +155,7 @@ pub fn calc_setchannel<'a>(
     } else {
         log::info!("no changes in {short_channel_id} with {alias}, skipping")
     };
+    data
 }
 
 pub fn did_forward<'a>(
