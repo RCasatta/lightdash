@@ -1394,7 +1394,7 @@ fn create_channel_pages(
                             }
                             td {
                                 @if let Some(avail) = avail_map.get(&channel.peer_id) {
-                                    (format!("{:.2}%", avail * 100.0))
+                                    (format!("{:.0}%", avail * 100.0))
                                 } @else {
                                     "N/A"
                                 }
@@ -1481,7 +1481,7 @@ fn create_channel_pages(
                             }
                             td {
                                 @if let Some(avail) = avail_map.get(&channel.peer_id) {
-                                    (format!("{:.2}%", avail * 100.0))
+                                    (format!("{:.0}%", avail * 100.0))
                                 } @else {
                                     "N/A"
                                 }
@@ -1570,7 +1570,7 @@ fn create_channel_pages(
                             }
                             td {
                                 @if let Some(avail) = avail_map.get(&channel.peer_id) {
-                                    (format!("{:.2}%", avail * 100.0))
+                                    (format!("{:.0}%", avail * 100.0))
                                 } @else {
                                     "N/A"
                                 }
