@@ -743,25 +743,6 @@ impl Store {
         }
     }
 
-    /// Get the total number of days covered by forward history (minimum 1 day)
-    pub fn forward_history_days(&self) -> f64 {
-        // Return the maximum age of any channel in days
-        // This represents the total operational days for channel analysis
-        let mut max_age_days: f64 = 0.0;
-
-        for channel in self.channels.channels.iter() {
-            if let Some(age_days) = self.get_channel_age_days(&channel.short_channel_id) {
-                max_age_days = max_age_days.max(age_days as f64);
-            }
-        }
-
-        if max_age_days < 1.0 {
-            1.0
-        } else {
-            max_age_days
-        }
-    }
-
     pub fn network_channel_fees(&self) -> (f64, f64) {
         let mut fees: Vec<u64> = self
             .channels()
@@ -844,10 +825,6 @@ impl ForwardStatistics {
         } else {
             (settled as f64 / total as f64) * 100.0
         }
-    }
-
-    pub fn total_success_ratio(&self) -> f64 {
-        self.success_ratio(self.total_settled, self.total_all)
     }
 
     pub fn day_success_ratio(&self) -> f64 {

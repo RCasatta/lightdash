@@ -32,6 +32,9 @@ enum Commands {
         /// Directory containing CSV files with channel fee history
         #[arg(long)]
         csv_dir: Option<String>,
+        /// Path to JSON file with node uptime data (format: {node_id: {avail: float}})
+        #[arg(long)]
+        availdb: Option<String>,
     },
     /// Generate routing analysis page
     Routes {
@@ -54,9 +57,10 @@ fn main() {
             directory,
             min_channels,
             csv_dir,
+            availdb,
         } => {
             log::debug!("Dashboard directory: {}", directory);
-            dashboard::run_dashboard(&store, directory, min_channels, csv_dir);
+            dashboard::run_dashboard(&store, directory, min_channels, csv_dir, availdb);
         }
         Commands::Routes { directory } => {
             routes::run_routes(&store, &directory);

@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use csv;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 
@@ -971,7 +972,6 @@ fn create_failures_page(
     };
 
     let stats = store.get_forward_statistics();
-    let history_days = store.forward_history_days();
 
     let failures_content = html! {
         (create_page_header("Forward Failures Analysis", false))
@@ -1248,6 +1248,7 @@ fn create_channel_pages(
     per_channel_last_forward_in: &HashMap<String, DateTime<Utc>>,
     per_channel_last_forward_out: &HashMap<String, DateTime<Utc>>,
     csv_dir: &Option<String>,
+    avail_map: &HashMap<String, f64>,
 ) {
     let channels_dir = format!("{}/channels", directory);
 
@@ -1364,6 +1365,7 @@ fn create_channel_pages(
                     tr {
                         th { "Channel ID" }
                         th { "Node Alias" }
+                        th { "Uptime" }
                         th style="text-align: right;" { "Balance %" }
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
@@ -1388,6 +1390,13 @@ fn create_channel_pages(
                             td {
                                 a href={(format!("../nodes/{}.html", channel.peer_id))} {
                                     (store.get_node_alias(&channel.peer_id))
+                                }
+                            }
+                            td {
+                                @if let Some(avail) = avail_map.get(&channel.peer_id) {
+                                    (format!("{:.2}%", avail * 100.0))
+                                } @else {
+                                    "N/A"
                                 }
                             }
                             td style="text-align: right;" {
@@ -1443,6 +1452,7 @@ fn create_channel_pages(
                     tr {
                         th { "Channel ID" }
                         th { "Node Alias" }
+                        th { "Uptime" }
                         th style="text-align: right;" { "Balance %" }
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
@@ -1467,6 +1477,13 @@ fn create_channel_pages(
                             td {
                                 a href={(format!("../nodes/{}.html", channel.peer_id))} {
                                     (store.get_node_alias(&channel.peer_id))
+                                }
+                            }
+                            td {
+                                @if let Some(avail) = avail_map.get(&channel.peer_id) {
+                                    (format!("{:.2}%", avail * 100.0))
+                                } @else {
+                                    "N/A"
                                 }
                             }
                             td style="text-align: right;" {
@@ -1523,6 +1540,7 @@ fn create_channel_pages(
                     tr {
                         th { "Channel ID" }
                         th { "Node Alias" }
+                        th { "Uptime" }
                         th style="text-align: right;" { "Balance %" }
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
@@ -1548,6 +1566,13 @@ fn create_channel_pages(
                             td {
                                 a href={(format!("../nodes/{}.html", channel.peer_id))} {
                                     (store.get_node_alias(&channel.peer_id))
+                                }
+                            }
+                            td {
+                                @if let Some(avail) = avail_map.get(&channel.peer_id) {
+                                    (format!("{:.2}%", avail * 100.0))
+                                } @else {
+                                    "N/A"
                                 }
                             }
                             td style="text-align: right;" {
@@ -1657,6 +1682,17 @@ fn create_channel_pages(
                             } @else {
                                 "N/A"
                             }
+                        }
+                    }
+                }
+
+                div class="info-item" {
+                    span class="label" { "Node Uptime: " }
+                    span class="value" {
+                        @if let Some(avail) = avail_map.get(&channel.peer_id) {
+                            (format!("{:.2}%", avail * 100.0))
+                        } @else {
+                            "N/A"
                         }
                     }
                 }
@@ -2306,6 +2342,7 @@ pub fn run_dashboard(
     directory: String,
     min_channels: usize,
     csv_dir: Option<String>,
+    availdb: Option<String>,
 ) {
     let now = Utc::now();
     log::debug!("{}", now);
@@ -2804,6 +2841,35 @@ pub fn run_dashboard(
         Err(e) => log::debug!("Error writing HTML file: {}", e),
     }
 
+    let avail_map: HashMap<String, f64> = if let Some(path) = availdb.as_ref() {
+        match fs::read_to_string(path) {
+            Ok(content) => match serde_json::from_str::<HashMap<String, Value>>(&content) {
+                Ok(outer) => {
+                    let mut map = HashMap::new();
+                    for (node_id, data) in outer {
+                        if let Some(obj) = data.as_object() {
+                            if let Some(avail_val) = obj.get("avail") {
+                                if let Some(avail) = avail_val.as_f64() {
+                                    map.insert(node_id, avail);
+                                }
+                            }
+                        }
+                    }
+                    map
+                }
+                Err(e) => {
+                    log::error!("Failed to parse availdb {}: {}", path, e);
+                    HashMap::new()
+                }
+            },
+            Err(e) => {
+                log::error!("Failed to read availdb {}: {}", path, e);
+                HashMap::new()
+            }
+        }
+    } else {
+        HashMap::new()
+    };
     log::info!("Creating channels directory and individual channel pages");
     create_channel_pages(
         &directory,
@@ -2814,6 +2880,7 @@ pub fn run_dashboard(
         &per_channel_last_forward_in,
         &per_channel_last_forward_out,
         &csv_dir,
+        &avail_map,
     );
 
     log::info!("Creating forwards page");
