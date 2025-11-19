@@ -4,4 +4,4 @@ dashboard:
 
 # Serve the generated dashboard with miniserve
 serve: dashboard
-    miniserve --index index.html --port 3535 target/
+    miniserve --index index.html --port 3535 target/ -i 127.0.0.1
