@@ -1365,7 +1365,7 @@ fn create_channel_pages(
                     tr {
                         th { "Channel ID" }
                         th { "Node Alias" }
-                        th { "Uptime" }
+                        th style="text-align: right;" { "Uptime" }
                         th style="text-align: right;" { "Balance %" }
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
@@ -1392,7 +1392,7 @@ fn create_channel_pages(
                                     (store.get_node_alias(&channel.peer_id))
                                 }
                             }
-                            td {
+                            td style="text-align: right;" {
                                 @if let Some(avail) = avail_map.get(&channel.peer_id) {
                                     (format!("{:.0}%", avail * 100.0))
                                 } @else {
@@ -1452,7 +1452,7 @@ fn create_channel_pages(
                     tr {
                         th { "Channel ID" }
                         th { "Node Alias" }
-                        th { "Uptime" }
+                        th style="text-align: right;" { "Uptime" }
                         th style="text-align: right;" { "Balance %" }
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
@@ -1479,7 +1479,7 @@ fn create_channel_pages(
                                     (store.get_node_alias(&channel.peer_id))
                                 }
                             }
-                            td {
+                            td style="text-align: right;" {
                                 @if let Some(avail) = avail_map.get(&channel.peer_id) {
                                     (format!("{:.0}%", avail * 100.0))
                                 } @else {
@@ -1540,7 +1540,7 @@ fn create_channel_pages(
                     tr {
                         th { "Channel ID" }
                         th { "Node Alias" }
-                        th { "Uptime" }
+                        th style="text-align: right;" { "Uptime" }
                         th style="text-align: right;" { "Balance %" }
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
@@ -1568,7 +1568,7 @@ fn create_channel_pages(
                                     (store.get_node_alias(&channel.peer_id))
                                 }
                             }
-                            td {
+                            td style="text-align: right;" {
                                 @if let Some(avail) = avail_map.get(&channel.peer_id) {
                                     (format!("{:.0}%", avail * 100.0))
                                 } @else {
