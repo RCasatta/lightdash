@@ -152,6 +152,10 @@ impl Store {
 
     /// Filter settled forwards to only include those resolved within the last N days
     pub fn filter_settled_forwards_by_days(&self, days: i64) -> Vec<SettledForward> {
+        log::info!(
+            "Filtering settled forwards to only include those resolved within the last {} days",
+            days
+        );
         self.settled_forwards()
             .into_iter()
             .filter(|f| self.now.signed_duration_since(f.resolved_time).num_days() <= days)
@@ -180,15 +184,6 @@ impl Store {
 
     pub fn nodes(&self) -> impl Iterator<Item = &cmd::Node> {
         self.nodes.nodes.iter()
-    }
-
-    pub fn nodes_with_channels_len(&self) -> usize {
-        self.nodes()
-            .filter(|n| {
-                self.channels()
-                    .any(|c| c.source == n.nodeid || c.destination == n.nodeid)
-            })
-            .count()
     }
 
     pub fn node_total_channels(&self, nodeid: &str) -> usize {

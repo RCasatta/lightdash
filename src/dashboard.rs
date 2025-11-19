@@ -2256,8 +2256,14 @@ pub fn run_dashboard(
     log::debug!("{}", now);
     log::debug!("my id:{}", store.info.id);
     let current_block = store.info.blockheight;
+    log::info!("Fetching normal channels and settled forwards");
     let normal_channels = store.normal_channels();
     let settled = store.settled_forwards();
+    log::info!(
+        "Fetched {} normal channels and {} settled forwards",
+        normal_channels.len(),
+        settled.len()
+    );
 
     // Generate index.html content
     let index_content = html! {
@@ -2285,9 +2291,7 @@ pub fn run_dashboard(
 
         div class="info-card" {
             h3 {
-                a href="nodes/" {
-                    (format!("{} Nodes with Channels", store.nodes_with_channels_len()))
-                }
+                a href="nodes/" { "Nodes" }
             }
             h3 {
                 a href="channels/" {
@@ -2326,6 +2330,7 @@ pub fn run_dashboard(
             }
         }
     };
+    log::info!("Generated index HTML content");
 
     let mut output_content = String::new();
     output_content.push_str(&format!(
@@ -2344,12 +2349,14 @@ pub fn run_dashboard(
 
     let mut chan_meta_per_node = HashMap::new();
 
+    log::info!("Processing network channels metadata");
     for c in store.channels() {
         let meta: &mut ChannelFee = chan_meta_per_node.entry(&c.source).or_default();
         meta.count += 1;
         meta.fee_sum += c.fee_per_millionth;
         meta.fee_rates.insert(c.fee_per_millionth);
     }
+    log::info!("Processed {} network channels", store.channels_len());
 
     let total_forwards = store.forwards_len();
 
@@ -2387,6 +2394,10 @@ pub fn run_dashboard(
     let mut per_channel_last_forward_in: HashMap<String, DateTime<Utc>> = HashMap::new();
     let mut per_channel_last_forward_out: HashMap<String, DateTime<Utc>> = HashMap::new();
 
+    log::info!(
+        "Processing {} settled forwards to compute per-channel statistics",
+        settled.len()
+    );
     for s in settled.iter() {
         let d = s.resolved_time;
         first = first.min(d);
@@ -2445,6 +2456,7 @@ pub fn run_dashboard(
             }
         }
     }
+    log::info!("Finished processing settled forwards");
 
     let el = now.signed_duration_since(first).num_days();
     output_content.push_str(&format!(
@@ -2463,6 +2475,7 @@ pub fn run_dashboard(
         last_week / 7.0
     );
 
+    log::info!("Calculating network average fee");
     let mut sum_fee_rate = 0u128;
     let mut count = 0u128;
     for c in store.channels() {
@@ -2476,6 +2489,7 @@ pub fn run_dashboard(
         count += 1;
     }
     let network_average = (sum_fee_rate / count) as u64;
+    log::info!("Network average fee calculated: {} ppm", network_average);
     output_content.push_str(&format!(
         "network average fee: {network_average} per millionth {:.3}%\n",
         network_average as f64 / 10000.0
@@ -2513,6 +2527,10 @@ pub fn run_dashboard(
     let mut channels = vec![];
 
     // Compute ChannelMeta
+    log::info!(
+        "Computing ChannelMeta for {} normal channels",
+        normal_channels.len()
+    );
     for fund in normal_channels.iter() {
         let short_channel_id = fund.short_channel_id();
 
@@ -2573,6 +2591,8 @@ pub fn run_dashboard(
         };
         channels.push(c);
     }
+    log::info!("Finished computing ChannelMeta");
+
     let pull_in: Vec<_> = channels
         .iter()
         .filter(|e| e.rebalance == Rebalance::PullIn)
@@ -2591,6 +2611,7 @@ pub fn run_dashboard(
 
     log::debug!("pull_in:{} push_out:{}", pull_in.len(), push_out.len());
 
+    log::info!("Processing channels for output and sling jobs");
     for channel in channels {
         let fund = &channel.fund;
         let perc = fund.perc();
@@ -2693,6 +2714,7 @@ pub fn run_dashboard(
         );
         lines.push((perc, s));
     }
+    log::info!("Finished processing channels for output");
 
     let sum_perces: f64 = perces.iter().sum();
     let mean_perces = sum_perces / perces.len() as f64;
@@ -2718,6 +2740,7 @@ pub fn run_dashboard(
 
     log::debug!("min_max our_base_fee our_fee scid amount perc their_fee their_base_fee last_tstamp_delta last_upd_delta monthly_forw monthly_forw_fee is_sink push/pull alias_or_id");
 
+    log::info!("Writing {} channel lines to debug output", lines.len());
     for (_, l1) in lines.iter() {
         output_content.push_str(&format!("{l1}\n"));
         log::debug!("{l1}");
@@ -2728,8 +2751,10 @@ pub fn run_dashboard(
         output_content.push_str(&format!("`{cmd}` {details}\n"));
         log::debug!("`{cmd}` {details}");
     }
+    log::info!("Finished writing debug output");
 
     // Generate HTML files after all output is collected
+    log::info!("Wrapping index content in HTML page");
     let html_content = wrap_in_html_page(
         "Lightdash Dashboard",
         index_content,
@@ -2748,7 +2773,9 @@ pub fn run_dashboard(
         Ok(_) => log::debug!("HTML dashboard generated: {}", html_file_path),
         Err(e) => log::debug!("Error writing HTML file: {}", e),
     }
+    log::info!("Index HTML file written");
 
+    log::info!("Loading availdb");
     let avail_map: HashMap<String, f64> = if let Some(path) = availdb.as_ref() {
         match fs::read_to_string(path) {
             Ok(content) => match serde_json::from_str::<HashMap<String, Value>>(&content) {
@@ -2778,6 +2805,8 @@ pub fn run_dashboard(
     } else {
         HashMap::new()
     };
+    log::info!("Loaded availdb with {} entries", avail_map.len());
+
     log::info!("Creating channels directory and individual channel pages");
     create_channel_pages(
         &directory,
