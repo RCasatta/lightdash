@@ -26,7 +26,7 @@
           src = lib.cleanSourceWith {
             src = ./.; # The original, unfiltered source
             filter = path: type:
-              # (lib.hasSuffix "\.elf" path) ||
+               (lib.hasSuffix "\.js" path) ||
               # (lib.hasInfix "/test_data/" path) ||
 
               # Default filter from crane (allow .rs files)
