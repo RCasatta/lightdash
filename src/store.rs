@@ -15,6 +15,7 @@ pub struct Store {
     // Cached computed data
     nodes_by_id: HashMap<String, cmd::Node>,
     channels_by_id: HashMap<(String, String), cmd::Channel>,
+    node_channel_counts: HashMap<String, usize>,
     peer_notes: HashMap<String, String>,
     setchannel_timestamps: HashMap<String, i64>,
     now: DateTime<Utc>,
@@ -48,6 +49,17 @@ impl Store {
             .iter()
             .map(|e| ((e.short_channel_id.clone(), e.source.clone()), e.clone()))
             .collect();
+
+        // Precompute node channel counts
+        let mut node_channel_counts: HashMap<String, usize> = HashMap::new();
+        for channel in channels.channels.iter() {
+            *node_channel_counts
+                .entry(channel.source.clone())
+                .or_insert(0) += 1;
+            *node_channel_counts
+                .entry(channel.destination.clone())
+                .or_insert(0) += 1;
+        }
 
         // Query peer notes from datastore
         let mut peer_notes = HashMap::new();
@@ -113,6 +125,7 @@ impl Store {
             closed_channels,
             nodes_by_id,
             channels_by_id,
+            node_channel_counts,
             peer_notes,
             setchannel_timestamps,
             now,
@@ -187,9 +200,7 @@ impl Store {
     }
 
     pub fn node_total_channels(&self, nodeid: &str) -> usize {
-        self.channels()
-            .filter(|c| c.source == *nodeid || c.destination == *nodeid)
-            .count()
+        *self.node_channel_counts.get(nodeid).unwrap_or(&0)
     }
 
     /// Get a channel by short_channel_id and source
