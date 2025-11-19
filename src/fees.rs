@@ -96,7 +96,22 @@ pub fn calc_setchannel<'a>(
     };
 
     if changes {
-        log::info!("{data} ok:{forwards_ok} ko:{forwards_ko} {short_channel_id} with {alias}. my_fund:{our_amount_msat} ({disp_perc})  ppm:{current_ppm}->{new_ppm} max_htlc:{current_max_htlc_sat}->{new_max_htlc_msat} min_htlc:{current_min_htlc_sat}->{new_min_htlc_msat}");
+        let mut change_parts = Vec::new();
+        if current_ppm != new_ppm {
+            change_parts.push(format!("ppm:{current_ppm}->{new_ppm}"));
+        }
+        if current_max_htlc_sat != new_max_htlc_msat {
+            change_parts.push(format!(
+                "max_htlc:{current_max_htlc_sat}->{new_max_htlc_msat}"
+            ));
+        }
+        if current_min_htlc_sat != new_min_htlc_msat {
+            change_parts.push(format!(
+                "min_htlc:{current_min_htlc_sat}->{new_min_htlc_msat}"
+            ));
+        }
+        let change_str = change_parts.join(" ");
+        log::info!("{data} ok:{forwards_ok} ko:{forwards_ko} {short_channel_id} with {alias}. my_fund:{our_amount_msat} ({disp_perc})  {change_str}");
 
         let cmd = "lightning-cli";
         let args = format!(
