@@ -67,7 +67,6 @@ pub fn calc_setchannel<'a>(
         // the channel is never succesfully selected and has few errors -> lower rates.
         // We reduce proportionally to how full is the channel
         let reduce_perc = -STEP_PERC * channel_fund_perc_ours;
-        println!("{reduce_perc}");
         if reduce_perc.abs() < 0.01 {
             // we don't bother to change less than 1%
             0.0
