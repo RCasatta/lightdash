@@ -1,3 +1,5 @@
+use std::cmp::{max, min};
+
 use crate::cmd::Forward;
 use crate::store::Store;
 use chrono::Utc;
@@ -71,7 +73,7 @@ pub fn calc_setchannel<'a>(
 
     // Compute the largest power of 2 <= our_amount_msat for max HTLC
     let new_max_htlc_msat = largest_power_of_two_leq(our_amount_msat);
-    let new_min_htlc_msat = std::cmp::min(MIN_HTLC, new_max_htlc_msat); // min_htlc cannot be greater than max_htlc
+    let new_min_htlc_msat = min(MIN_HTLC, max(new_max_htlc_msat, 1)); // min_htlc cannot be greater than max_htlc and lower than 1
 
     let perc_change = if forwards_all == 0 || (forwards_ok == 0 && forwards_ko < 10) {
         // REDUCE FEE
