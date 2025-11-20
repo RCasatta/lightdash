@@ -1035,8 +1035,8 @@ fn create_failures_page(
 
         // Table 1: Local Failed Forwards with WIRE_TEMPORARY_CHANNEL_FAILURE (liquidity issues on our side)
         div class="info-card" {
-            h2 { "Local Failed Forwards - No Liquidity" }
-            p { "These are payments that failed because we don't have enough liquidity in the outbound channel (our failure)." }
+            h2 { "Local Failed Forwards" }
+            p { "These are payments that failed most likely because we don't have enough liquidity in the outbound channel (our failure) or the other node is offline." }
 
             @let local_failed_data = store.local_failed_temp_channel_failure_by_out_channel();
             @if !local_failed_data.is_empty() {
@@ -1052,7 +1052,7 @@ fn create_failures_page(
                         }
                     }
                     tbody {
-                        @for channel_data in local_failed_data.iter().take(30) {
+                        @for channel_data in local_failed_data.iter() {
                             @let (alias, node_id) = get_channel_info(&channel_data.channel_id);
                             tr {
                                 td class="align-right" { (channel_data.counts.day) }
@@ -1096,7 +1096,7 @@ fn create_failures_page(
                         }
                     }
                     tbody {
-                        @for channel_data in failed_data.iter().take(30) {
+                        @for channel_data in failed_data.iter() {
                             @let (alias, node_id) = get_channel_info(&channel_data.channel_id);
                             tr {
                                 td class="align-right" { (channel_data.counts.day) }
