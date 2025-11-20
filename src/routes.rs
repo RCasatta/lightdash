@@ -18,7 +18,7 @@ pub fn run_routes(store: &Store, directory: &str) {
     for id in &nodes_by_id_keys {
         // Skip nodes that have less than 2 channels
         if chan_meta
-            .get(id)
+            .get(id.as_str())
             .map_or(true, |chan_info| chan_info.count < 2)
         {
             continue;
@@ -41,7 +41,7 @@ pub fn run_routes(store: &Store, directory: &str) {
     let route_entries: Vec<RouteEntry> = counters_vec
         .into_iter()
         .filter_map(|(id, count)| {
-            let chan_info = chan_meta.get(&id)?;
+            let chan_info = chan_meta.get(id.as_str())?;
             Some(RouteEntry {
                 node_id: id.clone(),
                 alias: store.get_node_alias(&id),

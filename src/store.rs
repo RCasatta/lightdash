@@ -239,12 +239,12 @@ impl Store {
     }
 
     /// Get channel metadata per node (fee info aggregated by source node)
-    pub fn chan_meta_per_node(&self) -> HashMap<String, ChannelFee> {
-        let mut chan_meta: HashMap<String, ChannelFee> = HashMap::new();
+    pub fn chan_meta_per_node(&self) -> HashMap<&str, ChannelFee> {
+        let mut chan_meta: HashMap<&str, ChannelFee> = HashMap::new();
 
         for c in &self.channels.channels {
             let meta = chan_meta
-                .entry(c.source.clone())
+                .entry(&c.source)
                 .or_insert_with(ChannelFee::default);
             meta.count += 1;
             meta.fee_sum += c.fee_per_millionth;
