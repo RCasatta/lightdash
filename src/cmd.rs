@@ -413,7 +413,7 @@ pub fn datastore_string(
 
     log::info!("Executing lightning-cli with args: {:?}", args);
     let response_str = cmd_result("lightning-cli", &args);
-    log::info!("Received response: {}", response_str);
+    log::debug!("Received response: {}", response_str);
 
     // It's also good practice to check for an error response before parsing
     if response_str.contains("\"code\":") {
