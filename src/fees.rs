@@ -75,7 +75,7 @@ pub fn calc_setchannel<'a>(
     let new_max_htlc_msat = largest_power_of_two_leq(our_amount_msat);
     let new_min_htlc_msat = min(MIN_HTLC, max(new_max_htlc_msat, 1)); // min_htlc cannot be greater than max_htlc and lower than 1
 
-    let perc_change = if forwards_all == 0 || (forwards_ok == 0 && forwards_ko < 10) {
+    let perc_change = if forwards_all == 0 || (forwards_ok == 0 && forwards_ko < 20) {
         // REDUCE FEE
         // the channel is never succesfully selected and has few errors -> lower rates.
         // We reduce proportionally to how full is the channel
