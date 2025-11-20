@@ -802,7 +802,7 @@ fn create_forwards_html_content(
             p { "Total settled forwards: " (forwards.len()) }
 
             @if !forwards.is_empty() {
-                table {
+                table class="sortable" {
                     thead {
                         tr {
                             th { "In Node" }
@@ -1035,7 +1035,7 @@ fn create_failures_page(
 
         // Table 1: Local Failed Forwards with WIRE_TEMPORARY_CHANNEL_FAILURE (liquidity issues on our side)
         div class="info-card" {
-            h2 { "Local Failed Forwards - No Liquidity (Click headers to sort)" }
+            h2 { "Local Failed Forwards - No Liquidity" }
             p { "These are payments that failed because we don't have enough liquidity in the outbound channel (our failure)." }
 
             @let local_failed_data = store.local_failed_temp_channel_failure_by_out_channel();
@@ -1079,7 +1079,7 @@ fn create_failures_page(
 
         // Table 2: All Failed Forwards (failures on the remote node's side)
         div class="info-card" {
-            h2 { "All Failed Forwards - Remote Node Issues (Click headers to sort)" }
+            h2 { "All Failed Forwards - Remote Node Issues" }
             p { "These are payments that failed not due to our fault but due to connected nodes. Consider closing channels with high failure counts." }
 
             @let failed_data = store.failed_forwards_by_out_channel();
@@ -1352,7 +1352,7 @@ fn create_channel_pages(
         }
 
         div class="info-card" {
-            h2 { "Channel List (Click headers to sort)" }
+            h2 { "Channel List" }
             p { "Total channels: " (channels.len()) }
 
             table class="sortable" {
@@ -1440,7 +1440,7 @@ fn create_channel_pages(
         }
 
         div class="info-card" {
-            h2 { "Mature Inactive Channels (Click headers to sort)" }
+            h2 { "Mature Inactive Channels" }
             p { "Channels 1+ year old with no forwards in last 2 months: " (sorted_channels_by_sats_per_day.len()) }
 
             table class="sortable" {
@@ -1818,7 +1818,7 @@ fn create_channel_pages(
                 @let channel_forwards = store.get_channel_forwards(scid);
                 @if !channel_forwards.is_empty() {
                     div class="info-card" {
-                        h2 { "Channel Forwards (Click headers to sort)" }
+                        h2 { "Channel Forwards" }
                         p { "Total forwards: " (channel_forwards.len()) }
 
                         table class="sortable" {
@@ -1879,7 +1879,7 @@ fn create_channel_pages(
                 @let channel_local_failed = store.get_channel_local_failed_forwards(scid);
                 @if !channel_local_failed.is_empty() {
                     div class="info-card" {
-                        h2 { "Channel Local Failed Forwards (Click headers to sort)" }
+                        h2 { "Channel Local Failed Forwards" }
                         p { "Total local failures: " (channel_local_failed.len()) }
 
                         table class="sortable" {
@@ -1948,7 +1948,7 @@ fn create_channel_pages(
                 @let channel_failed = store.get_channel_failed_forwards(scid);
                 @if !channel_failed.is_empty() {
                     div class="info-card" {
-                        h2 { "Channel Failed Forwards (Click headers to sort)" }
+                        h2 { "Channel Failed Forwards" }
                         p { "Total failures: " (channel_failed.len()) }
 
                         table class="sortable" {
@@ -2190,7 +2190,7 @@ fn create_closed_channels_page(
             p { "Total closed channels: " (closed_channels_info.len()) }
 
             @if !closed_channels_info.is_empty() {
-                table {
+                table class="sortable" {
                     thead {
                         tr {
                             th { "Short Channel ID" }
@@ -2277,7 +2277,7 @@ fn create_closed_channels_page(
             div class="section" {
                 h3 class="section-title" { "Close Cause Summary" }
                 @if !closed_channels_info.is_empty() {
-                    table {
+                    table class="sortable" {
                         thead {
                             tr {
                                 th { "Close Cause" }

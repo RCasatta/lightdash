@@ -54,6 +54,14 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (aValue === 'N/A' || aValue === '-') aValue = sortOrder === 'asc' ? 'zzz' : '';
                     if (bValue === 'N/A' || bValue === '-') bValue = sortOrder === 'asc' ? 'zzz' : '';
 
+                    // Check if values are dates (format: YYYY-MM-DD HH:MM:SS or similar)
+                    const datePattern = /^\d{4}-\d{2}-\d{2}(\s+\d{2}:\d{2}:\d{2})?$/;
+                    if (datePattern.test(aValue) && datePattern.test(bValue)) {
+                        const aDate = new Date(aValue);
+                        const bDate = new Date(bValue);
+                        return sortOrder === 'asc' ? aDate - bDate : bDate - aDate;
+                    }
+
                     // Try to parse as number (including percentages)
                     const aNum = parseFloat(aValue.replace(/[,%]/g, ''));
                     const bNum = parseFloat(bValue.replace(/[,%]/g, ''));
