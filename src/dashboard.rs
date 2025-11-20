@@ -1818,10 +1818,10 @@ fn create_channel_pages(
                 @let channel_forwards = store.get_channel_forwards(scid);
                 @if !channel_forwards.is_empty() {
                     div class="info-card" {
-                        h2 { "Channel Forwards" }
+                        h2 { "Channel Forwards (Click headers to sort)" }
                         p { "Total forwards: " (channel_forwards.len()) }
 
-                        table {
+                        table class="sortable" {
                             thead {
                                 tr {
                                     th { "Direction" }
@@ -1879,10 +1879,10 @@ fn create_channel_pages(
                 @let channel_local_failed = store.get_channel_local_failed_forwards(scid);
                 @if !channel_local_failed.is_empty() {
                     div class="info-card" {
-                        h2 { "Channel Local Failed Forwards" }
+                        h2 { "Channel Local Failed Forwards (Click headers to sort)" }
                         p { "Total local failures: " (channel_local_failed.len()) }
 
-                        table {
+                        table class="sortable" {
                             thead {
                                 tr {
                                     th { "Direction" }
@@ -1948,10 +1948,10 @@ fn create_channel_pages(
                 @let channel_failed = store.get_channel_failed_forwards(scid);
                 @if !channel_failed.is_empty() {
                     div class="info-card" {
-                        h2 { "Channel Failed Forwards" }
+                        h2 { "Channel Failed Forwards (Click headers to sort)" }
                         p { "Total failures: " (channel_failed.len()) }
 
-                        table {
+                        table class="sortable" {
                             thead {
                                 tr {
                                     th { "Direction" }
