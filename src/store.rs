@@ -568,6 +568,44 @@ impl Store {
             .collect()
     }
 
+    /// Get local_failed forwards for a specific channel (both inbound and outbound)
+    pub fn get_channel_local_failed_forwards(&self, short_channel_id: &str) -> Vec<Forward> {
+        let mut forwards: Vec<_> = self
+            .forwards
+            .forwards
+            .iter()
+            .filter(|f| {
+                f.status == "local_failed"
+                    && (f.in_channel == short_channel_id
+                        || f.out_channel.as_deref() == Some(short_channel_id))
+            })
+            .cloned()
+            .collect();
+
+        // Sort by received_time descending (most recent first)
+        forwards.sort_by(|a, b| b.received_time.partial_cmp(&a.received_time).unwrap());
+        forwards
+    }
+
+    /// Get failed forwards for a specific channel (both inbound and outbound)
+    pub fn get_channel_failed_forwards(&self, short_channel_id: &str) -> Vec<Forward> {
+        let mut forwards: Vec<_> = self
+            .forwards
+            .forwards
+            .iter()
+            .filter(|f| {
+                f.status == "failed"
+                    && (f.in_channel == short_channel_id
+                        || f.out_channel.as_deref() == Some(short_channel_id))
+            })
+            .cloned()
+            .collect();
+
+        // Sort by received_time descending (most recent first)
+        forwards.sort_by(|a, b| b.received_time.partial_cmp(&a.received_time).unwrap());
+        forwards
+    }
+
     /// Get local_failed forwards with WIRE_TEMPORARY_CHANNEL_FAILURE grouped by out_channel
     /// Returns a vector of ChannelFailureData sorted by month count descending
     pub fn local_failed_temp_channel_failure_by_out_channel(&self) -> Vec<ChannelFailureData> {

@@ -1874,6 +1874,144 @@ fn create_channel_pages(
                         p { "No forwards found for this channel." }
                     }
                 }
+
+                // Channel Local Failed Forwards Section
+                @let channel_local_failed = store.get_channel_local_failed_forwards(scid);
+                @if !channel_local_failed.is_empty() {
+                    div class="info-card" {
+                        h2 { "Channel Local Failed Forwards" }
+                        p { "Total local failures: " (channel_local_failed.len()) }
+
+                        table {
+                            thead {
+                                tr {
+                                    th { "Direction" }
+                                    th { "Amount (sats)" }
+                                    th { "Received Time" }
+                                    th { "Fail Reason" }
+                                    th { "Fail Code" }
+                                }
+                            }
+                            tbody {
+                                @for forward in channel_local_failed.iter().take(100) {
+                                    tr {
+                                        td {
+                                            @if forward.out_channel.as_deref() == Some(scid) {
+                                                span style="color: #48bb78;" { "→ Outbound" }
+                                            } @else {
+                                                span style="color: #63b3ed;" { "← Inbound" }
+                                            }
+                                        }
+                                        td style="text-align: right;" {
+                                            (format!("{:.1}", forward.in_msat as f64 / 1000.0))
+                                        }
+                                        td {
+                                            @if let Some(dt) = chrono::DateTime::from_timestamp(forward.received_time as i64, 0) {
+                                                (dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                                            } @else {
+                                                "N/A"
+                                            }
+                                        }
+                                        td {
+                                            @if let Some(reason) = &forward.failreason {
+                                                (reason)
+                                            } @else {
+                                                "N/A"
+                                            }
+                                        }
+                                        td style="text-align: right;" {
+                                            @if let Some(code) = forward.failcode {
+                                                (code)
+                                            } @else {
+                                                "N/A"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        @if channel_local_failed.len() > 100 {
+                            p style="font-style: italic; color: #a0aec0;" {
+                                "Showing latest 100 local failures out of " (channel_local_failed.len()) " total."
+                            }
+                        }
+                    }
+                } @else {
+                    div class="info-card" {
+                        h2 { "Channel Local Failed Forwards" }
+                        p { "No local failures found for this channel." }
+                    }
+                }
+
+                // Channel Failed Forwards Section
+                @let channel_failed = store.get_channel_failed_forwards(scid);
+                @if !channel_failed.is_empty() {
+                    div class="info-card" {
+                        h2 { "Channel Failed Forwards" }
+                        p { "Total failures: " (channel_failed.len()) }
+
+                        table {
+                            thead {
+                                tr {
+                                    th { "Direction" }
+                                    th { "Amount (sats)" }
+                                    th { "Received Time" }
+                                    th { "Fail Reason" }
+                                    th { "Fail Code" }
+                                }
+                            }
+                            tbody {
+                                @for forward in channel_failed.iter().take(100) {
+                                    tr {
+                                        td {
+                                            @if forward.out_channel.as_deref() == Some(scid) {
+                                                span style="color: #48bb78;" { "→ Outbound" }
+                                            } @else {
+                                                span style="color: #63b3ed;" { "← Inbound" }
+                                            }
+                                        }
+                                        td style="text-align: right;" {
+                                            (format!("{:.1}", forward.in_msat as f64 / 1000.0))
+                                        }
+                                        td {
+                                            @if let Some(dt) = chrono::DateTime::from_timestamp(forward.received_time as i64, 0) {
+                                                (dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                                            } @else {
+                                                "N/A"
+                                            }
+                                        }
+                                        td {
+                                            @if let Some(reason) = &forward.failreason {
+                                                (reason)
+                                            } @else {
+                                                "N/A"
+                                            }
+                                        }
+                                        td style="text-align: right;" {
+                                            @if let Some(code) = forward.failcode {
+                                                (code)
+                                            } @else {
+                                                "N/A"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        @if channel_failed.len() > 100 {
+                            p style="font-style: italic; color: #a0aec0;" {
+                                "Showing latest 100 failures out of " (channel_failed.len()) " total."
+                            }
+                        }
+                    }
+                } @else {
+                    div class="info-card" {
+                        h2 { "Channel Failed Forwards" }
+                        p { "No failures found for this channel." }
+                    }
+                }
             }
         };
 
