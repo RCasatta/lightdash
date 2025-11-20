@@ -1147,8 +1147,8 @@ fn create_failures_page(
 /// Returns (dates, in_ppm_values, out_ppm_values) for chart generation
 fn read_channel_fee_csv(
     csv_path: &str,
-) -> Result<(Vec<String>, Vec<f64>, Vec<f64>), Box<dyn std::error::Error>> {
-    let mut dates = Vec::new();
+) -> Result<(Vec<i64>, Vec<f64>, Vec<f64>), Box<dyn std::error::Error>> {
+    let mut timestamps = Vec::new();
     let mut in_ppm_values = Vec::new();
     let mut out_ppm_values = Vec::new();
 
@@ -1156,12 +1156,11 @@ fn read_channel_fee_csv(
     for result in rdr.records() {
         let record = result?;
         if record.len() >= 3 {
-            // Parse timestamp to readable date format
+            // Parse timestamp (keep as milliseconds for Chart.js)
             if let Ok(timestamp) = record[0].parse::<i64>() {
-                let datetime = DateTime::from_timestamp(timestamp, 0).ok_or("Invalid timestamp")?;
-                dates.push(datetime.format("%Y-%m-%d").to_string());
+                timestamps.push(timestamp * 1000); // Convert to milliseconds for JavaScript
             } else {
-                dates.push(record[0].to_string());
+                continue; // Skip invalid timestamps
             }
 
             // Parse in_ppm and out_ppm values
@@ -1179,18 +1178,30 @@ fn read_channel_fee_csv(
         }
     }
 
-    Ok((dates, in_ppm_values, out_ppm_values))
+    Ok((timestamps, in_ppm_values, out_ppm_values))
 }
 
 /// Generate HTML for a line chart using Chart.js
-fn generate_fee_chart_html(dates: &[String], in_ppm: &[f64], out_ppm: &[f64]) -> Markup {
-    let dates_json = serde_json::to_string(dates).unwrap_or_else(|_| "[]".to_string());
-    let in_ppm_json = serde_json::to_string(in_ppm).unwrap_or_else(|_| "[]".to_string());
-    let out_ppm_json = serde_json::to_string(out_ppm).unwrap_or_else(|_| "[]".to_string());
+fn generate_fee_chart_html(timestamps: &[i64], in_ppm: &[f64], out_ppm: &[f64]) -> Markup {
+    // Create data points with x (timestamp) and y (value) pairs
+    let in_ppm_data: Vec<_> = timestamps
+        .iter()
+        .zip(in_ppm.iter())
+        .map(|(t, v)| serde_json::json!({"x": t, "y": v}))
+        .collect();
+    let out_ppm_data: Vec<_> = timestamps
+        .iter()
+        .zip(out_ppm.iter())
+        .map(|(t, v)| serde_json::json!({"x": t, "y": v}))
+        .collect();
+
+    let in_ppm_json = serde_json::to_string(&in_ppm_data).unwrap_or_else(|_| "[]".to_string());
+    let out_ppm_json = serde_json::to_string(&out_ppm_data).unwrap_or_else(|_| "[]".to_string());
 
     html! {
-        // Include Chart.js library first
+        // Include Chart.js library and date adapter
         script src="https://cdn.jsdelivr.net/npm/chart.js" {}
+        script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns" {}
 
         div class="info-card" {
             h2 { "Channel Fee History" }
@@ -1204,7 +1215,6 @@ fn generate_fee_chart_html(dates: &[String], in_ppm: &[f64], out_ppm: &[f64]) ->
                     const feeChart = new Chart(ctx, {{
                         type: 'line',
                         data: {{
-                            labels: {},
                             datasets: [{{
                                 label: 'In PPM',
                                 data: {},
@@ -1228,6 +1238,10 @@ fn generate_fee_chart_html(dates: &[String], in_ppm: &[f64], out_ppm: &[f64]) ->
                                     }}
                                 }},
                                 x: {{
+                                    type: 'time',
+                                    time: {{
+                                        unit: 'day'
+                                    }},
                                     title: {{
                                         display: true,
                                         text: 'Date'
@@ -1236,7 +1250,7 @@ fn generate_fee_chart_html(dates: &[String], in_ppm: &[f64], out_ppm: &[f64]) ->
                             }}
                         }}
                     }});
-                "#, dates_json, in_ppm_json, out_ppm_json)))
+                "#, in_ppm_json, out_ppm_json)))
             }
         }
     }
