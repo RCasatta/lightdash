@@ -1971,8 +1971,6 @@ fn create_channel_pages(
                                     th { "Direction" }
                                     th { "Amount (sats)" }
                                     th { "Received Time" }
-                                    th { "Fail Reason" }
-                                    th { "Fail Code" }
                                 }
                             }
                             tbody {
@@ -1991,20 +1989,6 @@ fn create_channel_pages(
                                         td {
                                             @if let Some(dt) = chrono::DateTime::from_timestamp(forward.received_time as i64, 0) {
                                                 (dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                                            } @else {
-                                                "N/A"
-                                            }
-                                        }
-                                        td {
-                                            @if let Some(reason) = &forward.failreason {
-                                                (reason)
-                                            } @else {
-                                                "N/A"
-                                            }
-                                        }
-                                        td style="text-align: right;" {
-                                            @if let Some(code) = forward.failcode {
-                                                (code)
                                             } @else {
                                                 "N/A"
                                             }
