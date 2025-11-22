@@ -1036,7 +1036,7 @@ fn create_failures_page(
         // Table 1: Local Failed Forwards with WIRE_TEMPORARY_CHANNEL_FAILURE (liquidity issues on our side)
         div class="info-card" {
             h2 { "Local Failed Forwards" }
-            p { "These are payments that failed most likely because we don't have enough liquidity in the outbound channel (our failure) or the other node is offline." }
+            p { "Local failures happen mostly because: not enough liquidity in the outbound channel, or the other node is offline." }
 
             @let local_failed_data = store.local_failed_temp_channel_failure_by_out_channel();
             @if !local_failed_data.is_empty() {
@@ -1147,12 +1147,18 @@ fn create_failures_page(
 /// Returns (dates, in_ppm_values, out_ppm_values) for chart generation
 fn read_channel_fee_csv(
     csv_path: &str,
-) -> Result<(Vec<i64>, Vec<f64>, Vec<f64>), Box<dyn std::error::Error>> {
+) -> Result<(Vec<i64>, Vec<f64>, Vec<f64>, String, String), Box<dyn std::error::Error>> {
     let mut timestamps = Vec::new();
     let mut in_ppm_values = Vec::new();
     let mut out_ppm_values = Vec::new();
 
     let mut rdr = csv::Reader::from_path(csv_path)?;
+    let headers = rdr.headers()?.clone();
+
+    // Extract public keys from column headers (skip the first "date" column)
+    let in_pubkey = headers.get(1).unwrap_or("In PPM").to_string();
+    let out_pubkey = headers.get(2).unwrap_or("Out PPM").to_string();
+
     for result in rdr.records() {
         let record = result?;
         if record.len() >= 3 {
@@ -1178,11 +1184,23 @@ fn read_channel_fee_csv(
         }
     }
 
-    Ok((timestamps, in_ppm_values, out_ppm_values))
+    Ok((
+        timestamps,
+        in_ppm_values,
+        out_ppm_values,
+        in_pubkey,
+        out_pubkey,
+    ))
 }
 
 /// Generate HTML for a line chart using Chart.js
-fn generate_fee_chart_html(timestamps: &[i64], in_ppm: &[f64], out_ppm: &[f64]) -> Markup {
+fn generate_fee_chart_html(
+    timestamps: &[i64],
+    in_ppm: &[f64],
+    out_ppm: &[f64],
+    in_pubkey: &str,
+    out_pubkey: &str,
+) -> Markup {
     // Create data points with x (timestamp) and y (value) pairs
     let in_ppm_data: Vec<_> = timestamps
         .iter()
@@ -1216,13 +1234,13 @@ fn generate_fee_chart_html(timestamps: &[i64], in_ppm: &[f64], out_ppm: &[f64]) 
                         type: 'line',
                         data: {{
                             datasets: [{{
-                                label: 'In PPM',
-                                data: {},
+                                label: '{in_pubkey}',
+                                data: {in_ppm_json},
                                 borderColor: 'rgb(75, 192, 192)',
                                 tension: 0.1
                             }}, {{
-                                label: 'Out PPM',
-                                data: {},
+                                label: '{out_pubkey}',
+                                data: {out_ppm_json},
                                 borderColor: 'rgb(255, 99, 132)',
                                 tension: 0.1
                             }}]
@@ -1250,7 +1268,7 @@ fn generate_fee_chart_html(timestamps: &[i64], in_ppm: &[f64], out_ppm: &[f64]) 
                             }}
                         }}
                     }});
-                "#, in_ppm_json, out_ppm_json)))
+                "#)))
             }
         }
     }
@@ -1687,9 +1705,9 @@ fn create_channel_pages(
                 };
 
                 @if std::path::Path::new(&csv_filename).exists() {
-                    @if let Ok((dates, in_ppm, out_ppm)) = read_channel_fee_csv(&csv_filename) {
+                    @if let Ok((dates, in_ppm, out_ppm, in_pubkey, out_pubkey)) = read_channel_fee_csv(&csv_filename) {
                         @if !dates.is_empty() {
-                            (generate_fee_chart_html(&dates, &in_ppm, &out_ppm))
+                            (generate_fee_chart_html(&dates, &in_ppm, &out_ppm, &in_pubkey, &out_pubkey))
                         }
                     }
                 }
