@@ -171,7 +171,7 @@ impl Store {
         );
         self.settled_forwards()
             .into_iter()
-            .filter(|f| self.now.signed_duration_since(f.resolved_time).num_days() <= days)
+            .filter(|f| self.now.signed_duration_since(f.resolved_time).num_hours() <= days * 24)
             .collect()
     }
 
