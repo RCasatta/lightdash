@@ -619,10 +619,7 @@ impl Store {
                     continue;
                 }
 
-                if forward.status == "local_failed"
-                    && forward.failreason.as_deref() == Some("WIRE_TEMPORARY_CHANNEL_FAILURE")
-                    && forward.out_channel.is_some()
-                {
+                if forward.status == "local_failed" && forward.out_channel.is_some() {
                     let channel = forward.out_channel.as_ref().unwrap();
                     let hours_ago = self.now.signed_duration_since(received).num_hours();
 
