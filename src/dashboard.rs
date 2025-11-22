@@ -1918,6 +1918,7 @@ fn create_channel_pages(
                             thead {
                                 tr {
                                     th { "Direction" }
+                                    th { "Other" }
                                     th { "Amount (sats)" }
                                     th { "Received Time" }
                                     th { "Fail Reason" }
@@ -1932,6 +1933,19 @@ fn create_channel_pages(
                                                 span style="color: #48bb78;" { "→ Outbound" }
                                             } @else {
                                                 span style="color: #63b3ed;" { "← Inbound" }
+                                            }
+                                        }
+                                        td {
+                                            @if forward.out_channel.as_deref() == Some(scid) {
+                                                // Current channel is out_channel, show in_channel
+                                                a href={(format!("../channels/{}.html", &forward.in_channel))} { (&forward.in_channel) }
+                                            } @else {
+                                                // Current channel is in_channel, show out_channel
+                                                @if let Some(out_scid) = &forward.out_channel {
+                                                    a href={(format!("../channels/{}.html", out_scid))} { (out_scid) }
+                                                } @else {
+                                                    "N/A"
+                                                }
                                             }
                                         }
                                         td style="text-align: right;" {
@@ -1987,6 +2001,7 @@ fn create_channel_pages(
                             thead {
                                 tr {
                                     th { "Direction" }
+                                    th { "Other" }
                                     th { "Amount (sats)" }
                                     th { "Received Time" }
                                 }
@@ -1999,6 +2014,19 @@ fn create_channel_pages(
                                                 span style="color: #48bb78;" { "→ Outbound" }
                                             } @else {
                                                 span style="color: #63b3ed;" { "← Inbound" }
+                                            }
+                                        }
+                                        td {
+                                            @if forward.out_channel.as_deref() == Some(scid) {
+                                                // Current channel is out_channel, show in_channel
+                                                a href={(format!("../channels/{}.html", &forward.in_channel))} { (&forward.in_channel) }
+                                            } @else {
+                                                // Current channel is in_channel, show out_channel
+                                                @if let Some(out_scid) = &forward.out_channel {
+                                                    a href={(format!("../channels/{}.html", out_scid))} { (out_scid) }
+                                                } @else {
+                                                    "N/A"
+                                                }
                                             }
                                         }
                                         td style="text-align: right;" {
