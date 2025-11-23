@@ -1,5 +1,6 @@
 use crate::cmd;
-use crate::store::Store;
+use flate2::write::GzEncoder;
+use flate2::Compression;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
@@ -187,14 +188,26 @@ pub fn run_channels(dir: &str, output_dir: &str) {
         }
 
         // Generate SVG chart
-        let svg_filename = format!("{}/{}_{}_{}.svg", output_dir, channel_id, node_0, node_1);
-        log::info!("Writing SVG file: {}", svg_filename);
+        let svg_filename = format!("{}/{}.svgz", output_dir, channel_id);
+        log::info!("Writing SVGZ file: {}", svg_filename);
 
         match generate_svg_chart(&timestamp_data, node_0, node_1) {
-            Ok(svg_content) => match fs::write(&svg_filename, svg_content) {
-                Ok(_) => log::info!("Successfully wrote SVG to {}", svg_filename),
-                Err(e) => log::error!("Failed to write SVG file {}: {}", svg_filename, e),
-            },
+            Ok(svg_content) => {
+                // Compress the SVG content with gzip
+                let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+                match encoder.write_all(svg_content.as_bytes()) {
+                    Ok(_) => match encoder.finish() {
+                        Ok(compressed) => match fs::write(&svg_filename, compressed) {
+                            Ok(_) => log::info!("Successfully wrote SVGZ to {}", svg_filename),
+                            Err(e) => {
+                                log::error!("Failed to write SVGZ file {}: {}", svg_filename, e)
+                            }
+                        },
+                        Err(e) => log::error!("Failed to finish gzip compression: {}", e),
+                    },
+                    Err(e) => log::error!("Failed to compress SVG data: {}", e),
+                }
+            }
             Err(e) => log::error!("Failed to generate SVG chart: {}", e),
         }
     }
