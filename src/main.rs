@@ -60,7 +60,6 @@ enum Commands {
 fn main() {
     init_logging();
     let cli = Cli::parse();
-    let store = Store::new();
 
     match cli.command {
         Commands::Dashboard {
@@ -69,20 +68,27 @@ fn main() {
             csv_dir,
             availdb,
         } => {
+            let store = Store::new();
             log::debug!("Dashboard directory: {}", directory);
             dashboard::run_dashboard(&store, directory, min_channels, csv_dir, availdb);
         }
         Commands::Routes { directory } => {
+            let store = Store::new();
+
             routes::run_routes(&store, &directory);
         }
         Commands::Sling => {
+            let store = Store::new();
+
             sling::run_sling(&store);
         }
         Commands::Fees => {
+            let store = Store::new();
+
             fees::run_fees(&store);
         }
         Commands::Channels { path, output_dir } => {
-            channels::run_channels(&store, path.as_str(), output_dir.as_str());
+            channels::run_channels(path.as_str(), output_dir.as_str());
         }
     }
 }
