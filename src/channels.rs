@@ -9,11 +9,11 @@ type ChannelId = String;
 type Channels = HashMap<ChannelId, HashMap<NodeId, Vec<ElementData>>>;
 
 struct ElementData {
-    timestamp: u64,
-    base_fee: u64,
-    fee_per_millionth: u64,
-    htlc_minimum: u64,
-    htlc_maximum: u64,
+    timestamp: u32,
+    base_fee_millisatoshi: u32,
+    fee_per_millionth: u32,
+    htlc_minimum: u32,
+    htlc_maximum: u32,
     active: bool,
 }
 
@@ -68,11 +68,11 @@ pub fn run_channels(_store: &Store, dir: &str, output_dir: &str) {
                     .or_insert(HashMap::new());
                 let vec = el.entry(channel.source).or_insert(Vec::new());
                 vec.push(ElementData {
-                    timestamp: timestamp,
-                    base_fee: channel.base_fee_millisatoshi / 1000,
-                    fee_per_millionth: channel.fee_per_millionth,
-                    htlc_minimum: channel.htlc_minimum_msat / 1000,
-                    htlc_maximum: channel.htlc_maximum_msat / 1000,
+                    timestamp: timestamp as u32,
+                    base_fee_millisatoshi: channel.base_fee_millisatoshi as u32,
+                    fee_per_millionth: channel.fee_per_millionth as u32,
+                    htlc_minimum: (channel.htlc_minimum_msat / 1000) as u32,
+                    htlc_maximum: (channel.htlc_maximum_msat / 1000) as u32,
                     active: channel.active,
                 });
             }
@@ -97,7 +97,7 @@ pub fn run_channels(_store: &Store, dir: &str, output_dir: &str) {
         let node_1 = node_ids[1];
 
         // Collect all timestamps and create a map of timestamp -> (node_0_data, node_1_data)
-        let mut timestamp_data: HashMap<u64, (Option<&ElementData>, Option<&ElementData>)> =
+        let mut timestamp_data: HashMap<u32, (Option<&ElementData>, Option<&ElementData>)> =
             HashMap::new();
 
         // Add data from node_0
@@ -137,17 +137,17 @@ pub fn run_channels(_store: &Store, dir: &str, output_dir: &str) {
                 }
 
                 // Sort timestamps and write data rows
-                let mut timestamps: Vec<u64> = timestamp_data.keys().cloned().collect();
+                let mut timestamps: Vec<u32> = timestamp_data.keys().cloned().collect();
                 timestamps.sort();
                 let row_count = timestamps.len();
 
                 for timestamp in timestamps {
                     if let Some((data_0, data_1)) = timestamp_data.get(&timestamp) {
-                        let base_fee_0 = data_0
-                            .map(|d| d.base_fee.to_string())
+                        let base_fee_msat_0 = data_0
+                            .map(|d| d.base_fee_millisatoshi.to_string())
                             .unwrap_or_else(|| "".to_string());
-                        let base_fee_1 = data_1
-                            .map(|d| d.base_fee.to_string())
+                        let base_fee_msat_1 = data_1
+                            .map(|d| d.base_fee_millisatoshi.to_string())
                             .unwrap_or_else(|| "".to_string());
                         let fee_per_millionth_0 = data_0
                             .map(|d| d.fee_per_millionth.to_string())
@@ -166,8 +166,8 @@ pub fn run_channels(_store: &Store, dir: &str, output_dir: &str) {
                             file,
                             "{},{},{},{},{},{},{}",
                             timestamp,
-                            base_fee_0,
-                            base_fee_1,
+                            base_fee_msat_0,
+                            base_fee_msat_1,
                             fee_per_millionth_0,
                             fee_per_millionth_1,
                             htlc_max_0,
