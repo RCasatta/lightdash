@@ -1,5 +1,4 @@
 use chrono::{DateTime, Utc};
-use csv;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
@@ -1143,137 +1142,6 @@ fn create_failures_page(
     }
 }
 
-/// Read CSV file with channel fee history and return chart data
-/// Returns (dates, in_ppm_values, out_ppm_values) for chart generation
-fn read_channel_fee_csv(
-    csv_path: &str,
-) -> Result<(Vec<i64>, Vec<f64>, Vec<f64>, String, String), Box<dyn std::error::Error>> {
-    let mut timestamps = Vec::new();
-    let mut in_ppm_values = Vec::new();
-    let mut out_ppm_values = Vec::new();
-
-    let mut rdr = csv::Reader::from_path(csv_path)?;
-    let headers = rdr.headers()?.clone();
-
-    // Extract public keys from column headers (skip the first "date" column)
-    let in_pubkey = headers.get(1).unwrap_or("In PPM").to_string();
-    let out_pubkey = headers.get(2).unwrap_or("Out PPM").to_string();
-
-    for result in rdr.records() {
-        let record = result?;
-        if record.len() >= 3 {
-            // Parse timestamp (keep as milliseconds for Chart.js)
-            if let Ok(timestamp) = record[0].parse::<i64>() {
-                timestamps.push(timestamp * 1000); // Convert to milliseconds for JavaScript
-            } else {
-                continue; // Skip invalid timestamps
-            }
-
-            // Parse in_ppm and out_ppm values
-            if let Ok(in_ppm) = record[1].parse::<f64>() {
-                in_ppm_values.push(in_ppm);
-            } else {
-                in_ppm_values.push(0.0);
-            }
-
-            if let Ok(out_ppm) = record[2].parse::<f64>() {
-                out_ppm_values.push(out_ppm);
-            } else {
-                out_ppm_values.push(0.0);
-            }
-        }
-    }
-
-    Ok((
-        timestamps,
-        in_ppm_values,
-        out_ppm_values,
-        in_pubkey,
-        out_pubkey,
-    ))
-}
-
-/// Generate HTML for a line chart using Chart.js
-fn generate_fee_chart_html(
-    timestamps: &[i64],
-    in_ppm: &[f64],
-    out_ppm: &[f64],
-    in_pubkey: &str,
-    out_pubkey: &str,
-) -> Markup {
-    // Create data points with x (timestamp) and y (value) pairs
-    let in_ppm_data: Vec<_> = timestamps
-        .iter()
-        .zip(in_ppm.iter())
-        .map(|(t, v)| serde_json::json!({"x": t, "y": v}))
-        .collect();
-    let out_ppm_data: Vec<_> = timestamps
-        .iter()
-        .zip(out_ppm.iter())
-        .map(|(t, v)| serde_json::json!({"x": t, "y": v}))
-        .collect();
-
-    let in_ppm_json = serde_json::to_string(&in_ppm_data).unwrap_or_else(|_| "[]".to_string());
-    let out_ppm_json = serde_json::to_string(&out_ppm_data).unwrap_or_else(|_| "[]".to_string());
-
-    html! {
-        // Include Chart.js library and date adapter
-        script src="https://cdn.jsdelivr.net/npm/chart.js" {}
-        script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns" {}
-
-        div class="info-card" {
-            h2 { "Channel Fee History" }
-            p { "Historical fee rates for this channel over time." }
-
-            canvas id="feeChart" width="400" height="200" {}
-
-            script {
-                (PreEscaped(format!(r#"
-                    const ctx = document.getElementById('feeChart').getContext('2d');
-                    const feeChart = new Chart(ctx, {{
-                        type: 'line',
-                        data: {{
-                            datasets: [{{
-                                label: '{in_pubkey}',
-                                data: {in_ppm_json},
-                                borderColor: 'rgb(75, 192, 192)',
-                                tension: 0.1
-                            }}, {{
-                                label: '{out_pubkey}',
-                                data: {out_ppm_json},
-                                borderColor: 'rgb(255, 99, 132)',
-                                tension: 0.1
-                            }}]
-                        }},
-                        options: {{
-                            responsive: true,
-                            scales: {{
-                                y: {{
-                                    beginAtZero: true,
-                                    title: {{
-                                        display: true,
-                                        text: 'PPM'
-                                    }}
-                                }},
-                                x: {{
-                                    type: 'time',
-                                    time: {{
-                                        unit: 'day'
-                                    }},
-                                    title: {{
-                                        display: true,
-                                        text: 'Date'
-                                    }}
-                                }}
-                            }}
-                        }}
-                    }});
-                "#)))
-            }
-        }
-    }
-}
-
 fn create_channel_pages(
     directory: &str,
     channels: &[crate::cmd::Fund],
@@ -1282,7 +1150,6 @@ fn create_channel_pages(
     our_node_id: &String,
     per_channel_last_forward_in: &HashMap<String, DateTime<Utc>>,
     per_channel_last_forward_out: &HashMap<String, DateTime<Utc>>,
-    csv_dir: &Option<String>,
     avail_map: &HashMap<String, f64>,
 ) {
     let channels_dir = format!("{}/channels", directory);
@@ -1693,23 +1560,6 @@ fn create_channel_pages(
                     div class="progress-fill" style={
                         (format!("width: {:.1}%", channel.perc_float() * 100.0))
                     } {}
-                }
-            }
-
-            // Add fee history chart if CSV file exists
-            @if let Some(csv_dir) = csv_dir {
-                @let csv_filename = if let Some(scid) = &channel.short_channel_id {
-                    format!("{}/{}.csv", csv_dir, scid)
-                } else {
-                    format!("{}/{}.csv", csv_dir, channel.channel_id)
-                };
-
-                @if std::path::Path::new(&csv_filename).exists() {
-                    @if let Ok((dates, in_ppm, out_ppm, in_pubkey, out_pubkey)) = read_channel_fee_csv(&csv_filename) {
-                        @if !dates.is_empty() {
-                            (generate_fee_chart_html(&dates, &in_ppm, &out_ppm, &in_pubkey, &out_pubkey))
-                        }
-                    }
                 }
             }
 
@@ -2431,7 +2281,6 @@ pub fn run_dashboard(
     store: &Store,
     directory: String,
     min_channels: usize,
-    csv_dir: Option<String>,
     availdb: Option<String>,
 ) {
     let now = Utc::now();
@@ -2998,7 +2847,6 @@ pub fn run_dashboard(
         &store.info.id,
         &per_channel_last_forward_in,
         &per_channel_last_forward_out,
-        &csv_dir,
         &avail_map,
     );
 

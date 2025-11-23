@@ -30,9 +30,6 @@ enum Commands {
         /// Minimum number of channels a node must have to be included
         #[arg(long, default_value = "1")]
         min_channels: usize,
-        /// Directory containing CSV files with channel fee history
-        #[arg(long)]
-        csv_dir: Option<String>,
         /// Path to JSON file with node uptime data (format: {node_id: {avail: float}})
         #[arg(long)]
         availdb: Option<String>,
@@ -65,12 +62,11 @@ fn main() {
         Commands::Dashboard {
             directory,
             min_channels,
-            csv_dir,
             availdb,
         } => {
             let store = Store::new();
             log::debug!("Dashboard directory: {}", directory);
-            dashboard::run_dashboard(&store, directory, min_channels, csv_dir, availdb);
+            dashboard::run_dashboard(&store, directory, min_channels, availdb);
         }
         Commands::Routes { directory } => {
             let store = Store::new();
