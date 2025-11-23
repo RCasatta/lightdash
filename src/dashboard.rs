@@ -1563,6 +1563,18 @@ fn create_channel_pages(
                 }
             }
 
+            // Channel Fee History Chart
+            @if let Some(scid) = &channel.short_channel_id {
+                div class="info-card" {
+                    h2 { "Channel Fee History" }
+                    div class="chart-container" {
+                        object data={(format!("/charts/{}.svgz", scid))} type="image/svg+xml" style="width: 100%; height: 400px;" {
+                            p { "Chart not available for this channel." }
+                        }
+                    }
+                }
+            }
+
             @if let Some(scid) = &channel.short_channel_id {
                 @if let Some(channel_info) = store.get_channel(scid, our_node_id) {
                     div class="info-card" {
