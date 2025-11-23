@@ -51,13 +51,10 @@ pub fn run_channels(dir: &str, output_dir: &str) {
 
         let path = entry.path();
         let filename = path.to_string_lossy();
-        log::info!("Processing path: {}", filename);
         if filename.ends_with(".json.xz") {
             log::info!("Processing channel file: {}", filename);
             let only_name = path.file_name().and_then(|n| n.to_str()).unwrap();
-            log::info!("Only name: {}", only_name);
             let timestamp = only_name.split(".").next().unwrap().parse::<u64>().unwrap();
-            log::info!("Timestamp: {}", timestamp);
 
             // Read the channel data from the compressed file
             let list_channels = cmd::read_xz_channels(&filename);
@@ -81,7 +78,10 @@ pub fn run_channels(dir: &str, output_dir: &str) {
     }
 
     // Write CSV files for each channel
-    for (channel_id, nodes) in channels.iter() {
+    for (i, (channel_id, nodes)) in channels.iter().enumerate() {
+        if i % 100 == 0 {
+            log::info!("Processing channel {}/{}", i, channels.len());
+        }
         if nodes.len() != 2 {
             log::warn!(
                 "Channel {} has {} nodes, expected 2. Skipping CSV generation.",
@@ -189,7 +189,7 @@ pub fn run_channels(dir: &str, output_dir: &str) {
 
         // Generate SVG chart
         let svg_filename = format!("{}/{}.svgz", output_dir, channel_id);
-        log::info!("Writing SVGZ file: {}", svg_filename);
+        log::debug!("Writing SVGZ file: {}", svg_filename);
 
         match generate_svg_chart(&timestamp_data, node_0, node_1) {
             Ok(svg_content) => {
@@ -198,7 +198,7 @@ pub fn run_channels(dir: &str, output_dir: &str) {
                 match encoder.write_all(svg_content.as_bytes()) {
                     Ok(_) => match encoder.finish() {
                         Ok(compressed) => match fs::write(&svg_filename, compressed) {
-                            Ok(_) => log::info!("Successfully wrote SVGZ to {}", svg_filename),
+                            Ok(_) => log::debug!("Successfully wrote SVGZ to {}", svg_filename),
                             Err(e) => {
                                 log::error!("Failed to write SVGZ file {}: {}", svg_filename, e)
                             }
