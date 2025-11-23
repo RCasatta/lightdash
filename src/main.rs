@@ -4,6 +4,7 @@ use std::io::Write;
 
 use crate::store::Store;
 
+mod channels;
 mod cmd;
 mod common;
 mod dashboard;
@@ -45,6 +46,12 @@ enum Commands {
     Sling,
     /// Execute fee adjustments
     Fees,
+    /// Display channels information
+    Channels {
+        /// Directory containing CSV files with channel fee history
+        #[arg(long)]
+        csv_dir: Option<String>,
+    },
 }
 
 fn main() {
@@ -70,6 +77,9 @@ fn main() {
         }
         Commands::Fees => {
             fees::run_fees(&store);
+        }
+        Commands::Channels { csv_dir } => {
+            channels::run_channels(&store, csv_dir);
         }
     }
 }
