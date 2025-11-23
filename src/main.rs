@@ -51,6 +51,9 @@ enum Commands {
         /// Path to directory with channel fee history
         #[arg(long)]
         path: String,
+        /// Output directory for CSV files
+        #[arg(long)]
+        output_dir: String,
     },
 }
 
@@ -78,8 +81,8 @@ fn main() {
         Commands::Fees => {
             fees::run_fees(&store);
         }
-        Commands::Channels { path } => {
-            channels::run_channels(&store, path.as_str());
+        Commands::Channels { path, output_dir } => {
+            channels::run_channels(&store, path.as_str(), output_dir.as_str());
         }
     }
 }
