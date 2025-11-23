@@ -1568,7 +1568,7 @@ fn create_channel_pages(
                 div class="info-card" {
                     h2 { "Channel Fee History" }
                     div class="chart-container" {
-                        object data={(format!("/charts/{}.svgz", scid))} type="image/svg+xml" style="width: 100%; height: 400px;" {
+                        object data={(format!("/charts/{}.svgz", scid))} type="image/svg+xml" style="width: 100%; background-color:rgb(235, 230, 230); margin:10px" {
                             p { "Chart not available for this channel." }
                         }
                     }
