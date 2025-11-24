@@ -98,7 +98,7 @@ pub fn run_channels(dir: &str, output_dir: &str) {
 
     // Write CSV files for each channel
     for (i, (channel_id, nodes)) in channels.iter().enumerate() {
-        if i % 100 == 0 {
+        if i % 1000 == 0 {
             log::info!("Processing channel {}/{}", i, channels.len());
         }
         if nodes.len() != 2 {
@@ -411,7 +411,7 @@ fn generate_svg_chart(
     }
 
     // Plot data for node_0
-    let mut points_0: Vec<(i32, i32)> = Vec::new();
+    let mut points_0: Vec<(i32, i32, u32, u32)> = Vec::new();
     for timestamp in &timestamps {
         if let Some((Some(data), _)) = timestamp_data.get(timestamp) {
             let x = scale_x(*timestamp);
@@ -420,7 +420,7 @@ fn generate_svg_chart(
                 ChartType::HtlcMax => data.htlc_maximum,
             };
             let y = scale_y(value);
-            points_0.push((x, y));
+            points_0.push((x, y, *timestamp, value));
         }
     }
 
@@ -428,7 +428,7 @@ fn generate_svg_chart(
         let path_data: String = points_0
             .iter()
             .enumerate()
-            .map(|(i, (x, y))| {
+            .map(|(i, (x, y, _, _))| {
                 if i == 0 {
                     format!("M {} {}", x, y)
                 } else {
@@ -445,17 +445,22 @@ fn generate_svg_chart(
         svg.push_str("\n");
 
         // Add circles for data points
-        for (x, y) in points_0 {
+        for (x, y, timestamp, value) in points_0 {
+            let date_str = format_timestamp(timestamp);
+            let value_label = match chart_type {
+                ChartType::Fee => format!("Fee: {}", value),
+                ChartType::HtlcMax => format!("HTLC Max: {} sats", value),
+            };
             svg.push_str(&format!(
-                r##"  <circle cx="{}" cy="{}" r="3" fill="#2563eb"/>"##,
-                x, y
+                r##"  <circle cx="{}" cy="{}" r="3" fill="#2563eb"><title>{} ({})</title></circle>"##,
+                x, y, value_label, date_str
             ));
             svg.push_str("\n");
         }
     }
 
     // Plot data for node_1
-    let mut points_1: Vec<(i32, i32)> = Vec::new();
+    let mut points_1: Vec<(i32, i32, u32, u32)> = Vec::new();
     for timestamp in &timestamps {
         if let Some((_, Some(data))) = timestamp_data.get(timestamp) {
             let x = scale_x(*timestamp);
@@ -464,7 +469,7 @@ fn generate_svg_chart(
                 ChartType::HtlcMax => data.htlc_maximum,
             };
             let y = scale_y(value);
-            points_1.push((x, y));
+            points_1.push((x, y, *timestamp, value));
         }
     }
 
@@ -472,7 +477,7 @@ fn generate_svg_chart(
         let path_data: String = points_1
             .iter()
             .enumerate()
-            .map(|(i, (x, y))| {
+            .map(|(i, (x, y, _, _))| {
                 if i == 0 {
                     format!("M {} {}", x, y)
                 } else {
@@ -489,10 +494,15 @@ fn generate_svg_chart(
         svg.push_str("\n");
 
         // Add circles for data points
-        for (x, y) in points_1 {
+        for (x, y, timestamp, value) in points_1 {
+            let date_str = format_timestamp(timestamp);
+            let value_label = match chart_type {
+                ChartType::Fee => format!("Fee: {}", value),
+                ChartType::HtlcMax => format!("HTLC Max: {} sats", value),
+            };
             svg.push_str(&format!(
-                r##"  <circle cx="{}" cy="{}" r="3" fill="#dc2626"/>"##,
-                x, y
+                r##"  <circle cx="{}" cy="{}" r="3" fill="#dc2626"><title>{} ({})</title></circle>"##,
+                x, y, value_label, date_str
             ));
             svg.push_str("\n");
         }
