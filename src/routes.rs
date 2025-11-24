@@ -23,7 +23,7 @@ pub fn run_routes(store: &Store, directory: &str) {
         {
             continue;
         }
-        if let Some(route) = get_route(id) {
+        if let Some(route) = get_route(id, 10_000_000) {
             let mut nodes = route.route;
             hop_sum += nodes.len();
             total += 1;

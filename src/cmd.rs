@@ -80,11 +80,14 @@ pub fn get_info() -> GetInfo {
     serde_json::from_str(&str).unwrap()
 }
 
-pub fn get_route(id: &str) -> Option<GetRoute> {
+pub fn get_route(id: &str, amount_msat: u64) -> Option<GetRoute> {
     let str = if cfg!(debug_assertions) {
         cmd_result("cat", &["test-json/getroute"])
     } else {
-        cmd_result("lightning-cli", &["getroute", id, "10000000", "10"]) // TODO parametrize amount and riskfactor
+        cmd_result(
+            "lightning-cli",
+            &["getroute", id, &amount_msat.to_string(), "10"],
+        )
     };
     serde_json::from_str(&str).ok()
 }
