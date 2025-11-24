@@ -14,17 +14,34 @@ struct ElementData {
     // base_fee_millisatoshi: u32,
     fee_per_millionth: u32,
     // htlc_minimum: u32,
-    // htlc_maximum: u32,
+    htlc_maximum: u32,
     // active: bool,
+}
+
+enum ChartType {
+    Fee,
+    HtlcMax,
 }
 
 pub fn run_channels(dir: &str, output_dir: &str) {
     log::info!("Running channels command for directory: {}", dir);
     log::info!("Output directory: {}", output_dir);
 
-    // Create output directory if it doesn't exist
-    if let Err(e) = fs::create_dir_all(output_dir) {
-        log::error!("Failed to create output directory {}: {}", output_dir, e);
+    // Create output directories for fees and htlc-max charts
+    let fees_dir = format!("{}/fees", output_dir);
+    let htlc_max_dir = format!("{}/htlc-max", output_dir);
+
+    if let Err(e) = fs::create_dir_all(&fees_dir) {
+        log::error!("Failed to create fees directory {}: {}", fees_dir, e);
+        return;
+    }
+
+    if let Err(e) = fs::create_dir_all(&htlc_max_dir) {
+        log::error!(
+            "Failed to create htlc-max directory {}: {}",
+            htlc_max_dir,
+            e
+        );
         return;
     }
 
@@ -70,7 +87,7 @@ pub fn run_channels(dir: &str, output_dir: &str) {
                     // base_fee_millisatoshi: channel.base_fee_millisatoshi as u32,
                     fee_per_millionth: channel.fee_per_millionth as u32,
                     // htlc_minimum: (channel.htlc_minimum_msat / 1000) as u32,
-                    // htlc_maximum: (channel.htlc_maximum_msat / 1000) as u32,
+                    htlc_maximum: (channel.htlc_maximum_msat / 1000) as u32,
                     // active: channel.active,
                 });
             }
@@ -187,38 +204,51 @@ pub fn run_channels(dir: &str, output_dir: &str) {
         //     }
         // }
 
-        // Generate SVG chart
-        let svg_filename = format!("{}/{}.svgz", output_dir, channel_id);
-        log::debug!("Writing SVGZ file: {}", svg_filename);
+        // Generate Fee SVG chart
+        let fee_svg_filename = format!("{}/fees/{}.svgz", output_dir, channel_id);
+        log::debug!("Writing Fee SVGZ file: {}", fee_svg_filename);
 
-        match generate_svg_chart(&timestamp_data, node_0, node_1) {
+        match generate_svg_chart(&timestamp_data, node_0, node_1, ChartType::Fee) {
             Ok(svg_content) => {
-                // Compress the SVG content with gzip
-                let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-                match encoder.write_all(svg_content.as_bytes()) {
-                    Ok(_) => match encoder.finish() {
-                        Ok(compressed) => match fs::write(&svg_filename, compressed) {
-                            Ok(_) => log::debug!("Successfully wrote SVGZ to {}", svg_filename),
-                            Err(e) => {
-                                log::error!("Failed to write SVGZ file {}: {}", svg_filename, e)
-                            }
-                        },
-                        Err(e) => log::error!("Failed to finish gzip compression: {}", e),
-                    },
-                    Err(e) => log::error!("Failed to compress SVG data: {}", e),
-                }
+                write_compressed_svg(&fee_svg_filename, &svg_content);
             }
-            Err(e) => log::error!("Failed to generate SVG chart: {}", e),
+            Err(e) => log::error!("Failed to generate Fee SVG chart: {}", e),
+        }
+
+        // Generate HTLC Max SVG chart
+        let htlc_max_svg_filename = format!("{}/htlc-max/{}.svgz", output_dir, channel_id);
+        log::debug!("Writing HTLC Max SVGZ file: {}", htlc_max_svg_filename);
+
+        match generate_svg_chart(&timestamp_data, node_0, node_1, ChartType::HtlcMax) {
+            Ok(svg_content) => {
+                write_compressed_svg(&htlc_max_svg_filename, &svg_content);
+            }
+            Err(e) => log::error!("Failed to generate HTLC Max SVG chart: {}", e),
         }
     }
 
     log::info!("Channels command completed");
 }
 
+fn write_compressed_svg(filename: &str, svg_content: &str) {
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    match encoder.write_all(svg_content.as_bytes()) {
+        Ok(_) => match encoder.finish() {
+            Ok(compressed) => match fs::write(filename, compressed) {
+                Ok(_) => log::debug!("Successfully wrote SVGZ to {}", filename),
+                Err(e) => log::error!("Failed to write SVGZ file {}: {}", filename, e),
+            },
+            Err(e) => log::error!("Failed to finish gzip compression: {}", e),
+        },
+        Err(e) => log::error!("Failed to compress SVG data: {}", e),
+    }
+}
+
 fn generate_svg_chart(
     timestamp_data: &HashMap<u32, (Option<&ElementData>, Option<&ElementData>)>,
     node_0: &str,
     node_1: &str,
+    chart_type: ChartType,
 ) -> Result<String, String> {
     // Collect and sort timestamps
     let mut timestamps: Vec<u32> = timestamp_data.keys().cloned().collect();
@@ -227,25 +257,36 @@ fn generate_svg_chart(
     }
     timestamps.sort();
 
-    // Find min and max values for scaling
-    let mut min_fee = u32::MAX;
-    let mut max_fee = 0u32;
+    // Find min and max values for scaling based on chart type
+    let mut min_value = u32::MAX;
+    let mut max_value = 0u32;
 
     for (data_0, data_1) in timestamp_data.values() {
-        if let Some(d) = data_0 {
-            min_fee = min_fee.min(d.fee_per_millionth);
-            max_fee = max_fee.max(d.fee_per_millionth);
+        let (val_0, val_1) = match chart_type {
+            ChartType::Fee => (
+                data_0.map(|d| d.fee_per_millionth),
+                data_1.map(|d| d.fee_per_millionth),
+            ),
+            ChartType::HtlcMax => (
+                data_0.map(|d| d.htlc_maximum),
+                data_1.map(|d| d.htlc_maximum),
+            ),
+        };
+
+        if let Some(v) = val_0 {
+            min_value = min_value.min(v);
+            max_value = max_value.max(v);
         }
-        if let Some(d) = data_1 {
-            min_fee = min_fee.min(d.fee_per_millionth);
-            max_fee = max_fee.max(d.fee_per_millionth);
+        if let Some(v) = val_1 {
+            min_value = min_value.min(v);
+            max_value = max_value.max(v);
         }
     }
 
     // Add some padding to the y-axis
-    let y_padding = (max_fee - min_fee).max(1) / 10;
-    min_fee = min_fee.saturating_sub(y_padding);
-    max_fee = max_fee + y_padding;
+    let y_padding = (max_value - min_value).max(1) / 10;
+    min_value = min_value.saturating_sub(y_padding);
+    max_value = max_value + y_padding;
 
     // SVG dimensions
     let width = 1200;
@@ -269,11 +310,12 @@ fn generate_svg_chart(
 
     // Helper function to scale y coordinate
     let scale_y = |value: u32| -> i32 {
-        if max_fee == min_fee {
+        if max_value == min_value {
             return margin_top + plot_height / 2;
         }
         margin_top + plot_height
-            - ((value - min_fee) as f64 / (max_fee - min_fee) as f64 * plot_height as f64) as i32
+            - ((value - min_value) as f64 / (max_value - min_value) as f64 * plot_height as f64)
+                as i32
     };
 
     // Build SVG
@@ -284,10 +326,14 @@ fn generate_svg_chart(
     ));
     svg.push_str("\n");
 
-    // Add title
+    // Add title based on chart type
+    let title = match chart_type {
+        ChartType::Fee => "Fee Per Millionth Over Time",
+        ChartType::HtlcMax => "HTLC Maximum (sats) Over Time",
+    };
     svg.push_str(&format!(
-        r##"  <text x="{}" y="25" font-family="Arial, sans-serif" font-size="18" font-weight="bold" text-anchor="middle">Fee Per Millionth Over Time</text>"##,
-        width / 2
+        r##"  <text x="{}" y="25" font-family="Arial, sans-serif" font-size="18" font-weight="bold" text-anchor="middle">{}</text>"##,
+        width / 2, title
     ));
     svg.push_str("\n");
 
@@ -315,16 +361,21 @@ fn generate_svg_chart(
         margin_left + plot_width / 2, height - 20
     ));
     svg.push_str("\n");
+
+    let y_axis_label = match chart_type {
+        ChartType::Fee => "Fee Per Millionth",
+        ChartType::HtlcMax => "HTLC Maximum (sats)",
+    };
     svg.push_str(&format!(
-        r##"  <text x="{}" y="{}" font-family="Arial, sans-serif" font-size="14" text-anchor="middle" transform="rotate(-90, {}, {})">Fee Per Millionth</text>"##,
-        20, margin_top + plot_height / 2, 20, margin_top + plot_height / 2
+        r##"  <text x="{}" y="{}" font-family="Arial, sans-serif" font-size="14" text-anchor="middle" transform="rotate(-90, {}, {})">{}</text>"##,
+        20, margin_top + plot_height / 2, 20, margin_top + plot_height / 2, y_axis_label
     ));
     svg.push_str("\n");
 
     // Add y-axis ticks and grid
     let num_y_ticks = 5;
     for i in 0..=num_y_ticks {
-        let value = min_fee + (max_fee - min_fee) * i / num_y_ticks;
+        let value = min_value + (max_value - min_value) * i / num_y_ticks;
         let y = scale_y(value);
 
         // Grid line
@@ -366,7 +417,11 @@ fn generate_svg_chart(
     for timestamp in &timestamps {
         if let Some((Some(data), _)) = timestamp_data.get(timestamp) {
             let x = scale_x(*timestamp);
-            let y = scale_y(data.fee_per_millionth);
+            let value = match chart_type {
+                ChartType::Fee => data.fee_per_millionth,
+                ChartType::HtlcMax => data.htlc_maximum,
+            };
+            let y = scale_y(value);
             points_0.push((x, y));
         }
     }
@@ -406,7 +461,11 @@ fn generate_svg_chart(
     for timestamp in &timestamps {
         if let Some((_, Some(data))) = timestamp_data.get(timestamp) {
             let x = scale_x(*timestamp);
-            let y = scale_y(data.fee_per_millionth);
+            let value = match chart_type {
+                ChartType::Fee => data.fee_per_millionth,
+                ChartType::HtlcMax => data.htlc_maximum,
+            };
+            let y = scale_y(value);
             points_1.push((x, y));
         }
     }

@@ -1568,7 +1568,14 @@ fn create_channel_pages(
                 div class="info-card" {
                     h2 { "Channel Fee History" }
                     div class="chart-container" {
-                        object data={(format!("/charts/{}.svgz", scid))} type="image/svg+xml" style="width: 100%; background-color:rgb(235, 230, 230); margin:10px" {
+                        object data={(format!("/charts/fees/{}.svgz", scid))} type="image/svg+xml" style="width: 100%; background-color:rgb(235, 230, 230); margin:10px" {
+                            p { "Chart not available for this channel." }
+                        }
+                    }
+
+                    h2 { "Channel HTLC max History" }
+                    div class="chart-container" {
+                        object data={(format!("/charts/htlc-max/{}.svgz", scid))} type="image/svg+xml" style="width: 100%; background-color:rgb(235, 230, 230); margin:10px" {
                             p { "Chart not available for this channel." }
                         }
                     }
