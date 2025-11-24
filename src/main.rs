@@ -71,7 +71,7 @@ fn main() {
         Commands::Routes { directory } => {
             let store = Store::new();
 
-            for i in [1000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000] {
+            for i in [1000, 10_000, 100_000, 1_000_000, 10_000_000] {
                 routes::run_routes(&store, &directory, i);
             }
         }

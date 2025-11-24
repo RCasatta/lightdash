@@ -232,8 +232,6 @@ fn render_routes_page(
                             li { a href="routes-100000.html" { "100,000 sats (0.001 BTC)" } }
                             li { a href="routes-1000000.html" { "1,000,000 sats (0.01 BTC)" } }
                             li { a href="routes-10000000.html" { "10,000,000 sats (0.1 BTC)" } }
-                            li { a href="routes-100000000.html" { "100,000,000 sats (1 BTC)" } }
-
                         }
                     }
 
