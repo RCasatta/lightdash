@@ -67,7 +67,7 @@ pub fn run_routes(store: &Store, directory: &str, amount_msat: u64) {
     };
 
     let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string();
-    let routes_html = render_routes_page(&route_entries, &summary, &timestamp);
+    let routes_html = render_routes_page(&route_entries, &summary, &timestamp, amount_msat);
 
     if let Err(e) = fs::create_dir_all(directory) {
         log::error!("Error creating directory {}: {}", directory, e);
@@ -101,7 +101,12 @@ struct RoutesSummary {
     average_hops: f64,
 }
 
-fn render_routes_page(entries: &[RouteEntry], summary: &RoutesSummary, timestamp: &str) -> Markup {
+fn render_routes_page(
+    entries: &[RouteEntry],
+    summary: &RoutesSummary,
+    timestamp: &str,
+    amount_msat: u64,
+) -> Markup {
     html! {
         (DOCTYPE)
         html {
@@ -201,16 +206,32 @@ fn render_routes_page(entries: &[RouteEntry], summary: &RoutesSummary, timestamp
             body {
                 div class="container" {
                     div class="header" {
-                        h1 { "Routing Insights" }
+                        h1 {
+                            "Routing Insights - "
+                            (format!("{} sats", amount_msat / 1000))
+                        }
                         div class="back-link" {
                             a href="index.html" { "Home" } " | "
                             a href="nodes/" { "Nodes" } " | "
                             a href="channels/" { "Channels" } " | "
                             a href="forwards-week.html" { "Forwards" } " | "
-                            a href="routes.html" { "Routes" } " | "
+                            a href="routes-10000.html" { "Routes" } " | "
                             a href="failures.html" { "Failures" } " | "
                             a href="apy.html" { "APY" } " | "
                             a href="closed-channels.html" { "Closed" }
+                        }
+                    }
+
+                    section {
+                        h2 { "Route Amount Variants" }
+                        p {
+                            "Analysis performed for different payment amounts:"
+                        }
+                        ul {
+                            li { a href="routes-1000.html" { "1,000 sats (0.00001 BTC)" } }
+                            li { a href="routes-10000.html" { "10,000 sats (0.0001 BTC)" } }
+                            li { a href="routes-100000.html" { "100,000 sats (0.001 BTC)" } }
+                            li { a href="routes-1000000.html" { "1,000,000 sats (0.01 BTC)" } }
                         }
                     }
 
