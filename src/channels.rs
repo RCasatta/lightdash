@@ -1,7 +1,7 @@
 use crate::cmd;
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::Write;
 
@@ -115,8 +115,8 @@ pub fn run_channels(dir: &str, output_dir: &str) {
         let node_1 = node_ids[1];
 
         // Collect all timestamps and create a map of timestamp -> (node_0_data, node_1_data)
-        let mut timestamp_data: HashMap<u32, (Option<&ElementData>, Option<&ElementData>)> =
-            HashMap::new();
+        let mut timestamp_data: BTreeMap<u32, (Option<&ElementData>, Option<&ElementData>)> =
+            BTreeMap::new();
 
         // Add data from node_0
         if let Some(elements) = nodes.get(node_0) {
@@ -245,17 +245,16 @@ fn write_compressed_svg(filename: &str, svg_content: &str) {
 }
 
 fn generate_svg_chart(
-    timestamp_data: &HashMap<u32, (Option<&ElementData>, Option<&ElementData>)>,
+    timestamp_data: &BTreeMap<u32, (Option<&ElementData>, Option<&ElementData>)>,
     node_0: &str,
     node_1: &str,
     chart_type: ChartType,
 ) -> Result<String, String> {
-    // Collect and sort timestamps
-    let mut timestamps: Vec<u32> = timestamp_data.keys().cloned().collect();
+    // Collect timestamps (already sorted in BTreeMap)
+    let timestamps: Vec<u32> = timestamp_data.keys().cloned().collect();
     if timestamps.is_empty() {
         return Err("No data to plot".to_string());
     }
-    timestamps.sort();
 
     // Find min and max values for scaling based on chart type
     let mut min_value = u32::MAX;
