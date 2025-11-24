@@ -6,7 +6,7 @@ use std::fs;
 use crate::cmd::*;
 use crate::store::Store;
 
-pub fn run_routes(store: &Store, directory: &str, amount_msat: u64) {
+pub fn run_routes(store: &Store, directory: &str, amount_sat: u64) {
     let chan_meta = store.chan_meta_per_node();
     let peers_ids = store.peers_ids();
     let nodes_by_id_keys = store.node_ids_with_aliases();
@@ -23,7 +23,7 @@ pub fn run_routes(store: &Store, directory: &str, amount_msat: u64) {
         {
             continue;
         }
-        if let Some(route) = get_route(id, amount_msat) {
+        if let Some(route) = get_route(id, amount_sat * 1000) {
             let mut nodes = route.route;
             hop_sum += nodes.len();
             total += 1;
@@ -67,14 +67,13 @@ pub fn run_routes(store: &Store, directory: &str, amount_msat: u64) {
     };
 
     let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string();
-    let routes_html = render_routes_page(&route_entries, &summary, &timestamp, amount_msat);
+    let routes_html = render_routes_page(&route_entries, &summary, &timestamp, amount_sat * 1000);
 
     if let Err(e) = fs::create_dir_all(directory) {
         log::error!("Error creating directory {}: {}", directory, e);
         return;
     }
 
-    let amount_sat = amount_msat / 1000;
     let routes_file_path = format!("{}/routes-{}.html", directory, amount_sat);
 
     match fs::write(&routes_file_path, routes_html.into_string()) {
