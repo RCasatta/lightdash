@@ -94,17 +94,15 @@ pub fn run_channels(dir: &str, output_dir: &str) {
         }
     }
 
+    let mut monodirectional = 0;
+
     // Write CSV files for each channel
     for (i, (channel_id, nodes)) in channels.iter().enumerate() {
         if i % 100 == 0 {
             log::info!("Processing channel {}/{}", i, channels.len());
         }
         if nodes.len() != 2 {
-            log::warn!(
-                "Channel {} has {} nodes, expected 2. Skipping CSV generation.",
-                channel_id,
-                nodes.len()
-            );
+            monodirectional += 1;
             continue;
         }
 
@@ -226,6 +224,7 @@ pub fn run_channels(dir: &str, output_dir: &str) {
             Err(e) => log::error!("Failed to generate HTLC Max SVG chart: {}", e),
         }
     }
+    log::info!("Monodirectional channels: {}", monodirectional);
 
     log::info!("Channels command completed");
 }
