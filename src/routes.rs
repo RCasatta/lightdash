@@ -6,7 +6,7 @@ use std::fs;
 use crate::cmd::*;
 use crate::store::Store;
 
-pub fn run_routes(store: &Store, directory: &str) {
+pub fn run_routes(store: &Store, directory: &str, amount_msat: u64) {
     let chan_meta = store.chan_meta_per_node();
     let peers_ids = store.peers_ids();
     let nodes_by_id_keys = store.node_ids_with_aliases();
@@ -23,7 +23,7 @@ pub fn run_routes(store: &Store, directory: &str) {
         {
             continue;
         }
-        if let Some(route) = get_route(id, 10_000_000) {
+        if let Some(route) = get_route(id, amount_msat) {
             let mut nodes = route.route;
             hop_sum += nodes.len();
             total += 1;
@@ -59,19 +59,6 @@ pub fn run_routes(store: &Store, directory: &str) {
         hop_sum as f64 / total as f64
     };
 
-    log::debug!("\nNode most present in random routes (average hops:{average_hops:.2}):");
-    for entry in &route_entries {
-        log::debug!(
-            "{} {:>5} avg:{:>6.1} dvr:{:>6.3} chans:{:>4} {}",
-            entry.node_id,
-            entry.appearances,
-            entry.avg_fee,
-            entry.fee_diversity,
-            entry.channel_count,
-            entry.alias
-        );
-    }
-
     let summary = RoutesSummary {
         scanned_nodes: nodes_by_id_keys.len(),
         evaluated_routes: total,
@@ -87,9 +74,44 @@ pub fn run_routes(store: &Store, directory: &str) {
         return;
     }
 
-    let routes_file_path = format!("{}/routes.html", directory);
+    let amount_sat = amount_msat / 1000;
+    let routes_file_path = format!("{}/routes-{}.html", directory, amount_sat);
+    let default_routes_path = format!("{}/routes.html", directory);
+
     match fs::write(&routes_file_path, routes_html.into_string()) {
-        Ok(_) => log::info!("Routes page generated: {}", routes_file_path),
+        Ok(_) => {
+            log::info!("Routes page generated: {}", routes_file_path);
+
+            // Create a symlink from routes.html to the amount-specific file for backward compatibility
+            #[cfg(unix)]
+            if amount_sat == 10000 {
+                // Only create symlink for default amount
+                if let Err(e) = std::os::unix::fs::symlink(&routes_file_path, &default_routes_path)
+                {
+                    if e.kind() != std::io::ErrorKind::AlreadyExists {
+                        log::warn!(
+                            "Could not create symlink {} -> {}: {}",
+                            default_routes_path,
+                            routes_file_path,
+                            e
+                        );
+                    }
+                }
+            }
+
+            #[cfg(not(unix))]
+            if amount_sat == 10000 {
+                // For non-Unix systems, copy the file
+                if let Err(e) = fs::copy(&routes_file_path, &default_routes_path) {
+                    log::warn!(
+                        "Could not copy {} to {}: {}",
+                        routes_file_path,
+                        default_routes_path,
+                        e
+                    );
+                }
+            }
+        }
         Err(e) => log::error!("Error writing routes page: {}", e),
     }
 }

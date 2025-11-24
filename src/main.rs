@@ -71,7 +71,9 @@ fn main() {
         Commands::Routes { directory } => {
             let store = Store::new();
 
-            routes::run_routes(&store, &directory);
+            for i in [1000, 10_000, 100_000, 1_000_000] {
+                routes::run_routes(&store, &directory, i);
+            }
         }
         Commands::Sling => {
             let store = Store::new();
