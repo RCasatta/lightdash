@@ -1286,6 +1286,15 @@ fn create_channel_pages(
                 span class="label" { "Network Median Fee: " }
                 span class="value" { (format!("{} ppm ({:.3}%)", median_fee as u64, median_fee / 10000.0)) }
             }
+            @let (node_avg_fee, node_median_fee) = store.node_channel_fees();
+            div class="info-item" {
+                span class="label" { "Node Avg Fee: " }
+                span class="value" { (format!("{} ppm ({:.3}%)", node_avg_fee as u64, node_avg_fee / 10000.0)) }
+            }
+            div class="info-item" {
+                span class="label" { "Node Median Fee: " }
+                span class="value" { (format!("{} ppm ({:.3}%)", node_median_fee as u64, node_median_fee / 10000.0)) }
+            }
             div class="progress-bar" {
                 div class="progress-fill" style={
                     (format!("width: {:.1}%", global_balance_percentage))
