@@ -203,6 +203,13 @@ impl Store {
         *self.node_channel_counts.get(nodeid).unwrap_or(&0)
     }
 
+    /// Get all channels connected to a specific node
+    pub fn get_node_channels(&self, nodeid: &str) -> Vec<&cmd::Channel> {
+        self.channels()
+            .filter(|channel| channel.source == nodeid || channel.destination == nodeid)
+            .collect()
+    }
+
     /// Get a channel by short_channel_id and source
     pub fn get_channel(&self, short_channel_id: &str, source: &str) -> Option<&cmd::Channel> {
         self.channels_by_id

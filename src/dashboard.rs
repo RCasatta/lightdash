@@ -7,6 +7,14 @@ use crate::cmd;
 use crate::{common::*, store::Store};
 use maud::{html, Markup, PreEscaped, DOCTYPE};
 
+#[derive(Clone)]
+struct NodeChannelDisplay {
+    other_node_alias: String,
+    other_node_id: String,
+    short_channel_id: String,
+    fee_rate_ppm: u64,
+}
+
 /// Create common HTML header with title
 fn create_html_header(title: &str) -> Markup {
     html! {
@@ -109,6 +117,29 @@ fn create_html_header(title: &str) -> Markup {
                 }
                 tbody tr:hover {
                     background-color: #4a5568;
+                }
+                th[data-sort] {
+                    cursor: pointer;
+                    user-select: none;
+                    position: relative;
+                }
+                th[data-sort]:hover {
+                    background-color: #4a5568;
+                }
+                th[data-sort]:after {
+                    content: ' ⇅';
+                    opacity: 0.5;
+                }
+                th[data-sort].asc:after {
+                    content: ' ↑';
+                    opacity: 1;
+                }
+                th[data-sort].desc:after {
+                    content: ' ↓';
+                    opacity: 1;
+                }
+                .number-cell {
+                    text-align: right;
                 }
                 "#
             }
@@ -277,7 +308,7 @@ fn create_node_pages(
             String::new()
         };
         let note = store.get_peer_note(&nodeid);
-        let peer_channels = if let Some(peer) = peer_map.get(&nodeid) {
+        let _peer_channels = if let Some(peer) = peer_map.get(&nodeid) {
             peer.channels.clone()
         } else {
             vec![]
@@ -293,6 +324,30 @@ fn create_node_pages(
             .max()
             .copied()
             .unwrap_or(1);
+
+        // Collect channel display data
+        let mut node_channels: Vec<NodeChannelDisplay> = store
+            .get_node_channels(&nodeid)
+            .into_iter()
+            .map(|channel| {
+                let (other_node_id, fee_rate_ppm) = if channel.source == nodeid {
+                    (channel.destination.clone(), channel.fee_per_millionth)
+                } else {
+                    (channel.source.clone(), channel.fee_per_millionth)
+                };
+                let other_node_alias = store.get_node_alias(&other_node_id);
+
+                NodeChannelDisplay {
+                    other_node_alias,
+                    other_node_id,
+                    short_channel_id: channel.short_channel_id.clone(),
+                    fee_rate_ppm,
+                }
+            })
+            .collect();
+
+        // Sort by fee rate by default
+        node_channels.sort_by(|a, b| a.fee_rate_ppm.cmp(&b.fee_rate_ppm));
 
         let node_content = html! {
             (create_page_header("Node Details", true))
@@ -349,50 +404,6 @@ fn create_node_pages(
                             (chrono::DateTime::from_timestamp(last_timestamp as i64, 0)
                                 .map(|dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
                                 .unwrap_or_else(|| "Unknown".to_string()))
-                        }
-                    }
-                }
-            }
-
-            @if !peer_channels.is_empty() {
-                div class="info-card" {
-                    h2 { "Channels" }
-                    @for channel in &peer_channels {
-                        div class="section" {
-                            h3 { "Channel" }
-
-                            div class="info-item" {
-                                span class="label" { "State: " }
-                                span class="value" { (channel.state) }
-                            }
-
-                            @if let Some(scid) = &channel.short_channel_id {
-                                div class="info-item" {
-                                    span class="label" { "Short Channel ID: " }
-                                    span class="value" { (scid) }
-                                }
-                            }
-
-                            @if let Some(direction) = channel.direction {
-                                div class="info-item" {
-                                    span class="label" { "Direction: " }
-                                    span class="value" { (direction) }
-                                }
-                            }
-
-                            @if let Some(channel_id) = &channel.channel_id {
-                                div class="info-item" {
-                                    span class="label" { "Channel ID: " }
-                                    span class="value" { (channel_id) }
-                                }
-                            }
-
-                            @if let Some(funding_txid) = &channel.funding_txid {
-                                div class="info-item" {
-                                    span class="label" { "Funding TXID: " }
-                                    span class="value" { (funding_txid) }
-                                }
-                            }
                         }
                     }
                 }
@@ -507,6 +518,42 @@ fn create_node_pages(
                     }
                 }
             }
+
+            @if !node_channels.is_empty() {
+                div class="info-card" {
+                    h2 { "Connected Channels" }
+                    p { "Total channels: " (node_channels.len()) }
+
+                    table class="sortable" {
+                        thead {
+                            tr {
+                                th data-sort="string" { "Other Node" }
+                                th data-sort="string" { "Short Channel ID" }
+                                th data-sort="number" { "Fee Rate (ppm)" }
+                            }
+                        }
+                        tbody {
+                            @for channel in &node_channels {
+                                tr {
+                                    td {
+                                        a href={(format!("{}.html", channel.other_node_id))} {
+                                            (channel.other_node_alias)
+                                        }
+                                    }
+                                    td {
+                                        a href={(format!("https://mempool.space/lightning/channel/{}", channel.short_channel_id))} target="_blank" {
+                                            (channel.short_channel_id)
+                                        }
+                                    }
+                                    td class="number-cell" { (channel.fee_rate_ppm) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+
 
             style {
                 r#"
