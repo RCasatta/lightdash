@@ -85,14 +85,15 @@ pub fn calc_setchannel<'a>(
     if let Some(avail) = avail {
         if avail < 0.8 {
             // the channel is not available enough, "disable" it by setting htlc to 1msat
+
+            let cmd = "lightning-cli";
+            let args = format!("setchannel {short_channel_id} {FEE_BASE} {current_ppm} 1 1");
+            let splitted_args: Vec<&str> = args.split(' ').collect();
+            log::info!(
+                "DIS {short_channel_id} with {alias}. avail:{:.1}%",
+                avail * 100.0
+            );
             if std::env::var("EXECUTE_SETCHANNEL").is_ok() {
-                let cmd = "lightning-cli";
-                let args = format!("setchannel {short_channel_id} {FEE_BASE} {current_ppm} 1 1");
-                let splitted_args: Vec<&str> = args.split(' ').collect();
-                log::info!(
-                    "DIS {short_channel_id} with {alias}. avail:{:.1}%",
-                    avail * 100.0
-                );
                 let result = crate::cmd::cmd_result(cmd, &splitted_args);
                 log::debug!("cmd return: {result}");
             }
