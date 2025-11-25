@@ -242,7 +242,7 @@ impl Store {
     /// Get all channels connected to a specific node
     pub fn get_node_channels(&self, nodeid: &str) -> Vec<&cmd::Channel> {
         self.channels()
-            .filter(|channel| channel.source == nodeid || channel.destination == nodeid)
+            .filter(|channel| channel.source == nodeid)
             .collect()
     }
 

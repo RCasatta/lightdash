@@ -330,18 +330,14 @@ fn create_node_pages(
             .get_node_channels(&nodeid)
             .into_iter()
             .map(|channel| {
-                let (other_node_id, fee_rate_ppm) = if channel.source == nodeid {
-                    (channel.destination.clone(), channel.fee_per_millionth)
-                } else {
-                    (channel.source.clone(), channel.fee_per_millionth)
-                };
+                let other_node_id = channel.destination.clone();
                 let other_node_alias = store.get_node_alias(&other_node_id);
 
                 NodeChannelDisplay {
                     other_node_alias,
                     other_node_id,
                     short_channel_id: channel.short_channel_id.clone(),
-                    fee_rate_ppm,
+                    fee_rate_ppm: channel.fee_per_millionth,
                 }
             })
             .collect();
