@@ -1210,9 +1210,15 @@ fn create_channel_pages(
     sorted_channels.sort_by(|a, b| a.perc_float().partial_cmp(&b.perc_float()).unwrap());
 
     // Sort channels by sats/day (descending) - only channels 1+ year old AND no forwards in last 2 months
+    // Also exclude channels where the peer has a note (those are intentionally kept)
     let mut sorted_channels_by_sats_per_day = channels
         .iter()
         .filter(|c| {
+            // Exclude peers with notes
+            if store.get_peer_note(&c.peer_id).is_some() {
+                return false;
+            }
+
             if let Some(scid) = &c.short_channel_id {
                 let is_old_enough = store.get_channel_age_days(scid).unwrap_or(0) >= 365;
                 if !is_old_enough {

@@ -146,9 +146,9 @@ pub fn run_sling(store: &Store) {
     for (cmd, details) in sling_lines.iter() {
         log::debug!("`{cmd}` {details}");
         let split: Vec<&str> = cmd.split(' ').collect();
-        let result = cmd_result(split[0], &split[1..]);
+        // let result = cmd_result(split[0], &split[1..]);
         log::debug!("{result}");
     }
-    let result = cmd_result("lightning-cli", &["sling-go"]);
+    // let result = cmd_result("lightning-cli", &["sling-go"]);
     log::debug!("{result}");
 }

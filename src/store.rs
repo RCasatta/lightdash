@@ -861,12 +861,8 @@ impl Store {
             .filter_map(|fund| {
                 let scid = fund.short_channel_id.as_ref()?;
                 let channel = self.get_channel(scid, &self.info.id)?;
-                // Filter out channels with base fee or very high ppm
-                if channel.base_fee_millisatoshi == 0 && channel.fee_per_millionth <= 10000 {
-                    Some(channel.fee_per_millionth)
-                } else {
-                    None
-                }
+
+                Some(channel.fee_per_millionth)
             })
             .collect();
 
