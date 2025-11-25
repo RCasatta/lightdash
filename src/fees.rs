@@ -18,6 +18,7 @@ pub fn run_fees(store: &Store) {
     let mut equ_count = 0;
     let mut inc_count = 0;
     let mut dec_count = 0;
+    let mut dis_count = 0;
 
     for fund in normal_channels.iter() {
         let short_channel_id = fund.short_channel_id();
@@ -26,16 +27,25 @@ pub fn run_fees(store: &Store) {
             None => continue,
         };
         let alias_or_id = store.get_node_alias(&fund.peer_id);
+        let avail = store.avail_map.get(&fund.peer_id).cloned();
 
-        let trend = calc_setchannel(&short_channel_id, &alias_or_id, &fund, our, &forwards_24h);
+        let trend = calc_setchannel(
+            &short_channel_id,
+            &alias_or_id,
+            &fund,
+            our,
+            &forwards_24h,
+            avail,
+        );
         match trend {
             "EQU" => equ_count += 1,
             "INC" => inc_count += 1,
             "DEC" => dec_count += 1,
+            "DIS" => dis_count += 1,
             _ => {}
         }
     }
-    log::info!("setchannel trend: EQU:{equ_count} INC:{inc_count} DEC:{dec_count}");
+    log::info!("setchannel trend: EQU:{equ_count} INC:{inc_count} DEC:{dec_count} DIS:{dis_count}");
 }
 
 /// Returns the largest power of 2 that is less than or equal to n.
@@ -55,6 +65,7 @@ pub fn calc_setchannel<'a>(
     fund: &crate::cmd::Fund,
     our: &crate::cmd::Channel,
     forwards_24h: &[Forward],
+    avail: Option<f64>,
 ) -> &'static str {
     let channel_fund_perc_ours = fund.perc_float(); // how full of our funds is the channel
     let disp_perc = format!("{:.1}%", channel_fund_perc_ours * 100.0);
@@ -70,6 +81,20 @@ pub fn calc_setchannel<'a>(
     let current_max_htlc_sat = our.htlc_maximum_msat;
     let current_min_htlc_sat = our.htlc_minimum_msat;
     let our_amount_msat = fund.our_amount_msat;
+
+    if let Some(avail) = avail {
+        if avail < 0.8 {
+            // the channel is not available enough, "disable" it by setting htlc to 1msat
+            if std::env::var("EXECUTE_SETCHANNEL").is_ok() {
+                let cmd = "lightning-cli";
+                let args = format!("setchannel {short_channel_id} {FEE_BASE} {current_ppm} 1 1");
+                let splitted_args: Vec<&str> = args.split(' ').collect();
+                let result = crate::cmd::cmd_result(cmd, &splitted_args);
+                log::debug!("cmd return: {result}");
+            }
+            return "DIS";
+        }
+    }
 
     // Compute the largest power of 2 <= our_amount_msat for max HTLC
     let new_max_htlc_msat = max(largest_power_of_two_leq(our_amount_msat), 1); // max_htlc canno be 0 when min_htlc is 1

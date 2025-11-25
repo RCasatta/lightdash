@@ -42,7 +42,11 @@ enum Commands {
     /// Execute sling jobs for rebalancing
     Sling,
     /// Execute fee adjustments
-    Fees,
+    Fees {
+        /// Path to JSON file with node uptime data (format: {node_id: {avail: float}})
+        #[arg(long)]
+        availdb: Option<String>,
+    },
     /// Display channels information
     Channels {
         /// Path to directory with channel fee history
@@ -80,8 +84,8 @@ fn main() {
 
             sling::run_sling(&store);
         }
-        Commands::Fees => {
-            let store = Store::new(None);
+        Commands::Fees { availdb } => {
+            let store = Store::new(availdb);
 
             fees::run_fees(&store);
         }
