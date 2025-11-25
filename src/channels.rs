@@ -1,6 +1,7 @@
 use crate::cmd;
 use flate2::write::GzEncoder;
 use flate2::Compression;
+use maud::{html, Markup, DOCTYPE};
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::Write;
@@ -27,9 +28,10 @@ pub fn run_channels(dir: &str, output_dir: &str) {
     log::info!("Running channels command for directory: {}", dir);
     log::info!("Output directory: {}", output_dir);
 
-    // Create output directories for fees and htlc-max charts
+    // Create output directories for fees, htlc-max charts, and channel pages
     let fees_dir = format!("{}/fees", output_dir);
     let htlc_max_dir = format!("{}/htlc-max", output_dir);
+    let channels_dir = format!("{}/channels", output_dir);
 
     if let Err(e) = fs::create_dir_all(&fees_dir) {
         log::error!("Failed to create fees directory {}: {}", fees_dir, e);
@@ -40,6 +42,15 @@ pub fn run_channels(dir: &str, output_dir: &str) {
         log::error!(
             "Failed to create htlc-max directory {}: {}",
             htlc_max_dir,
+            e
+        );
+        return;
+    }
+
+    if let Err(e) = fs::create_dir_all(&channels_dir) {
+        log::error!(
+            "Failed to create channels directory {}: {}",
+            channels_dir,
             e
         );
         return;
@@ -223,6 +234,18 @@ pub fn run_channels(dir: &str, output_dir: &str) {
             }
             Err(e) => log::error!("Failed to generate HTLC Max SVG chart: {}", e),
         }
+
+        // Generate channel HTML page
+        let channel_html = create_channel_page(channel_id, node_0, node_1);
+        let channel_html_filename = format!("{}/channels/{}.html", output_dir, channel_id);
+        match fs::write(&channel_html_filename, channel_html.into_string()) {
+            Ok(_) => log::debug!("Channel page generated: {}", channel_html_filename),
+            Err(e) => log::error!(
+                "Failed to write channel page {}: {}",
+                channel_html_filename,
+                e
+            ),
+        }
     }
     log::info!("Monodirectional channels: {}", monodirectional);
 
@@ -240,6 +263,130 @@ fn write_compressed_svg(filename: &str, svg_content: &str) {
             Err(e) => log::error!("Failed to finish gzip compression: {}", e),
         },
         Err(e) => log::error!("Failed to compress SVG data: {}", e),
+    }
+}
+
+fn create_channel_page(channel_id: &str, node_0: &str, node_1: &str) -> Markup {
+    html! {
+        (DOCTYPE)
+        html {
+            head {
+                title { "Channel " (channel_id) }
+                meta charset="utf-8";
+                link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>";
+                style {
+                    r#"
+                    body {
+                        font-family: 'Courier New', monospace;
+                        background-color: #1e1e1e;
+                        color: #f8f8f2;
+                        margin: 0;
+                        padding: 20px;
+                        line-height: 1.4;
+                    }
+                    .container {
+                        max-width: 1400px;
+                        margin: 0 auto;
+                    }
+                    .header {
+                        background-color: #2c3e50;
+                        color: white;
+                        padding: 20px;
+                        border-radius: 8px;
+                        margin-bottom: 20px;
+                        text-align: center;
+                    }
+                    .info-card {
+                        background-color: #2d3748;
+                        padding: 20px;
+                        border-radius: 8px;
+                        margin-bottom: 20px;
+                    }
+                    .info-item {
+                        margin: 10px 0;
+                    }
+                    .label {
+                        color: #a0aec0;
+                    }
+                    .value {
+                        color: #63b3ed;
+                        font-weight: bold;
+                    }
+                    a {
+                        color: #63b3ed;
+                        text-decoration: none;
+                    }
+                    a:hover {
+                        text-decoration: underline;
+                    }
+                    h1 { color: #f8f8f2; margin: 0; }
+                    h2 { color: #63b3ed; margin-top: 0; }
+                    .chart-container {
+                        margin: 20px 0;
+                    }
+                    .timestamp {
+                        color: #a0aec0;
+                        font-size: 0.9em;
+                        text-align: center;
+                        margin-top: 20px;
+                    }
+                    "#
+                }
+            }
+            body {
+                div class="container" {
+                    div class="header" {
+                        h1 { "⚡ Channel " (channel_id) }
+                    }
+
+                    div class="info-card" {
+                        h2 { "Channel Information" }
+                        div class="info-item" {
+                            span class="label" { "Short Channel ID: " }
+                            span class="value" { (channel_id) }
+                        }
+                        div class="info-item" {
+                            span class="label" { "Node 1: " }
+                            span class="value" {
+                                a href={(format!("https://mempool.space/lightning/node/{node_0}"))} target="_blank" {
+                                    (truncate_node_id(node_0))
+                                }
+                            }
+                        }
+                        div class="info-item" {
+                            span class="label" { "Node 2: " }
+                            span class="value" {
+                                a href={(format!("https://mempool.space/lightning/node/{node_1}"))} target="_blank" {
+                                    (truncate_node_id(node_1))
+                                }
+                            }
+                        }
+                    }
+
+                    div class="info-card" {
+                        h2 { "Channel Fee History" }
+                        div class="chart-container" {
+                            object data={(format!("../fees/{channel_id}.svgz"))} type="image/svg+xml" style="width: 100%; background-color:rgb(235, 230, 230); margin:10px" {
+                                p { "Fee chart not available for this channel." }
+                            }
+                        }
+                    }
+
+                    div class="info-card" {
+                        h2 { "Channel HTLC Max History" }
+                        div class="chart-container" {
+                            object data={(format!("../htlc-max/{channel_id}.svgz"))} type="image/svg+xml" style="width: 100%; background-color:rgb(235, 230, 230); margin:10px" {
+                                p { "HTLC max chart not available for this channel." }
+                            }
+                        }
+                    }
+
+                    div class="timestamp" {
+                        "Generated by lightdash channels command"
+                    }
+                }
+            }
+        }
     }
 }
 
