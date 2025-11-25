@@ -537,7 +537,7 @@ fn create_node_pages(
                                         }
                                     }
                                     td {
-                                        a href={(format!("https://mempool.space/lightning/channel/{}", channel.short_channel_id))} target="_blank" {
+                                        a href={(format!("../../charts/channels/{}.html", channel.short_channel_id))} {
                                             (channel.short_channel_id)
                                         }
                                     }
