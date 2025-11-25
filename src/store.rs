@@ -854,11 +854,20 @@ impl Store {
     }
 
     pub fn node_channel_fees(&self) -> (f64, f64) {
+        // Compute fees from the channel list (funds) by looking up each channel's fee info
         let mut fees: Vec<u64> = self
-            .get_node_channels(&self.info.id)
-            .into_iter()
-            .filter(|c| c.base_fee_millisatoshi == 0 && c.fee_per_millionth <= 10000)
-            .map(|c| c.fee_per_millionth)
+            .normal_channels()
+            .iter()
+            .filter_map(|fund| {
+                let scid = fund.short_channel_id.as_ref()?;
+                let channel = self.get_channel(scid, &self.info.id)?;
+                // Filter out channels with base fee or very high ppm
+                if channel.base_fee_millisatoshi == 0 && channel.fee_per_millionth <= 10000 {
+                    Some(channel.fee_per_millionth)
+                } else {
+                    None
+                }
+            })
             .collect();
 
         if fees.is_empty() {
