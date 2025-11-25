@@ -64,24 +64,24 @@ fn main() {
             min_channels,
             availdb,
         } => {
-            let store = Store::new();
+            let store = Store::new(availdb);
             log::debug!("Dashboard directory: {}", directory);
-            dashboard::run_dashboard(&store, directory, min_channels, availdb);
+            dashboard::run_dashboard(&store, directory, min_channels);
         }
         Commands::Routes { directory } => {
-            let store = Store::new();
+            let store = Store::new(None);
 
             for i in [1000, 10_000, 100_000, 1_000_000, 10_000_000] {
                 routes::run_routes(&store, &directory, i);
             }
         }
         Commands::Sling => {
-            let store = Store::new();
+            let store = Store::new(None);
 
             sling::run_sling(&store);
         }
         Commands::Fees => {
-            let store = Store::new();
+            let store = Store::new(None);
 
             fees::run_fees(&store);
         }

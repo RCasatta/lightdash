@@ -1,5 +1,4 @@
 use chrono::{DateTime, Utc};
-use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 
@@ -2344,12 +2343,7 @@ fn create_closed_channels_page(
 ///
 /// # Panics
 /// Panics if unable to create the output directory or write HTML files
-pub fn run_dashboard(
-    store: &Store,
-    directory: String,
-    min_channels: usize,
-    availdb: Option<String>,
-) {
+pub fn run_dashboard(store: &Store, directory: String, min_channels: usize) {
     let now = Utc::now();
     log::debug!("{}", now);
     log::debug!("my id:{}", store.info.id);
@@ -2873,38 +2867,6 @@ pub fn run_dashboard(
     }
     log::info!("Index HTML file written");
 
-    log::info!("Loading availdb");
-    let avail_map: HashMap<String, f64> = if let Some(path) = availdb.as_ref() {
-        match fs::read_to_string(path) {
-            Ok(content) => match serde_json::from_str::<HashMap<String, Value>>(&content) {
-                Ok(outer) => {
-                    let mut map = HashMap::new();
-                    for (node_id, data) in outer {
-                        if let Some(obj) = data.as_object() {
-                            if let Some(avail_val) = obj.get("avail") {
-                                if let Some(avail) = avail_val.as_f64() {
-                                    map.insert(node_id, avail);
-                                }
-                            }
-                        }
-                    }
-                    map
-                }
-                Err(e) => {
-                    log::error!("Failed to parse availdb {}: {}", path, e);
-                    HashMap::new()
-                }
-            },
-            Err(e) => {
-                log::error!("Failed to read availdb {}: {}", path, e);
-                HashMap::new()
-            }
-        }
-    } else {
-        HashMap::new()
-    };
-    log::info!("Loaded availdb with {} entries", avail_map.len());
-
     log::info!("Creating channels directory and individual channel pages");
     create_channel_pages(
         &directory,
@@ -2914,7 +2876,7 @@ pub fn run_dashboard(
         &store.info.id,
         &per_channel_last_forward_in,
         &per_channel_last_forward_out,
-        &avail_map,
+        &store.avail_map,
     );
 
     log::info!("Creating forwards page");

@@ -1,7 +1,9 @@
 use crate::cmd::{self, datastore_string, DatastoreMode, Forward, SettledForward};
 use crate::common::ChannelFee;
 use chrono::{DateTime, Datelike, Utc};
+use serde_json::Value;
 use std::collections::{HashMap, HashSet};
+use std::fs;
 
 /// Store containing all data fetched from the Lightning node
 pub struct Store {
@@ -19,11 +21,12 @@ pub struct Store {
     peer_notes: HashMap<String, String>,
     setchannel_timestamps: HashMap<String, i64>,
     now: DateTime<Utc>,
+    pub avail_map: HashMap<String, f64>,
 }
 
 impl Store {
     /// Create a new Store by fetching all data from the Lightning node
-    pub fn new() -> Self {
+    pub fn new(availdb: Option<String>) -> Self {
         let start_time = std::time::Instant::now();
         log::debug!("Fetching data from Lightning node...");
         let now = Utc::now();
@@ -35,6 +38,38 @@ impl Store {
         let nodes = cmd::list_nodes();
         let closed_channels = cmd::list_closed_channels();
         log::debug!("Data fetched successfully");
+
+        log::info!("Loading availdb");
+        let avail_map: HashMap<String, f64> = if let Some(path) = availdb.as_ref() {
+            match fs::read_to_string(path) {
+                Ok(content) => match serde_json::from_str::<HashMap<String, Value>>(&content) {
+                    Ok(outer) => {
+                        let mut map = HashMap::new();
+                        for (node_id, data) in outer {
+                            if let Some(obj) = data.as_object() {
+                                if let Some(avail_val) = obj.get("avail") {
+                                    if let Some(avail) = avail_val.as_f64() {
+                                        map.insert(node_id, avail);
+                                    }
+                                }
+                            }
+                        }
+                        map
+                    }
+                    Err(e) => {
+                        log::error!("Failed to parse availdb {}: {}", path, e);
+                        HashMap::new()
+                    }
+                },
+                Err(e) => {
+                    log::error!("Failed to read availdb {}: {}", path, e);
+                    HashMap::new()
+                }
+            }
+        } else {
+            HashMap::new()
+        };
+        log::info!("Loaded availdb with {} entries", avail_map.len());
 
         // Compute cached data
         let nodes_by_id = nodes
@@ -129,6 +164,7 @@ impl Store {
             peer_notes,
             setchannel_timestamps,
             now,
+            avail_map,
         };
 
         let duration = start_time.elapsed();
