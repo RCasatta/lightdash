@@ -2,86 +2,87 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
+use serde_json::Value;
 
 pub fn _sling_jobsettings() -> HashMap<String, JobSetting> {
-    let str = if cfg!(debug_assertions) {
+    let v = if cfg!(debug_assertions) {
         cmd_result("cat", &["test-json/sling-jobsettings"])
     } else {
         cmd_result("lightning-cli", &["sling-jobsettings"])
     };
-    serde_json::from_str(&str).unwrap()
+    serde_json::from_value(v).unwrap()
 }
 
 pub fn list_funds() -> ListFunds {
-    let str = if cfg!(debug_assertions) {
+    let v = if cfg!(debug_assertions) {
         cmd_result("zcat", &["test-json/listfunds.gz"])
     } else {
         cmd_result("lightning-cli", &["listfunds"])
     };
-    serde_json::from_str(&str).unwrap()
+    serde_json::from_value(v).unwrap()
 }
 
 pub fn list_nodes() -> ListNodes {
-    let str = if cfg!(debug_assertions) {
+    let v = if cfg!(debug_assertions) {
         cmd_result("zcat", &["test-json/listnodes.gz"])
     } else {
         cmd_result("lightning-cli", &["listnodes"])
     };
-    serde_json::from_str(&str).unwrap()
+    serde_json::from_value(v).unwrap()
 }
 
 pub fn list_channels() -> ListChannels {
-    let str = if cfg!(debug_assertions) {
+    let v = if cfg!(debug_assertions) {
         cmd_result("zcat", &["test-json/listchannels.gz"])
     } else {
         cmd_result("lightning-cli", &["listchannels"])
     };
-    serde_json::from_str(&str).unwrap()
+    serde_json::from_value(v).unwrap()
 }
 
 pub fn read_xz_channels(path: &str) -> ListChannels {
-    let str = cmd_result("xzcat", &[path]);
-    serde_json::from_str(&str).unwrap()
+    let v = cmd_result("xzcat", &[path]);
+    serde_json::from_value(v).unwrap()
 }
 
 pub fn list_peers() -> ListPeers {
-    let str = if cfg!(debug_assertions) {
+    let v = if cfg!(debug_assertions) {
         cmd_result("zcat", &["test-json/listpeers.gz"])
     } else {
         cmd_result("lightning-cli", &["listpeers"])
     };
-    serde_json::from_str(&str).unwrap()
+    serde_json::from_value(v).unwrap()
 }
 
 pub fn list_forwards() -> ListForwards {
-    let str = if cfg!(debug_assertions) {
+    let v = if cfg!(debug_assertions) {
         cmd_result("xzcat", &["test-json/listforwards.xz"])
     } else {
         cmd_result("lightning-cli", &["listforwards"])
     };
-    serde_json::from_str(&str).unwrap()
+    serde_json::from_value(v).unwrap()
 }
 
 pub fn list_closed_channels() -> ListClosedChannels {
-    let str = if cfg!(debug_assertions) {
+    let v = if cfg!(debug_assertions) {
         cmd_result("zcat", &["test-json/listclosedchannels.gz"])
     } else {
         cmd_result("lightning-cli", &["listclosedchannels"])
     };
-    serde_json::from_str(&str).unwrap()
+    serde_json::from_value(v).unwrap()
 }
 
 pub fn get_info() -> GetInfo {
-    let str = if cfg!(debug_assertions) {
+    let v = if cfg!(debug_assertions) {
         cmd_result("cat", &["test-json/getinfo"])
     } else {
         cmd_result("lightning-cli", &["getinfo"])
     };
-    serde_json::from_str(&str).unwrap()
+    serde_json::from_value(v).unwrap()
 }
 
 pub fn get_route(id: &str, amount_msat: u64) -> Option<GetRoute> {
-    let str = if cfg!(debug_assertions) {
+    let v = if cfg!(debug_assertions) {
         cmd_result("cat", &["test-json/getroute"])
     } else {
         cmd_result(
@@ -89,16 +90,17 @@ pub fn get_route(id: &str, amount_msat: u64) -> Option<GetRoute> {
             &["getroute", id, &amount_msat.to_string(), "10"],
         )
     };
-    serde_json::from_str(&str).ok()
+    serde_json::from_value(v).unwrap()
 }
 
-pub fn cmd_result(cmd: &str, args: &[impl AsRef<str>]) -> String {
+pub fn cmd_result(cmd: &str, args: &[impl AsRef<str>]) -> Value {
     // println!("cmd:{cmd} args:{args:?}");
     let data = std::process::Command::new(cmd)
         .args(args.iter().map(|s| s.as_ref()))
         .output()
         .unwrap();
-    std::str::from_utf8(&data.stdout).unwrap().to_string()
+    let s = std::str::from_utf8(&data.stdout).unwrap();
+    serde_json::from_str(&s).unwrap()
 }
 
 // fn lcli_named(subcmd: &str, args: &[&str]) -> String {
@@ -420,20 +422,19 @@ pub fn datastore_string(
     ];
 
     log::info!("Executing lightning-cli with args: {:?}", args);
-    let response_str = cmd_result("lightning-cli", &args);
-    log::debug!("Received response: {}", response_str);
+    let response_value = cmd_result("lightning-cli", &args);
+    log::debug!("Received response: {:?}", response_value);
 
     // It's also good practice to check for an error response before parsing
-    if response_str.contains("\"code\":") {
-        return Err(format!("lightning-cli returned an error: {}", response_str));
+    if response_value.get("code").is_some() {
+        return Err(format!(
+            "lightning-cli returned an error: {:?}",
+            response_value
+        ));
     }
 
-    serde_json::from_str(&response_str).map_err(|e| {
-        format!(
-            "Failed to parse successful response JSON: {} - Response was: {}",
-            e, response_str
-        )
-    })
+    serde_json::from_value(response_value)
+        .map_err(|e| format!("Failed to parse successful response JSON: {} ", e,))
 }
 
 /// List/retrieve data from the datastore, optionally filtered by key
@@ -444,14 +445,14 @@ pub fn listdatastore(key: Option<&[&str]>) -> Result<ListDatastore, String> {
         return Ok(ListDatastore { datastore: vec![] });
     }
 
-    let str = if let Some(k) = key {
+    let v = if let Some(k) = key {
         let key_json = serde_json::to_string(k).map_err(|e| e.to_string())?;
         cmd_result("lightning-cli", &["listdatastore", &key_json])
     } else {
         cmd_result("lightning-cli", &["listdatastore"])
     };
 
-    serde_json::from_str(&str).map_err(|e| format!("Failed to parse response: {}", e))
+    serde_json::from_value(v).map_err(|e| format!("Failed to parse response: {}", e))
 }
 
 /// Delete data from the datastore
@@ -470,8 +471,8 @@ pub fn _deldatastore(key: &[&str]) -> Result<DatastoreResponse, String> {
     let key_json = serde_json::to_string(key).map_err(|e| e.to_string())?;
     let args = vec!["deldatastore", "-k", "key", &key_json];
 
-    let str = cmd_result("lightning-cli", &args);
-    serde_json::from_str(&str).map_err(|e| format!("Failed to parse response: {}", e))
+    let v = cmd_result("lightning-cli", &args);
+    serde_json::from_value(v).map_err(|e| format!("Failed to parse response: {}", e))
 }
 
 #[allow(dead_code)]

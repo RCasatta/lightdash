@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use crate::cmd::cmd_result;
 use crate::common::*;
 use crate::store::Store;
 
@@ -141,14 +140,14 @@ pub fn run_sling(store: &Store) {
     }
 
     // Execute sling jobs
-    let result = cmd_result("lightning-cli", &["sling-deletejob", "all"]);
-    log::debug!("{result}");
+    // let result = cmd_result("lightning-cli", &["sling-deletejob", "all"]);
+    // log::debug!("{result}");
     for (cmd, details) in sling_lines.iter() {
         log::debug!("`{cmd}` {details}");
-        let split: Vec<&str> = cmd.split(' ').collect();
+        // let split: Vec<&str> = cmd.split(' ').collect();
         // let result = cmd_result(split[0], &split[1..]);
-        log::debug!("{result}");
+        // log::debug!("{result}");
     }
     // let result = cmd_result("lightning-cli", &["sling-go"]);
-    log::debug!("{result}");
+    // log::debug!("{result}");
 }
