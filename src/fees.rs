@@ -163,10 +163,9 @@ pub fn calc_setchannel<'a>(
         if std::env::var("EXECUTE_SETCHANNEL").is_ok() {
             log::info!("executing `{cmd} {args}` {alias}");
 
-            // Always execute fee adjustments
             let splitted_args: Vec<&str> = args.split(' ').collect();
             let result = crate::cmd::cmd_result(cmd, &splitted_args);
-            log::debug!("cmd return: {result}");
+            log::info!("cmd return: {}", serde_json::to_string(result).unwrap());
 
             // Save timestamp to datastore
             let timestamp = Utc::now().timestamp().to_string();
