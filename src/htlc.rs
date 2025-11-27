@@ -56,7 +56,7 @@ fn set_channel_htlc_max(short_channel_id: &str, htlc_max: u64) {
     }
 
     let id_arg = format!("id={short_channel_id}");
-    let htlc_max_str = format!("htlc_max={htlc_max}");
+    let htlc_max_str = format!("htlcmax={htlc_max}");
     let args = ["setchannel", "-k", &id_arg, &htlc_max_str];
     println!("Executing: `lightning-cli {}`", args.join(" "));
     let result = cmd_result("lightning-cli", &args);
