@@ -59,6 +59,7 @@ fn set_channel_htlc_max(short_channel_id: &str, htlc_max: u64) {
     let args = [
         "setchannel",
         "-k",
+        "id",
         short_channel_id,
         "htlcmax",
         &htlc_max_str,
