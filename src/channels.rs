@@ -433,6 +433,12 @@ fn generate_svg_chart(
     min_value = min_value.saturating_sub(y_padding);
     max_value = max_value + y_padding;
 
+    // Cap the y-axis for Fee charts to avoid outliers squashing the chart
+    const FEE_Y_AXIS_MAX: u32 = 4000;
+    if matches!(chart_type, ChartType::Fee) && max_value > FEE_Y_AXIS_MAX {
+        max_value = FEE_Y_AXIS_MAX;
+    }
+
     // SVG dimensions
     let width = 1200;
     let height = 600;
@@ -468,6 +474,13 @@ fn generate_svg_chart(
     svg.push_str(&format!(
         r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}" width="{}" height="{}">"##,
         width, height, width, height
+    ));
+    svg.push_str("\n");
+
+    // Add background
+    svg.push_str(&format!(
+        r##"  <rect width="{}" height="{}" fill="#f5f5f5"/>"##,
+        width, height
     ));
     svg.push_str("\n");
 
@@ -698,6 +711,13 @@ fn generate_svg_chart(
     svg.push_str(&format!(
         r##"  <text x="{}" y="{}" font-family="Arial, monospace" font-size="10" alignment-baseline="middle">{}</text>"##,
         legend_x + 40, legend_y + 50, truncate_node_id(node_1)
+    ));
+    svg.push_str("\n");
+
+    // Add watermark
+    svg.push_str(&format!(
+        r##"  <text x="{}" y="{}" font-family="Arial, sans-serif" font-size="14" font-style="italic" fill="#888888" text-anchor="end">LOUDTOLL since 2019</text>"##,
+        width - 20, height - 15
     ));
     svg.push_str("\n");
 
