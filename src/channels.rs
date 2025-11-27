@@ -583,6 +583,7 @@ fn generate_svg_chart(
             points_0.push((x, y, *timestamp, value));
         }
     }
+    let points_0 = deduplicate_consecutive_points(points_0);
 
     if !points_0.is_empty() {
         let path_data: String = points_0
@@ -632,6 +633,7 @@ fn generate_svg_chart(
             points_1.push((x, y, *timestamp, value));
         }
     }
+    let points_1 = deduplicate_consecutive_points(points_1);
 
     if !points_1.is_empty() {
         let path_data: String = points_1
@@ -777,4 +779,37 @@ fn truncate_node_id(node_id: &str) -> String {
     } else {
         node_id.to_string()
     }
+}
+
+/// Removes consecutive duplicate points, keeping the first and last of each run.
+/// Points are (x, y, timestamp, value) tuples - duplicates are determined by value.
+/// Example: [1,2,5,5,5,5,10,10,11] -> [1,2,5,5,10,10,11]
+fn deduplicate_consecutive_points(points: Vec<(i32, i32, u32, u32)>) -> Vec<(i32, i32, u32, u32)> {
+    if points.len() <= 2 {
+        return points;
+    }
+
+    let mut result = Vec::with_capacity(points.len());
+    let mut i = 0;
+
+    while i < points.len() {
+        let current_value = points[i].3;
+        let run_start = i;
+
+        // Find the end of the current run of equal values
+        while i < points.len() && points[i].3 == current_value {
+            i += 1;
+        }
+        let run_end = i - 1;
+
+        // Keep first point of the run
+        result.push(points[run_start]);
+
+        // Keep last point of the run if it's different from the first
+        if run_end > run_start {
+            result.push(points[run_end]);
+        }
+    }
+
+    result
 }
