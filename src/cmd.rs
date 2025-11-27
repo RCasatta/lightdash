@@ -90,7 +90,7 @@ pub fn get_route(id: &str, amount_msat: u64) -> Option<GetRoute> {
             &["getroute", id, &amount_msat.to_string(), "10"],
         )
     };
-    serde_json::from_value(v).unwrap()
+    serde_json::from_value(v).ok()
 }
 
 pub fn cmd_result(cmd: &str, args: &[impl AsRef<str>]) -> Value {
