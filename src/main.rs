@@ -9,6 +9,7 @@ mod cmd;
 mod common;
 mod dashboard;
 mod fees;
+mod htlc;
 mod routes;
 mod sling;
 mod store;
@@ -56,6 +57,8 @@ enum Commands {
         #[arg(long)]
         output_dir: String,
     },
+    /// Adjust HTLC max on channels where local balance is lower than current htlc max
+    Htlc,
 }
 
 fn main() {
@@ -91,6 +94,9 @@ fn main() {
         }
         Commands::Channels { path, output_dir } => {
             channels::run_channels(path.as_str(), output_dir.as_str());
+        }
+        Commands::Htlc => {
+            htlc::run_htlc();
         }
     }
 }
