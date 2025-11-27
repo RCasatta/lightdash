@@ -58,7 +58,7 @@ fn set_channel_htlc_max(short_channel_id: &str, htlc_max: u64) {
     let htlc_max_arg = format!("htlcmax={htlc_max}");
     let result = cmd_result(
         "lightning-cli",
-        &["-k", "setchannel", short_channel_id, &htlc_max_arg],
+        &["setchannel", "-k", short_channel_id, &htlc_max_arg],
     );
     log::debug!("setchannel result: {result:?}");
 }
