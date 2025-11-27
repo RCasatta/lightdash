@@ -55,16 +55,13 @@ fn set_channel_htlc_max(short_channel_id: &str, htlc_max: u64) {
         return;
     }
 
-    let htlc_max_str = format!("{htlc_max}");
-    let args = [
-        "setchannel",
-        "-k",
-        "id",
-        short_channel_id,
-        "htlcmax",
-        &htlc_max_str,
-    ];
+    let id_arg = format!("id={short_channel_id}");
+    let htlc_max_str = format!("htlc_max={htlc_max}");
+    let args = ["setchannel", "-k", &id_arg, &htlc_max_str];
     println!("Executing: `lightning-cli {}`", args.join(" "));
     let result = cmd_result("lightning-cli", &args);
-    log::debug!("setchannel result: {result:?}");
+    log::debug!(
+        "setchannel result: {}",
+        serde_json::to_string(&result).unwrap()
+    );
 }
