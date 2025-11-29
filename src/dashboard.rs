@@ -381,11 +381,6 @@ fn create_node_pages(
                     span class="value" { (num_channels) }
                 }
 
-                div class="info-item" {
-                    span class="label" { "Features: " }
-                    span class="value" { (features) }
-                }
-
                 @if let Some(note_val) = note {
                     div class="info-item" {
                         span class="label" { "Note: " }

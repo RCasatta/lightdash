@@ -439,6 +439,11 @@ fn generate_svg_chart(
         max_value = FEE_Y_AXIS_MAX;
     }
 
+    // HTLC Max chart should start from 0
+    if matches!(chart_type, ChartType::HtlcMax) {
+        min_value = 0;
+    }
+
     // SVG dimensions
     let width = 1200;
     let height = 600;
