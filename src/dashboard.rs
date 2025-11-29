@@ -1800,10 +1800,18 @@ fn create_channel_pages(
                                             (format!("{:.1}", forward.out_sat as f64))
                                         }
                                         td style="text-align: right;" {
-                                            (format!("{:.1}", forward.fee_sat as f64))
+                                            @if forward.out_channel == *scid {
+                                                (format!("{:.1}", forward.fee_sat as f64))
+                                            } @else {
+                                                (format!("({:.1})", forward.fee_sat as f64))
+                                            }
                                         }
                                         td style="text-align: right;" {
-                                            (forward.fee_ppm)
+                                            @if forward.out_channel == *scid {
+                                                (forward.fee_ppm)
+                                            } @else {
+                                                (format!("({})", forward.fee_ppm))
+                                            }
                                         }
                                         td {
                                             (forward.received_time.format("%Y-%m-%d %H:%M:%S").to_string())
