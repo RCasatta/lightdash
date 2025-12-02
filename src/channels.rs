@@ -605,7 +605,7 @@ fn generate_svg_chart(
             .join(" ");
 
         svg.push_str(&format!(
-            r##"  <path d="{}" fill="none" stroke="#2563eb" stroke-width="2"/>"##,
+            r##"  <path d="{}" fill="none" stroke="#2563eb" stroke-width="2" opacity="0.7"/>"##,
             path_data
         ));
         svg.push_str("\n");
@@ -618,7 +618,7 @@ fn generate_svg_chart(
                 ChartType::HtlcMax => format!("HTLC Max: {} sats", value),
             };
             svg.push_str(&format!(
-                r##"  <circle cx="{}" cy="{}" r="3" fill="#2563eb"><title>{} ({})</title></circle>"##,
+                r##"  <circle cx="{}" cy="{}" r="4" fill="#2563eb" opacity="0.7"><title>{} ({})</title></circle>"##,
                 x, y, value_label, date_str
             ));
             svg.push_str("\n");
@@ -655,7 +655,7 @@ fn generate_svg_chart(
             .join(" ");
 
         svg.push_str(&format!(
-            r##"  <path d="{}" fill="none" stroke="#dc2626" stroke-width="2"/>"##,
+            r##"  <path d="{}" fill="none" stroke="#dc2626" stroke-width="2" opacity="0.7"/>"##,
             path_data
         ));
         svg.push_str("\n");
@@ -668,7 +668,7 @@ fn generate_svg_chart(
                 ChartType::HtlcMax => format!("HTLC Max: {} sats", value),
             };
             svg.push_str(&format!(
-                r##"  <circle cx="{}" cy="{}" r="3" fill="#dc2626"><title>{} ({})</title></circle>"##,
+                r##"  <circle cx="{}" cy="{}" r="4" fill="#dc2626" opacity="0.7"><title>{} ({})</title></circle>"##,
                 x, y, value_label, date_str
             ));
             svg.push_str("\n");
