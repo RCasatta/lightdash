@@ -451,7 +451,7 @@ pub fn datastore_string(
         format!("mode={}", mode.as_str()),
     ];
 
-    log::info!("Executing lightning-cli with args: {:?}", args);
+    log::debug!("Executing lightning-cli with args: {:?}", args);
     let response_value = cmd_result("lightning-cli", &args);
     log::debug!("Received response: {:?}", response_value);
 
