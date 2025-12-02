@@ -188,7 +188,7 @@ pub fn calc_setchannel<'a>(
             log::info!("would execute `{cmd} {args}` {alias}");
         }
     } else {
-        log::info!("no changes in {short_channel_id} with {alias}, skipping")
+        log::info!("EQU no changes in {short_channel_id} with {alias}, skipping")
     };
     data
 }
