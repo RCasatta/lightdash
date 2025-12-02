@@ -120,3 +120,16 @@ fn init_logging() {
 
     builder.init();
 }
+
+/// Macro that logs an error and panics with the same message.
+/// This is useful because error logs are more easily seen in systemd logs.
+macro_rules! error_panic {
+    ($($arg:tt)*) => {
+        {
+            let msg = format!($($arg)*);
+            log::error!("{}", msg);
+            panic!("{}", msg);
+        }
+    };
+}
+pub(crate) use error_panic;

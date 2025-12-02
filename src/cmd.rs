@@ -4,6 +4,8 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::Value;
 
+use crate::error_panic;
+
 pub fn _sling_jobsettings() -> HashMap<String, JobSetting> {
     let v = if cfg!(debug_assertions) {
         cmd_result("cat", &["test-json/sling-jobsettings"])
@@ -109,7 +111,12 @@ pub fn cmd_result(cmd: &str, args: &[impl AsRef<str>]) -> Value {
         .output()
         .unwrap();
     let s = std::str::from_utf8(&data.stdout).unwrap();
-    serde_json::from_str(&s).unwrap()
+    match serde_json::from_str(&s) {
+        Ok(v) => v,
+        Err(e) => {
+            error_panic!("executing `{cmd}` returned {s} with error {e:?}");
+        }
+    }
 }
 
 // fn lcli_named(subcmd: &str, args: &[&str]) -> String {
