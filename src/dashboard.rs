@@ -875,10 +875,10 @@ fn create_forwards_html_content(
                                     a href={(format!("channels/{}.html", forward.out_channel))} { "(C)" }
                                 }
                                 td class="align-right" {
-                                    (format!("{:.1}", forward.fee_sat as f64))
+                                    (forward.fee_sat)
                                 }
                                 td class="align-right" {
-                                    (format!("{:.1}", forward.out_sat as f64))
+                                    (forward.out_sat)
                                 }
                                 td class="align-right" {
                                     (forward.fee_ppm)
@@ -1377,7 +1377,7 @@ fn create_channel_pages(
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(sats_per_day) = store.get_channel_sats_per_day(scid) {
-                                        (format!("{:.2}", sats_per_day))
+                                        (format!("{:.0}", sats_per_day))
                                     } @else {
                                         "-"
                                     }
@@ -1466,7 +1466,7 @@ fn create_channel_pages(
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(sats_per_day) = store.get_channel_sats_per_day(scid) {
-                                        (format!("{:.2}", sats_per_day))
+                                        (format!("{:.0}", sats_per_day))
                                     } @else {
                                         "-"
                                     }
@@ -1720,7 +1720,7 @@ fn create_channel_pages(
                         div class="info-item" {
                             span class="label" { "Avg. Sat/Day Earned: " }
                             span class="value" {
-                                (format!("{:.2} sats/day", sats_per_day))
+                                (format!("{:.0} sats/day", sats_per_day))
                             }
                         }
                     }
@@ -1797,13 +1797,13 @@ fn create_channel_pages(
                                             }
                                         }
                                         td style="text-align: right;" {
-                                            (format!("{:.1}", forward.out_sat as f64))
+                                            (forward.out_sat)
                                         }
                                         td style="text-align: right;" {
                                             @if forward.out_channel == *scid {
-                                                (format!("{:.1}", forward.fee_sat as f64))
+                                                (forward.fee_sat)
                                             } @else {
-                                                (format!("({:.1})", forward.fee_sat as f64))
+                                                (format!("({})", forward.fee_sat))
                                             }
                                         }
                                         td style="text-align: right;" {
@@ -1879,7 +1879,7 @@ fn create_channel_pages(
                                             }
                                         }
                                         td style="text-align: right;" {
-                                            (format!("{:.1}", forward.in_msat as f64 / 1000.0))
+                                            (forward.in_msat / 1000)
                                         }
                                         td {
                                             @if let Some(dt) = chrono::DateTime::from_timestamp(forward.received_time as i64, 0) {
@@ -1960,7 +1960,7 @@ fn create_channel_pages(
                                             }
                                         }
                                         td style="text-align: right;" {
-                                            (format!("{:.1}", forward.in_msat as f64 / 1000.0))
+                                            (forward.in_msat / 1000)
                                         }
                                         td {
                                             @if let Some(dt) = chrono::DateTime::from_timestamp(forward.received_time as i64, 0) {
