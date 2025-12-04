@@ -106,10 +106,15 @@ pub fn get_route(id: &str, amount_msat: u64) -> Option<GetRoute> {
 
 pub fn cmd_result(cmd: &str, args: &[impl AsRef<str>]) -> Value {
     // println!("cmd:{cmd} args:{args:?}");
-    let data = std::process::Command::new(cmd)
+    let data = match std::process::Command::new(cmd)
         .args(args.iter().map(|s| s.as_ref()))
         .output()
-        .unwrap();
+    {
+        Ok(data) => data,
+        Err(e) => {
+            error_panic!("executing `{cmd}` with {} args returned {e:?}", args.len());
+        }
+    };
     let s = std::str::from_utf8(&data.stdout).unwrap();
     match serde_json::from_str(&s) {
         Ok(v) => v,
