@@ -1117,7 +1117,7 @@ fn create_failures_page(
         // Table 2: All Failed Forwards (failures on the remote node's side)
         div class="info-card" {
             h2 { "All Failed Forwards - Remote Node Issues" }
-            p { "These are payments that failed not due to our fault but due to connected nodes. Consider closing channels with high failure counts." }
+            p { "These are payments that failed not due to our fault but due to connected nodes. The channel showed is always the outbound channel." }
 
             @let failed_data = store.failed_forwards_by_out_channel();
             @if !failed_data.is_empty() {
