@@ -169,6 +169,7 @@ pub fn calc_setchannel<'a>(
 
             let splitted_args: Vec<&str> = args.split(' ').collect();
             let result = crate::cmd::cmd_result(cmd, &splitted_args);
+            log::debug!("cmd return: {result}");
 
             // Save timestamp to datastore
             let timestamp = Utc::now().timestamp().to_string();

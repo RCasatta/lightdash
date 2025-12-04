@@ -302,11 +302,7 @@ fn create_node_pages(
         // Default values for non-peers
         let connected = peer_map.contains_key(&nodeid);
         let num_channels = store.node_total_channels(&nodeid);
-        let features = if let Some(peer) = peer_map.get(&nodeid) {
-            peer.features.clone()
-        } else {
-            String::new()
-        };
+
         let note = store.get_peer_note(&nodeid);
         let _peer_channels = if let Some(peer) = peer_map.get(&nodeid) {
             peer.channels.clone()

@@ -1,6 +1,3 @@
-use std::collections::HashMap;
-
-use crate::common::*;
 use crate::store::Store;
 
 const SOURCE_PPM_MAX: u64 = 300;
@@ -33,7 +30,7 @@ pub fn run_sling(store: &Store) {
                         log::info!("executing `{CMD} {args}` {alias}");
 
                         let splitted_args: Vec<&str> = args.split(' ').collect();
-                        let result = crate::cmd::cmd_result(args, &splitted_args);
+                        let result = crate::cmd::cmd_result(&args, &splitted_args);
                         log::debug!("cmd return: {result}");
                     }
                 }
