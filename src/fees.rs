@@ -121,8 +121,23 @@ pub fn calc_setchannel<'a>(
         }
     } else {
         // INCREASE FEE
-        // there are forwards, increase fee
-        STEP_PERC as f64
+
+        // Calculate Scarcity Multiplier:
+        // We want to scale the step up as liquidity goes down.
+        // Formula: 1.0 + (1.0 - liquidity)
+        // at 90% liq -> 1.1x boost
+        // at 50% liq -> 1.5x boost
+        // at 10% liq -> 1.9x boost
+        let scarcity_mult = 1.0 + (1.0 - channel_fund_perc_ours);
+
+        // If we had MANY forwards (e.g. > 5), boost further.
+        // This compensates for the "sporadic" nature of events.
+        let volume_mult = if forwards_all > 5 { 1.5 } else { 1.0 };
+
+        // Combine them
+        // If we are drained (0.2) and high volume, we hike by ~3x the normal step.
+        let total_boost = scarcity_mult * volume_mult;
+        STEP_PERC as f64 * total_boost
     };
 
     let new_ppm = (current_ppm as f64 + (current_ppm as f64 * perc_change)) as u64;
