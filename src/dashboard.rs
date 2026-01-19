@@ -1200,9 +1200,9 @@ fn create_channel_pages(
     let mut sorted_channels = channels.to_vec();
     sorted_channels.sort_by(|a, b| a.perc_float().partial_cmp(&b.perc_float()).unwrap());
 
-    // Sort channels by sats/day (descending) - only channels 1+ year old AND no forwards in last 2 months
+    // Sort channels by APY% (descending) - only channels 1+ year old AND no forwards in last 2 months
     // Also exclude channels where the peer has a note (those are intentionally kept)
-    let mut sorted_channels_by_sats_per_day = channels
+    let mut sorted_channels_by_apy = channels
         .iter()
         .filter(|c| {
             // Exclude peers with notes
@@ -1229,18 +1229,18 @@ fn create_channel_pages(
         })
         .cloned()
         .collect::<Vec<_>>();
-    sorted_channels_by_sats_per_day.sort_by(|a, b| {
-        let a_sats = a
+    sorted_channels_by_apy.sort_by(|a, b| {
+        let a_apy = a
             .short_channel_id
             .as_ref()
-            .and_then(|scid| store.get_channel_sats_per_day(scid))
+            .and_then(|scid| store.get_channel_apy(scid))
             .unwrap_or(0.0);
-        let b_sats = b
+        let b_apy = b
             .short_channel_id
             .as_ref()
-            .and_then(|scid| store.get_channel_sats_per_day(scid))
+            .and_then(|scid| store.get_channel_apy(scid))
             .unwrap_or(0.0);
-        b_sats.partial_cmp(&a_sats).unwrap() // descending order
+        b_apy.partial_cmp(&a_apy).unwrap() // descending order
     });
 
     // Calculate global channel statistics
@@ -1313,7 +1313,7 @@ fn create_channel_pages(
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
                         th style="text-align: right;" { "Inbound PPM" }
-                        th style="text-align: right;" { "Sats/Day" }
+                        th style="text-align: right;" { "APY%" }
                     }
                 }
                 tbody {
@@ -1372,8 +1372,8 @@ fn create_channel_pages(
                             }
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
-                                    @if let Some(sats_per_day) = store.get_channel_sats_per_day(scid) {
-                                        (format!("{:.0}", sats_per_day))
+                                    @if let Some(apy) = store.get_channel_apy(scid) {
+                                        (format!("{:.2}%", apy))
                                     } @else {
                                         "-"
                                     }
@@ -1389,7 +1389,7 @@ fn create_channel_pages(
 
         div class="info-card" {
             h2 { "Mature Inactive Channels" }
-            p { "Channels 1+ year old with no forwards in last 2 months: " (sorted_channels_by_sats_per_day.len()) }
+            p { "Channels 1+ year old with no forwards in last 2 months: " (sorted_channels_by_apy.len()) }
 
             table class="sortable" {
                 thead {
@@ -1401,12 +1401,12 @@ fn create_channel_pages(
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
                         th style="text-align: right;" { "Inbound PPM" }
-                        th style="text-align: right;" { "Sats/Day" }
+                        th style="text-align: right;" { "APY%" }
                         th style="text-align: right;" { "Age (days)" }
                     }
                 }
                 tbody {
-                    @for channel in sorted_channels_by_sats_per_day {
+                    @for channel in sorted_channels_by_apy {
                         tr {
                             td {
                                 @if let Some(scid) = &channel.short_channel_id {
@@ -1461,8 +1461,8 @@ fn create_channel_pages(
                             }
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
-                                    @if let Some(sats_per_day) = store.get_channel_sats_per_day(scid) {
-                                        (format!("{:.0}", sats_per_day))
+                                    @if let Some(apy) = store.get_channel_apy(scid) {
+                                        (format!("{:.2}%", apy))
                                     } @else {
                                         "-"
                                     }
@@ -1712,11 +1712,11 @@ fn create_channel_pages(
                         span class="value" { (format!("{} sats", store.get_channel_total_fees(scid))) }
                     }
 
-                    @if let Some(sats_per_day) = store.get_channel_sats_per_day(scid) {
+                    @if let Some(apy) = store.get_channel_apy(scid) {
                         div class="info-item" {
-                            span class="label" { "Avg. Sat/Day Earned: " }
+                            span class="label" { "APY: " }
                             span class="value" {
-                                (format!("{:.0} sats/day", sats_per_day))
+                                (format!("{:.2}%", apy))
                             }
                         }
                     }

@@ -603,6 +603,35 @@ impl Store {
         Some(total_fees as f64 / age_days as f64)
     }
 
+    /// Get fund (channel capacity info) by short_channel_id
+    pub fn get_fund(&self, short_channel_id: &str) -> Option<&cmd::Fund> {
+        self.funds
+            .channels
+            .iter()
+            .find(|f| f.short_channel_id.as_deref() == Some(short_channel_id))
+    }
+
+    /// Get channel APY (Annual Percentage Yield) based on fees earned relative to locked liquidity
+    /// Formula: (total_fees_sat / channel_capacity_sat) * (365 / age_days) * 100
+    pub fn get_channel_apy(&self, short_channel_id: &str) -> Option<f64> {
+        let age_days = self.get_channel_age_days(short_channel_id)?;
+        if age_days <= 0 {
+            return Some(0.0);
+        }
+
+        let fund = self.get_fund(short_channel_id)?;
+        let channel_capacity_sat = fund.amount_msat / 1000;
+        if channel_capacity_sat == 0 {
+            return Some(0.0);
+        }
+
+        let total_fees = self.get_channel_total_fees(short_channel_id);
+
+        // APY = (total_fees / capacity) * (365 / age_days) * 100
+        let apy = (total_fees as f64 / channel_capacity_sat as f64) * (365.0 / age_days as f64) * 100.0;
+        Some(apy)
+    }
+
     /// Get all settled forwards for a specific channel (both inbound and outbound)
     pub fn get_channel_forwards(&self, short_channel_id: &str) -> Vec<SettledForward> {
         self.settled_forwards()
