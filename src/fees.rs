@@ -109,20 +109,19 @@ pub fn calc_setchannel<'a>(
         max(new_max_htlc_msat, 1), // min_htlc cannot be greater than max_htlc and lower than 1
     );
 
-    let perc_change = if forwards_all == 0 || (forwards_ok == 0 && forwards_ko < 20) {
+    let perc_change = if forwards_all == 0 {
         // REDUCE FEE
-        // the channel is never succesfully selected and has few errors -> lower rates.
-        // We reduce proportionally to how full is the channel
-        let reduce_perc = -STEP_PERC * channel_fund_perc_ours;
-        if reduce_perc.abs() < 0.005 {
-            // we don't bother to change less than 0.5%
-            0.0
+        // the channel never succesfully forwarded, lower rates if enough liqudity.
+        if channel_fund_perc_ours > 0.2 {
+            // We reduce proportionally to how full is the channel
+            -STEP_PERC * channel_fund_perc_ours
         } else {
-            reduce_perc
+            // not enough liquidity, less than 20%, don't reduce fees
+            0.0
         }
     } else {
         // INCREASE FEE
-        // there are forwards or many errors, increase fee
+        // there are forwards, increase fee
         STEP_PERC as f64
     };
 
