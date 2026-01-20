@@ -109,7 +109,7 @@ pub fn calc_setchannel<'a>(
         max(new_max_htlc_msat, 1), // min_htlc cannot be greater than max_htlc and lower than 1
     );
 
-    let perc_change = if forwards_all == 0 {
+    let perc_change = if forwards_ok == 0 {
         // REDUCE FEE
         // the channel never succesfully forwarded, lower rates if enough liqudity.
         if channel_fund_perc_ours > 0.2 {
@@ -127,7 +127,7 @@ pub fn calc_setchannel<'a>(
         // Formula: 1.0 + (1.0 - liquidity)
         // at 90% liq -> 1.1x boost
         // at 50% liq -> 1.5x boost
-        // at 10% liq -> 1.9x boost
+        // at 20% liq -> 1.8x boost
         let scarcity_mult = 1.0 + (1.0 - channel_fund_perc_ours);
 
         // If we had MANY forwards (e.g. > 5), boost further.
