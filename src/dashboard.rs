@@ -1200,9 +1200,9 @@ fn create_channel_pages(
     let mut sorted_channels = channels.to_vec();
     sorted_channels.sort_by(|a, b| a.perc_float().partial_cmp(&b.perc_float()).unwrap());
 
-    // Sort channels by APY% (descending) - only channels 1+ year old AND no forwards in last 2 months
+    // only channels 1+ year old
     // Also exclude channels where the peer has a note (those are intentionally kept)
-    let mut sorted_channels_by_apy = channels
+    let mature_channels = channels
         .iter()
         .filter(|c| {
             // Exclude peers with notes
@@ -1211,37 +1211,13 @@ fn create_channel_pages(
             }
 
             if let Some(scid) = &c.short_channel_id {
-                let is_old_enough = store.get_channel_age_days(scid).unwrap_or(0) >= 365;
-                if !is_old_enough {
-                    return false;
-                }
-
-                // Check if channel has had any forwards in the last 60 days
-                let channel_forwards = store.get_channel_forwards(scid);
-                let has_recent_forwards = channel_forwards
-                    .iter()
-                    .any(|f| now.signed_duration_since(f.resolved_time).num_days() <= 60);
-
-                !has_recent_forwards
+                store.get_channel_age_days(scid).unwrap_or(0) >= 365
             } else {
                 false
             }
         })
         .cloned()
         .collect::<Vec<_>>();
-    sorted_channels_by_apy.sort_by(|a, b| {
-        let a_apy = a
-            .short_channel_id
-            .as_ref()
-            .and_then(|scid| store.get_channel_apy(scid))
-            .unwrap_or(0.0);
-        let b_apy = b
-            .short_channel_id
-            .as_ref()
-            .and_then(|scid| store.get_channel_apy(scid))
-            .unwrap_or(0.0);
-        b_apy.partial_cmp(&a_apy).unwrap() // descending order
-    });
 
     // Calculate global channel statistics
     let total_inbound: u64 = channels.iter().map(|c| c.our_amount_msat / 1000).sum();
@@ -1388,8 +1364,8 @@ fn create_channel_pages(
         }
 
         div class="info-card" {
-            h2 { "Mature Inactive Channels" }
-            p { "Channels 1+ year old with no forwards in last 2 months: " (sorted_channels_by_apy.len()) }
+            h2 { "Mature Channels" }
+            p { "Channels 1+ year old: " (mature_channels.len()) }
 
             table class="sortable" {
                 thead {
@@ -1406,7 +1382,7 @@ fn create_channel_pages(
                     }
                 }
                 tbody {
-                    @for channel in sorted_channels_by_apy {
+                    @for channel in mature_channels {
                         tr {
                             td {
                                 @if let Some(scid) = &channel.short_channel_id {
