@@ -25,32 +25,6 @@ just dataset
 
 This executes `scripts/fetch-dataset.sh` which SSHs to the remote node, collects data from CLN CLI commands and the summars availability database, then compresses the output.
 
-**Time Window:** Default is **1 Year** of forwarding history.
-
-### Manual Command
-
-Alternatively, run the SSH command directly:
-
-```bash
-ssh user@node "
-    START=\$(date +%s --date='1 year ago'); 
-    jq -n \
-    --slurpfile info <(lightning-cli getinfo) \
-    --slurpfile peers <(lightning-cli listpeers) \
-    --slurpfile channels <(lightning-cli listpeerchannels) \
-    --slurpfile forwards <(lightning-cli listforwards | jq \".forwards | map(select(.received_time > \$START))\") \
-    --slurpfile availdb /path/to/availdb.json \
-    '{ 
-        info: \$info[0], 
-        peers: \$peers[0].peers,
-        channels: \$channels[0].channels, 
-        forwards: \$forwards[0],
-        availdb: \$availdb[0]
-    }' | xz -9 -c" > node_analytics.json.xz
-```
-
----
-
 ## Data Structure
 
 The JSON object contains five root keys. Here is how to interpret them:
