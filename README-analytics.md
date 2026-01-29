@@ -77,7 +77,6 @@ The JSON object contains five root keys. Here is how to interpret them:
 **Source:** `lightning-cli listforwards`
 
 * **Purpose:** Historical routing logs (Traffic).
-* **Filter:** Only contains events newer than `START` timestamp.
 * **Data Quality Note:** CLN often garbage collects *failed* forwards after a short period, but keeps *settled* forwards longer. Trust `settled` stats for long-term analysis; treat `failed` stats as "recent context only."
 * **Key Fields:**
 * `in_channel`: SCID of the incoming peer.
@@ -120,17 +119,21 @@ saturation = channel['to_us_msat'] / channel['total_msat']
 ```
 
 
-3. **True APY (Annualized):**
+3. **True APY (Bidirectional, Annualized):**
 ```python
-# Filter forwards for 'settled' status on specific 'out_channel'
-revenue_1y = sum(f['fee_msat'] for f in forwards if f['out_channel'] == scid)
+# Count fees from ALL forwards where the channel was involved (in or out)
+# This captures value from both routing OUT and receiving IN
+settled = [f for f in forwards if f['status'] == 'settled']
+total_fees = sum(
+    f['fee_msat'] for f in settled 
+    if f['out_channel'] == scid or f['in_channel'] == scid
+)
 
-# If channel age < 1 year, scale revenue up
-scaling = 365 / min(age_days, 365)
-annualized_rev = revenue_1y * scaling
+# Use total channel capacity as denominator
+capacity = channel['total_msat']
 
-# Yield
-apy_percent = (annualized_rev / channel['to_us_msat']) * 100
+# Annualize based on channel age
+apy_percent = (total_fees / capacity) * (365 / age_days) * 100
 ```
 
 
