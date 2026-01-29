@@ -576,6 +576,17 @@ impl Store {
             .sum()
     }
 
+    /// Get total fees earned for a specific channel (from both inbound and outbound forwards)
+    /// This captures the "turnaround value" - fees earned when channel participates in routing
+    /// either as the source (in_channel) or destination (out_channel) of a forward.
+    pub fn get_channel_total_fees_bidirectional(&self, short_channel_id: &str) -> u64 {
+        self.settled_forwards()
+            .iter()
+            .filter(|f| f.out_channel == short_channel_id || f.in_channel == short_channel_id)
+            .map(|f| f.fee_sat)
+            .sum()
+    }
+
     /// Get channel age in days from block height (approximate)
     pub fn get_channel_age_days(&self, short_channel_id: &str) -> Option<i64> {
         // Parse block height directly from short_channel_id (format: "block_height x tx_index x output_index")
@@ -626,6 +637,29 @@ impl Store {
         }
 
         let total_fees = self.get_channel_total_fees(short_channel_id);
+
+        // APY = (total_fees / capacity) * (365 / age_days) * 100
+        let apy = (total_fees as f64 / channel_capacity_sat as f64) * (365.0 / age_days as f64) * 100.0;
+        Some(apy)
+    }
+
+    /// Get channel APY (Annual Percentage Yield) considering both inbound and outbound forwards
+    /// This metric captures the total routing value of a channel, including fees earned when
+    /// the channel serves as the source (in_channel) for forwards routed through the node.
+    /// Formula: (total_bidirectional_fees_sat / channel_capacity_sat) * (365 / age_days) * 100
+    pub fn get_channel_apy_bidirectional(&self, short_channel_id: &str) -> Option<f64> {
+        let age_days = self.get_channel_age_days(short_channel_id)?;
+        if age_days <= 0 {
+            return Some(0.0);
+        }
+
+        let fund = self.get_fund(short_channel_id)?;
+        let channel_capacity_sat = fund.amount_msat / 1000;
+        if channel_capacity_sat == 0 {
+            return Some(0.0);
+        }
+
+        let total_fees = self.get_channel_total_fees_bidirectional(short_channel_id);
 
         // APY = (total_fees / capacity) * (365 / age_days) * 100
         let apy = (total_fees as f64 / channel_capacity_sat as f64) * (365.0 / age_days as f64) * 100.0;

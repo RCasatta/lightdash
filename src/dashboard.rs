@@ -1290,6 +1290,7 @@ fn create_channel_pages(
                         th style="text-align: right;" { "My PPM" }
                         th style="text-align: right;" { "Inbound PPM" }
                         th style="text-align: right;" { "APY%" }
+                        th style="text-align: right;" { "Total APY%" }
                     }
                 }
                 tbody {
@@ -1357,6 +1358,17 @@ fn create_channel_pages(
                                     "-"
                                 }
                             }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(apy) = store.get_channel_apy_bidirectional(scid) {
+                                        (format!("{:.2}%", apy))
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
+                            }
                         }
                     }
                 }
@@ -1378,6 +1390,7 @@ fn create_channel_pages(
                         th style="text-align: right;" { "My PPM" }
                         th style="text-align: right;" { "Inbound PPM" }
                         th style="text-align: right;" { "APY%" }
+                        th style="text-align: right;" { "Total APY%" }
                         th style="text-align: right;" { "Age (days)" }
                     }
                 }
@@ -1438,6 +1451,17 @@ fn create_channel_pages(
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(apy) = store.get_channel_apy(scid) {
+                                        (format!("{:.2}%", apy))
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
+                            }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(apy) = store.get_channel_apy_bidirectional(scid) {
                                         (format!("{:.2}%", apy))
                                     } @else {
                                         "-"
@@ -1691,6 +1715,15 @@ fn create_channel_pages(
                     @if let Some(apy) = store.get_channel_apy(scid) {
                         div class="info-item" {
                             span class="label" { "APY: " }
+                            span class="value" {
+                                (format!("{:.2}%", apy))
+                            }
+                        }
+                    }
+
+                    @if let Some(apy) = store.get_channel_apy_bidirectional(scid) {
+                        div class="info-item" {
+                            span class="label" { "Total APY: " }
                             span class="value" {
                                 (format!("{:.2}%", apy))
                             }
