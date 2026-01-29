@@ -1,3 +1,9 @@
+set dotenv-load
+
+# Generate CLN analytics dataset from remote node
+dataset:
+    ./scripts/fetch-dataset.sh > node_analytics.json.xz
+
 # Generate the dashboard
 dashboard:
     cargo run -- dashboard target --min-channels 100 --availdb test-json/availdb.json
