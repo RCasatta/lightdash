@@ -1154,6 +1154,61 @@ fn create_failures_page(
             }
         }
 
+        // Table 3: Spam Sources (by incoming channel)
+        div class="info-card" {
+            h2 { "Spam Sources - Incoming Channel Analysis" }
+            p { "Channels sending forwards that fail downstream. Based on last 30 days of data, annualized. High spam ratio indicates the source channel is sending payments that fail at downstream nodes." }
+
+            @let spam_data = store.get_channel_spam_data();
+            @let spam_data_filtered: Vec<_> = spam_data.iter().filter(|d| d.failed_count > 0).collect();
+            @if !spam_data_filtered.is_empty() {
+                p { "Total channels with failed forwards: " (spam_data_filtered.len()) }
+                table class="sortable" {
+                    thead {
+                        tr {
+                            th { "Spam Ratio" }
+                            th { "Failed (30d)" }
+                            th { "Settled (30d)" }
+                            th { "Ann. Failed/yr" }
+                            th { "Ann. Settled/yr" }
+                            th { "Channel ID" }
+                            th { "Node Alias" }
+                        }
+                    }
+                    tbody {
+                        @for channel_data in spam_data_filtered.iter() {
+                            @let (alias, node_id) = get_channel_info(&channel_data.channel_id);
+                            tr {
+                                td class="align-right" {
+                                    @if channel_data.spam_ratio.is_infinite() {
+                                        "∞"
+                                    } @else {
+                                        (format!("{:.2}", channel_data.spam_ratio))
+                                    }
+                                }
+                                td class="align-right" { (channel_data.failed_count) }
+                                td class="align-right" { (channel_data.settled_count) }
+                                td class="align-right" { (format!("{:.0}", channel_data.annualized_failed)) }
+                                td class="align-right" { (format!("{:.0}", channel_data.annualized_settled)) }
+                                td {
+                                    a href={(format!("channels/{}.html", channel_data.channel_id))} { (&channel_data.channel_id) }
+                                }
+                                td {
+                                    @if let Some(node_id) = node_id {
+                                        a href={(format!("nodes/{}.html", node_id))} { (alias) }
+                                    } @else {
+                                        (alias)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } @else {
+                p { "No spam sources detected in the last 30 days." }
+            }
+        }
+
         style {
             r#"
             .align-right {
