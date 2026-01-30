@@ -960,81 +960,6 @@ impl Store {
             .cloned()
             .collect()
     }
-
-    /// Get spam data for channels based on failed/settled ratio from in_channel perspective
-    /// Only counts 'failed' status (downstream failures), not 'local_failed'
-    /// Uses last 30 days of data and annualizes the results
-    pub fn get_channel_spam_data(&self) -> Vec<ChannelSpamData> {
-        let days = 30;
-        let hours = days * 24;
-
-        let mut settled_counts: HashMap<String, usize> = HashMap::new();
-        let mut failed_counts: HashMap<String, usize> = HashMap::new();
-
-        for forward in &self.forwards.forwards {
-            // Filter to last 30 days
-            if let Some(received) = DateTime::from_timestamp(forward.received_time as i64, 0) {
-                if self.now.signed_duration_since(received).num_hours() > hours {
-                    continue;
-                }
-
-                let channel = &forward.in_channel;
-
-                match forward.status.as_str() {
-                    "settled" => {
-                        *settled_counts.entry(channel.clone()).or_insert(0) += 1;
-                    }
-                    "failed" => {
-                        *failed_counts.entry(channel.clone()).or_insert(0) += 1;
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        // Collect all channels that have any forwards
-        let mut all_channels: HashSet<String> = HashSet::new();
-        all_channels.extend(settled_counts.keys().cloned());
-        all_channels.extend(failed_counts.keys().cloned());
-
-        let annualization_factor = 365.0 / days as f64;
-
-        let mut result: Vec<ChannelSpamData> = all_channels
-            .into_iter()
-            .map(|channel| {
-                let settled = *settled_counts.get(&channel).unwrap_or(&0);
-                let failed = *failed_counts.get(&channel).unwrap_or(&0);
-
-                let spam_ratio = if settled == 0 {
-                    if failed > 0 {
-                        f64::INFINITY
-                    } else {
-                        0.0
-                    }
-                } else {
-                    failed as f64 / settled as f64
-                };
-
-                ChannelSpamData {
-                    channel_id: channel,
-                    settled_count: settled,
-                    failed_count: failed,
-                    spam_ratio,
-                    annualized_failed: failed as f64 * annualization_factor,
-                    annualized_settled: settled as f64 * annualization_factor,
-                }
-            })
-            .collect();
-
-        // Sort by spam ratio descending (infinity values first)
-        result.sort_by(|a, b| {
-            b.spam_ratio
-                .partial_cmp(&a.spam_ratio)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-
-        result
-    }
 }
 
 /// APY calculation data
@@ -1143,15 +1068,4 @@ pub struct PeriodCounts {
 pub struct ChannelFailureData {
     pub channel_id: String,
     pub counts: PeriodCounts,
-}
-
-/// Channel spam data based on failed/settled forward ratio
-#[derive(Debug, Clone)]
-pub struct ChannelSpamData {
-    pub channel_id: String,
-    pub settled_count: usize,
-    pub failed_count: usize,
-    pub spam_ratio: f64,
-    pub annualized_failed: f64,
-    pub annualized_settled: f64,
 }
