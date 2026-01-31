@@ -2132,7 +2132,11 @@ fn create_correlations_page(
             }
         },
         Err(e) => {
-            log::error!("Failed to read correlations file {}: {}", correlations_file, e);
+            log::error!(
+                "Failed to read correlations file {}: {}",
+                correlations_file,
+                e
+            );
             return;
         }
     };
@@ -2192,7 +2196,7 @@ fn create_correlations_page(
                         @for corr in &bidirectional_candidates {
                             tr {
                                 td {
-                                    a href={(format!("channels/{}.html", corr.channel_id))} {
+                                    a href={(format!("/charts/channels/{}.html", corr.channel_id))} {
                                         (corr.channel_id.clone())
                                     }
                                 }
@@ -2241,7 +2245,7 @@ fn create_correlations_page(
                     @for corr in correlations.iter().take(500) {
                         tr {
                             td {
-                                a href={(format!("channels/{}.html", corr.channel_id))} {
+                                a href={(format!("/charts/channels/{}.html", corr.channel_id))} {
                                     (corr.channel_id.clone())
                                 }
                             }
