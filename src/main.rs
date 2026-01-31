@@ -34,6 +34,9 @@ enum Commands {
         /// Path to JSON file with node uptime data (format: {node_id: {avail: float}})
         #[arg(long)]
         availdb: Option<String>,
+        /// Path to JSON file with channel correlation data from channels subcommand
+        #[arg(long)]
+        correlations: Option<String>,
     },
     /// Generate routing analysis page
     Routes {
@@ -70,10 +73,11 @@ fn main() {
             directory,
             min_channels,
             availdb,
+            correlations,
         } => {
             let store = Store::new(availdb);
             log::debug!("Dashboard directory: {}", directory);
-            dashboard::run_dashboard(&store, directory, min_channels);
+            dashboard::run_dashboard(&store, directory, min_channels, correlations);
         }
         Commands::Routes { directory } => {
             let store = Store::new(None);

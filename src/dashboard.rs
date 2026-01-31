@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::fs;
 
+use crate::channels::ChannelCorrelation;
 use crate::cmd;
 use crate::{common::*, store::Store};
 use maud::{html, Markup, PreEscaped, DOCTYPE};
@@ -2111,6 +2112,219 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
     }
 }
 
+fn create_correlations_page(
+    directory: &str,
+    correlations_file: &str,
+    now: &chrono::DateTime<chrono::Utc>,
+) {
+    // Read and parse the correlations JSON file
+    let correlations: Vec<ChannelCorrelation> = match fs::read_to_string(correlations_file) {
+        Ok(content) => match serde_json::from_str(&content) {
+            Ok(data) => data,
+            Err(e) => {
+                log::error!("Failed to parse correlations file: {}", e);
+                return;
+            }
+        },
+        Err(e) => {
+            log::error!("Failed to read correlations file {}: {}", correlations_file, e);
+            return;
+        }
+    };
+
+    // Filter to show only channels with negative fee correlation (potential bidirectional flow)
+    // and at least some fee changes on both sides
+    let bidirectional_candidates: Vec<&ChannelCorrelation> = correlations
+        .iter()
+        .filter(|c| {
+            c.fee_correlation.map(|f| f < -0.3).unwrap_or(false)
+                && c.node_0_fee_changes >= 2
+                && c.node_1_fee_changes >= 2
+                && c.paired_data_points >= 5
+        })
+        .collect();
+
+    let correlations_content = html! {
+        (create_page_header("Bidirectional Flow Analysis", false))
+
+        div class="info-card" {
+            h2 { "Channel Correlation Analysis" }
+            p {
+                "This page shows channels that may have high bidirectional flow based on inverse correlation "
+                "between fee adjustments on both sides. Negative correlation suggests that when one side raises fees, "
+                "the other lowers them - a pattern often seen with active liquidity management in busy channels."
+            }
+            p {
+                "Total channels analyzed: " (correlations.len())
+                " | Bidirectional candidates (fee correlation < -0.3): " (bidirectional_candidates.len())
+            }
+        }
+
+        div class="info-card" {
+            h2 { "Bidirectional Flow Candidates" }
+            p {
+                "Channels with negative fee correlation (< -0.3), at least 2 fee changes per side, "
+                "and at least 5 paired data points. Sorted by most negative correlation first."
+            }
+
+            @if bidirectional_candidates.is_empty() {
+                p { "No channels with significant inverse fee correlation found." }
+            } @else {
+                table class="sortable" {
+                    thead {
+                        tr {
+                            th data-sort="string" { "Channel ID" }
+                            th data-sort="number" { "Fee Corr" }
+                            th data-sort="number" { "HTLC Corr" }
+                            th data-sort="number" { "Data Points" }
+                            th data-sort="number" { "Node 0 Changes" }
+                            th data-sort="number" { "Node 1 Changes" }
+                            th data-sort="string" { "Node 0" }
+                            th data-sort="string" { "Node 1" }
+                        }
+                    }
+                    tbody {
+                        @for corr in &bidirectional_candidates {
+                            tr {
+                                td {
+                                    a href={(format!("channels/{}.html", corr.channel_id))} {
+                                        (corr.channel_id.clone())
+                                    }
+                                }
+                                td class="number-cell" style=(correlation_color(corr.fee_correlation)) {
+                                    (format_correlation(corr.fee_correlation))
+                                }
+                                td class="number-cell" style=(correlation_color(corr.htlc_max_correlation)) {
+                                    (format_correlation(corr.htlc_max_correlation))
+                                }
+                                td class="number-cell" { (corr.paired_data_points) }
+                                td class="number-cell" { (corr.node_0_fee_changes) }
+                                td class="number-cell" { (corr.node_1_fee_changes) }
+                                td {
+                                    a href={(format!("https://mempool.space/lightning/node/{}", corr.node_0))} target="_blank" {
+                                        (truncate_node_id(&corr.node_0))
+                                    }
+                                }
+                                td {
+                                    a href={(format!("https://mempool.space/lightning/node/{}", corr.node_1))} target="_blank" {
+                                        (truncate_node_id(&corr.node_1))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        div class="info-card" {
+            h2 { "All Channels (First 500)" }
+            p { "Complete list of all analyzed channels, limited to first 500 entries." }
+
+            table class="sortable" {
+                thead {
+                    tr {
+                        th data-sort="string" { "Channel ID" }
+                        th data-sort="number" { "Fee Corr" }
+                        th data-sort="number" { "HTLC Corr" }
+                        th data-sort="number" { "Data Points" }
+                        th data-sort="number" { "Node 0 Changes" }
+                        th data-sort="number" { "Node 1 Changes" }
+                    }
+                }
+                tbody {
+                    @for corr in correlations.iter().take(500) {
+                        tr {
+                            td {
+                                a href={(format!("channels/{}.html", corr.channel_id))} {
+                                    (corr.channel_id.clone())
+                                }
+                            }
+                            td class="number-cell" style=(correlation_color(corr.fee_correlation)) {
+                                (format_correlation(corr.fee_correlation))
+                            }
+                            td class="number-cell" style=(correlation_color(corr.htlc_max_correlation)) {
+                                (format_correlation(corr.htlc_max_correlation))
+                            }
+                            td class="number-cell" { (corr.paired_data_points) }
+                            td class="number-cell" { (corr.node_0_fee_changes) }
+                            td class="number-cell" { (corr.node_1_fee_changes) }
+                        }
+                    }
+                }
+            }
+        }
+
+        div class="info-card" {
+            h2 { "Interpretation Guide" }
+            div class="section" {
+                h3 class="section-title" { "Fee Correlation" }
+                p {
+                    "A negative fee correlation (shown in green) indicates that when one node raises its fee, "
+                    "the other tends to lower theirs. This pattern suggests both operators are actively managing "
+                    "liquidity and responding to flow - a sign of a busy, bidirectional channel."
+                }
+            }
+            div class="section" {
+                h3 class="section-title" { "HTLC Max Correlation" }
+                p {
+                    "Some nodes dynamically set their HTLC maximum based on available balance. Negative HTLC max "
+                    "correlation could indicate liquidity shifting back and forth between the two sides."
+                }
+            }
+            div class="section" {
+                h3 class="section-title" { "Caveats" }
+                ul {
+                    li { "Not all operators actively manage fees - some use static values." }
+                    li { "Daily snapshots may miss intra-day changes." }
+                    li { "Correlation doesn't prove causation - patterns may have other explanations." }
+                }
+            }
+        }
+    };
+
+    let correlations_html = wrap_in_html_page(
+        "Bidirectional Flow Analysis",
+        correlations_content,
+        &now.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+    );
+
+    let correlations_file_path = format!("{}/correlations.html", directory);
+    match fs::write(&correlations_file_path, correlations_html.into_string()) {
+        Ok(_) => log::info!("Correlations page generated: {}", correlations_file_path),
+        Err(e) => log::error!("Error writing correlations page: {}", e),
+    }
+}
+
+/// Format correlation value for display
+fn format_correlation(corr: Option<f64>) -> String {
+    match corr {
+        Some(v) => format!("{:.3}", v),
+        None => "N/A".to_string(),
+    }
+}
+
+/// Get CSS color style based on correlation value
+fn correlation_color(corr: Option<f64>) -> String {
+    match corr {
+        Some(v) if v < -0.5 => "color: #48bb78;".to_string(), // Strong negative = bright green
+        Some(v) if v < -0.3 => "color: #68d391;".to_string(), // Moderate negative = green
+        Some(v) if v < 0.0 => "color: #9ae6b4;".to_string(),  // Weak negative = light green
+        Some(v) if v > 0.5 => "color: #fc8181;".to_string(),  // Strong positive = red
+        Some(v) if v > 0.3 => "color: #feb2b2;".to_string(),  // Moderate positive = light red
+        _ => "".to_string(),
+    }
+}
+
+/// Truncate node ID for display
+fn truncate_node_id(node_id: &str) -> String {
+    if node_id.len() > 16 {
+        format!("{}...{}", &node_id[..8], &node_id[node_id.len() - 8..])
+    } else {
+        node_id.to_string()
+    }
+}
+
 fn create_closed_channels_page(
     directory: &str,
     store: &Store,
@@ -2329,7 +2543,12 @@ fn create_closed_channels_page(
 ///
 /// # Panics
 /// Panics if unable to create the output directory or write HTML files
-pub fn run_dashboard(store: &Store, directory: String, min_channels: usize) {
+pub fn run_dashboard(
+    store: &Store,
+    directory: String,
+    min_channels: usize,
+    correlations_path: Option<String>,
+) {
     let now = Utc::now();
     log::debug!("{}", now);
     log::debug!("my id:{}", store.info.id);
@@ -2888,6 +3107,11 @@ pub fn run_dashboard(store: &Store, directory: String, min_channels: usize) {
 
     log::info!("Creating node pages");
     create_node_pages(&directory, &store, &now, min_channels);
+
+    if let Some(correlations_file) = correlations_path {
+        log::info!("Creating correlations page");
+        create_correlations_page(&directory, &correlations_file, &now);
+    }
 
     log::info!("Dashboard generated successfully");
 }

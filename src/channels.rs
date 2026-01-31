@@ -2,6 +2,7 @@ use crate::cmd;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use maud::{html, Markup, DOCTYPE};
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::Write;
@@ -9,6 +10,24 @@ use std::io::Write;
 type NodeId = String;
 type ChannelId = String;
 type Channels = HashMap<ChannelId, HashMap<NodeId, Vec<ElementData>>>;
+
+/// Correlation metrics for a single channel
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelCorrelation {
+    pub channel_id: String,
+    pub node_0: String,
+    pub node_1: String,
+    /// Pearson correlation coefficient for fee_per_millionth between the two nodes
+    pub fee_correlation: Option<f64>,
+    /// Pearson correlation coefficient for htlc_maximum between the two nodes
+    pub htlc_max_correlation: Option<f64>,
+    /// Number of data points where both nodes had data
+    pub paired_data_points: usize,
+    /// Number of fee changes for node_0
+    pub node_0_fee_changes: usize,
+    /// Number of fee changes for node_1
+    pub node_1_fee_changes: usize,
+}
 
 struct ElementData {
     timestamp: u32,
@@ -106,6 +125,7 @@ pub fn run_channels(dir: &str, output_dir: &str) {
     }
 
     let mut monodirectional = 0;
+    let mut correlations: Vec<ChannelCorrelation> = Vec::new();
 
     // Write CSV files for each channel
     for (i, (channel_id, nodes)) in channels.iter().enumerate() {
@@ -246,8 +266,36 @@ pub fn run_channels(dir: &str, output_dir: &str) {
                 e
             ),
         }
+
+        // Calculate correlation metrics for this channel
+        let correlation =
+            calculate_channel_correlation(channel_id, node_0, node_1, &timestamp_data);
+        correlations.push(correlation);
     }
     log::info!("Monodirectional channels: {}", monodirectional);
+
+    // Sort correlations by fee_correlation (most negative first) to find bidirectional flow candidates
+    correlations.sort_by(|a, b| {
+        let a_score = a.fee_correlation.unwrap_or(f64::MAX);
+        let b_score = b.fee_correlation.unwrap_or(f64::MAX);
+        a_score
+            .partial_cmp(&b_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    // Write correlations to JSON file
+    let correlations_file = format!("{}/correlations.json", output_dir);
+    match serde_json::to_string_pretty(&correlations) {
+        Ok(json) => match fs::write(&correlations_file, json) {
+            Ok(_) => log::info!(
+                "Correlations written to {} ({} channels)",
+                correlations_file,
+                correlations.len()
+            ),
+            Err(e) => log::error!("Failed to write correlations file: {}", e),
+        },
+        Err(e) => log::error!("Failed to serialize correlations: {}", e),
+    }
 
     log::info!("Channels command completed");
 }
@@ -784,6 +832,91 @@ fn truncate_node_id(node_id: &str) -> String {
     } else {
         node_id.to_string()
     }
+}
+
+/// Calculate Pearson correlation coefficient between two series of values.
+/// Returns None if there are fewer than 3 paired data points or if variance is zero.
+fn calculate_pearson_correlation(values: &[(f64, f64)]) -> Option<f64> {
+    if values.len() < 3 {
+        return None;
+    }
+
+    let n = values.len() as f64;
+    let sum_x: f64 = values.iter().map(|(x, _)| x).sum();
+    let sum_y: f64 = values.iter().map(|(_, y)| y).sum();
+    let sum_xy: f64 = values.iter().map(|(x, y)| x * y).sum();
+    let sum_x2: f64 = values.iter().map(|(x, _)| x * x).sum();
+    let sum_y2: f64 = values.iter().map(|(_, y)| y * y).sum();
+
+    let numerator = n * sum_xy - sum_x * sum_y;
+    let denominator = ((n * sum_x2 - sum_x * sum_x) * (n * sum_y2 - sum_y * sum_y)).sqrt();
+
+    if denominator == 0.0 {
+        None
+    } else {
+        Some(numerator / denominator)
+    }
+}
+
+/// Calculate correlation metrics for a channel given its timestamp data.
+fn calculate_channel_correlation(
+    channel_id: &str,
+    node_0: &str,
+    node_1: &str,
+    timestamp_data: &BTreeMap<u32, (Option<&ElementData>, Option<&ElementData>)>,
+) -> ChannelCorrelation {
+    // Collect paired data points for fee correlation
+    let fee_pairs: Vec<(f64, f64)> = timestamp_data
+        .values()
+        .filter_map(|(data_0, data_1)| match (data_0, data_1) {
+            (Some(d0), Some(d1)) => {
+                Some((d0.fee_per_millionth as f64, d1.fee_per_millionth as f64))
+            }
+            _ => None,
+        })
+        .collect();
+
+    // Collect paired data points for htlc_max correlation
+    let htlc_pairs: Vec<(f64, f64)> = timestamp_data
+        .values()
+        .filter_map(|(data_0, data_1)| match (data_0, data_1) {
+            (Some(d0), Some(d1)) => Some((d0.htlc_maximum as f64, d1.htlc_maximum as f64)),
+            _ => None,
+        })
+        .collect();
+
+    // Count fee changes for each node
+    let node_0_fee_changes = count_value_changes(
+        timestamp_data
+            .values()
+            .filter_map(|(d0, _)| d0.map(|d| d.fee_per_millionth))
+            .collect(),
+    );
+    let node_1_fee_changes = count_value_changes(
+        timestamp_data
+            .values()
+            .filter_map(|(_, d1)| d1.map(|d| d.fee_per_millionth))
+            .collect(),
+    );
+
+    ChannelCorrelation {
+        channel_id: channel_id.to_string(),
+        node_0: node_0.to_string(),
+        node_1: node_1.to_string(),
+        fee_correlation: calculate_pearson_correlation(&fee_pairs),
+        htlc_max_correlation: calculate_pearson_correlation(&htlc_pairs),
+        paired_data_points: fee_pairs.len(),
+        node_0_fee_changes,
+        node_1_fee_changes,
+    }
+}
+
+/// Count the number of times a value changes in a sequence.
+fn count_value_changes(values: Vec<u32>) -> usize {
+    if values.len() < 2 {
+        return 0;
+    }
+    values.windows(2).filter(|w| w[0] != w[1]).count()
 }
 
 /// Removes consecutive duplicate points, keeping the first and last of each run.
