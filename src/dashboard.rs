@@ -162,6 +162,7 @@ fn create_page_header(title: &str, is_subdir: bool) -> Markup {
         failures_link,
         apy_link,
         closed_link,
+        correlations_link,
     ) = if is_subdir {
         (
             "../index.html",
@@ -172,6 +173,7 @@ fn create_page_header(title: &str, is_subdir: bool) -> Markup {
             "../failures.html",
             "../apy.html",
             "../closed-channels.html",
+            "../correlations.html",
         )
     } else {
         (
@@ -183,6 +185,7 @@ fn create_page_header(title: &str, is_subdir: bool) -> Markup {
             "failures.html",
             "apy.html",
             "closed-channels.html",
+            "correlations.html",
         )
     };
 
@@ -197,7 +200,8 @@ fn create_page_header(title: &str, is_subdir: bool) -> Markup {
                 a href=(routes_link) { "Routes" } " | "
                 a href=(failures_link) { "Failures" } " | "
                 a href=(apy_link) { "APY" } " | "
-                a href=(closed_link) { "Closed" }
+                a href=(closed_link) { "Closed" } " | "
+                a href=(correlations_link) { "Correlations" }
             }
         }
     }
@@ -2115,6 +2119,7 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
 fn create_correlations_page(
     directory: &str,
     correlations_file: &str,
+    store: &Store,
     now: &chrono::DateTime<chrono::Utc>,
 ) {
     // Read and parse the correlations JSON file
@@ -2133,13 +2138,13 @@ fn create_correlations_page(
     };
 
     // Filter to show only channels with negative fee correlation (potential bidirectional flow)
-    // and at least some fee changes on both sides
+    // and at least 20 fee changes on both sides (indicating active management)
     let bidirectional_candidates: Vec<&ChannelCorrelation> = correlations
         .iter()
         .filter(|c| {
             c.fee_correlation.map(|f| f < -0.3).unwrap_or(false)
-                && c.node_0_fee_changes >= 2
-                && c.node_1_fee_changes >= 2
+                && c.node_0_fee_changes > 20
+                && c.node_1_fee_changes > 20
                 && c.paired_data_points >= 5
         })
         .collect();
@@ -2163,7 +2168,7 @@ fn create_correlations_page(
         div class="info-card" {
             h2 { "Bidirectional Flow Candidates" }
             p {
-                "Channels with negative fee correlation (< -0.3), at least 2 fee changes per side, "
+                "Channels with negative fee correlation (< -0.3), more than 20 fee changes per side, "
                 "and at least 5 paired data points. Sorted by most negative correlation first."
             }
 
@@ -2202,12 +2207,12 @@ fn create_correlations_page(
                                 td class="number-cell" { (corr.node_1_fee_changes) }
                                 td {
                                     a href={(format!("https://mempool.space/lightning/node/{}", corr.node_0))} target="_blank" {
-                                        (truncate_node_id(&corr.node_0))
+                                        (store.get_node_alias(&corr.node_0))
                                     }
                                 }
                                 td {
                                     a href={(format!("https://mempool.space/lightning/node/{}", corr.node_1))} target="_blank" {
-                                        (truncate_node_id(&corr.node_1))
+                                        (store.get_node_alias(&corr.node_1))
                                     }
                                 }
                             }
@@ -2313,15 +2318,6 @@ fn correlation_color(corr: Option<f64>) -> String {
         Some(v) if v > 0.5 => "color: #fc8181;".to_string(),  // Strong positive = red
         Some(v) if v > 0.3 => "color: #feb2b2;".to_string(),  // Moderate positive = light red
         _ => "".to_string(),
-    }
-}
-
-/// Truncate node ID for display
-fn truncate_node_id(node_id: &str) -> String {
-    if node_id.len() > 16 {
-        format!("{}...{}", &node_id[..8], &node_id[node_id.len() - 8..])
-    } else {
-        node_id.to_string()
     }
 }
 
@@ -3110,7 +3106,7 @@ pub fn run_dashboard(
 
     if let Some(correlations_file) = correlations_path {
         log::info!("Creating correlations page");
-        create_correlations_page(&directory, &correlations_file, &now);
+        create_correlations_page(&directory, &correlations_file, store, &now);
     }
 
     log::info!("Dashboard generated successfully");
