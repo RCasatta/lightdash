@@ -2153,6 +2153,16 @@ fn create_correlations_page(
         })
         .collect();
 
+    // Count node occurrences in bidirectional candidates
+    let mut node_count_map: HashMap<String, usize> = HashMap::new();
+    for corr in &bidirectional_candidates {
+        *node_count_map.entry(corr.node_0.clone()).or_insert(0) += 1;
+        *node_count_map.entry(corr.node_1.clone()).or_insert(0) += 1;
+    }
+    // Sort by count descending
+    let mut node_counts: Vec<(String, usize)> = node_count_map.into_iter().collect();
+    node_counts.sort_by(|a, b| b.1.cmp(&a.1));
+
     let correlations_content = html! {
         (create_page_header("Bidirectional Flow Analysis", false))
 
@@ -2227,37 +2237,32 @@ fn create_correlations_page(
         }
 
         div class="info-card" {
-            h2 { "All Channels (First 500)" }
-            p { "Complete list of all analyzed channels, limited to first 500 entries." }
+            h2 { "Top Nodes by Bidirectional Channels" }
+            p {
+                "Nodes that appear most frequently in the bidirectional flow candidates. "
+                "These are good candidates to connect to for routing."
+            }
 
-            table class="sortable" {
-                thead {
-                    tr {
-                        th data-sort="string" { "Channel ID" }
-                        th data-sort="number" { "Fee Corr" }
-                        th data-sort="number" { "HTLC Corr" }
-                        th data-sort="number" { "Data Points" }
-                        th data-sort="number" { "Node 0 Changes" }
-                        th data-sort="number" { "Node 1 Changes" }
-                    }
-                }
-                tbody {
-                    @for corr in correlations.iter().take(500) {
+            @if node_counts.is_empty() {
+                p { "No nodes found in bidirectional candidates." }
+            } @else {
+                table class="sortable" {
+                    thead {
                         tr {
-                            td {
-                                a href={(format!("/charts/channels/{}.html", corr.channel_id))} {
-                                    (corr.channel_id.clone())
+                            th data-sort="string" { "Node" }
+                            th data-sort="number" { "Bidirectional Channels" }
+                        }
+                    }
+                    tbody {
+                        @for (node_id, count) in &node_counts {
+                            tr {
+                                td {
+                                    a href={(format!("https://mempool.space/lightning/node/{node_id}"))} target="_blank" {
+                                        (store.get_node_alias(node_id))
+                                    }
                                 }
+                                td class="number-cell" { (count) }
                             }
-                            td class="number-cell" style=(correlation_color(corr.fee_correlation)) {
-                                (format_correlation(corr.fee_correlation))
-                            }
-                            td class="number-cell" style=(correlation_color(corr.htlc_max_correlation)) {
-                                (format_correlation(corr.htlc_max_correlation))
-                            }
-                            td class="number-cell" { (corr.paired_data_points) }
-                            td class="number-cell" { (corr.node_0_fee_changes) }
-                            td class="number-cell" { (corr.node_1_fee_changes) }
                         }
                     }
                 }
