@@ -3,11 +3,30 @@
 //! Fetches liquidity swap data from LN+ and saves it locally as JSON.
 
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::fs;
 
 use crate::cmd;
 
 const LNPLUS_API_BASE: &str = "https://lightningnetwork.plus/api/2";
+
+/// Swap status filter for API queries
+#[derive(Debug, Clone, Copy)]
+pub enum SwapStatus {
+    Pending,
+    Opening,
+    Completed,
+}
+
+impl fmt::Display for SwapStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SwapStatus::Pending => write!(f, "pending"),
+            SwapStatus::Opening => write!(f, "opening"),
+            SwapStatus::Completed => write!(f, "completed"),
+        }
+    }
+}
 
 /// LN+ API client with authentication
 pub struct LnPlusClient {
@@ -44,10 +63,21 @@ impl LnPlusClient {
         })
     }
 
-    /// Fetch open swaps from LN+
-    pub fn get_swaps(&self) -> Result<Vec<Swap>, String> {
-        log::info!("Fetching swaps from LN+...");
-        let url = format!("{LNPLUS_API_BASE}/get_swaps");
+    /// Fetch swaps from LN+ with optional status filter
+    ///
+    /// # Arguments
+    /// * `status` - Optional status filter (pending, opening, completed)
+    pub fn get_swaps(&self, status: Option<SwapStatus>) -> Result<Vec<Swap>, String> {
+        let url = match status {
+            Some(s) => {
+                log::info!("Fetching {s} swaps from LN+...");
+                format!("{LNPLUS_API_BASE}/get_swaps/status={s}")
+            }
+            None => {
+                log::info!("Fetching all swaps from LN+...");
+                format!("{LNPLUS_API_BASE}/get_swaps")
+            }
+        };
 
         let response: Vec<Swap> = ureq::get(&url)
             .query("message", &self.message)
@@ -79,8 +109,8 @@ pub fn run_lnplus(output_dir: &str) {
         }
     };
 
-    // Fetch and save swaps
-    match client.get_swaps() {
+    // Fetch and save pending swaps
+    match client.get_swaps(Some(SwapStatus::Pending)) {
         Ok(swaps) => {
             let swaps_file = format!("{output_dir}/lnplus_swaps.json");
             match serde_json::to_string_pretty(&swaps) {
