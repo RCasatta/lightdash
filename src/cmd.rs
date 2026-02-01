@@ -104,6 +104,12 @@ pub fn get_route(id: &str, amount_msat: u64) -> Option<GetRoute> {
     serde_json::from_value(v).ok()
 }
 
+/// Sign a message with the node's key for authentication purposes
+pub fn signmessage(message: &str) -> SignMessageResponse {
+    let v = cmd_result("lightning-cli", &["signmessage", message]);
+    serde_json::from_value(v).unwrap()
+}
+
 pub fn cmd_result(cmd: &str, args: &[impl AsRef<str>]) -> Value {
     // println!("cmd:{cmd} args:{args:?}");
     let data = match std::process::Command::new(cmd)
@@ -138,6 +144,13 @@ pub fn cmd_result(cmd: &str, args: &[impl AsRef<str>]) -> Value {
 pub struct GetInfo {
     pub id: String,
     pub blockheight: u64,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct SignMessageResponse {
+    pub signature: String,
+    pub recid: String,
+    pub zbase: String,
 }
 
 #[derive(Deserialize, Debug)]
