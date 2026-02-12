@@ -579,24 +579,37 @@ impl Store {
     /// Get total fees earned for a specific channel (from both inbound and outbound forwards)
     /// This captures the "turnaround value":
     /// - For outbound: actual fees earned when routing out through this channel
-    /// - For inbound: potential fees based on what WOULD have been earned if that amount
-    ///   had been routed out at MY fee rate (representing the value of liquidity replenishment)
+    /// - For inbound: potential fees based on the average fee rate historically earned on outbound
+    ///   forwards (representing the value of liquidity replenishment at historical rates)
     pub fn get_channel_total_fees_bidirectional(&self, short_channel_id: &str) -> u64 {
-        let my_fee_ppm = self
-            .get_channel(short_channel_id, &self.info.id)
-            .map(|c| c.fee_per_millionth)
-            .unwrap_or(0);
+        let forwards = self.settled_forwards();
 
-        self.settled_forwards()
+        // Calculate average fee_ppm from actual outbound forwards (historical data)
+        let outbound_forwards: Vec<_> = forwards
+            .iter()
+            .filter(|f| f.out_channel == short_channel_id)
+            .collect();
+
+        let avg_fee_ppm = if !outbound_forwards.is_empty() {
+            let total_ppm: u64 = outbound_forwards.iter().map(|f| f.fee_ppm).sum();
+            total_ppm / outbound_forwards.len() as u64
+        } else {
+            // Fallback to current fee rate if no outbound forwards exist
+            self.get_channel(short_channel_id, &self.info.id)
+                .map(|c| c.fee_per_millionth)
+                .unwrap_or(0)
+        };
+
+        forwards
             .iter()
             .filter_map(|f| {
                 if f.out_channel == short_channel_id {
                     // Actual fee earned when channel was outbound
                     Some(f.fee_sat)
                 } else if f.in_channel == short_channel_id {
-                    // Potential fee value based on MY rate for this channel
-                    // Calculate: (amount_sat * my_ppm) / 1_000_000
-                    Some((f.out_sat * my_fee_ppm) / 1_000_000)
+                    // Potential fee value based on average historical rate
+                    // Calculate: (amount_sat * avg_ppm) / 1_000_000
+                    Some((f.out_sat * avg_fee_ppm) / 1_000_000)
                 } else {
                     None
                 }
