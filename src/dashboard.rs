@@ -1294,7 +1294,7 @@ fn create_channel_pages(
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
                         th style="text-align: right;" { "Inbound PPM" }
-                        th style="text-align: right;" { "APY%" }
+                        th style="text-align: right;" { "APY*%" }
                     }
                 }
                 tbody {
@@ -1382,7 +1382,7 @@ fn create_channel_pages(
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
                         th style="text-align: right;" { "Inbound PPM" }
-                        th style="text-align: right;" { "APY%" }
+                        th style="text-align: right;" { "APY*%" }
                         th style="text-align: right;" { "Age (days)" }
                     }
                 }
@@ -1695,7 +1695,7 @@ fn create_channel_pages(
 
                     @if let Some(apy) = store.get_channel_apy_bidirectional(scid) {
                         div class="info-item" {
-                            span class="label" { "APY: " }
+                            span class="label" { "APY*: " }
                             span class="value" {
                                 (format!("{:.2}%", apy))
                             }
