@@ -577,13 +577,30 @@ impl Store {
     }
 
     /// Get total fees earned for a specific channel (from both inbound and outbound forwards)
-    /// This captures the "turnaround value" - fees earned when channel participates in routing
-    /// either as the source (in_channel) or destination (out_channel) of a forward.
+    /// This captures the "turnaround value":
+    /// - For outbound: actual fees earned when routing out through this channel
+    /// - For inbound: potential fees based on what WOULD have been earned if that amount
+    ///   had been routed out at MY fee rate (representing the value of liquidity replenishment)
     pub fn get_channel_total_fees_bidirectional(&self, short_channel_id: &str) -> u64 {
+        let my_fee_ppm = self
+            .get_channel(short_channel_id, &self.info.id)
+            .map(|c| c.fee_per_millionth)
+            .unwrap_or(0);
+
         self.settled_forwards()
             .iter()
-            .filter(|f| f.out_channel == short_channel_id || f.in_channel == short_channel_id)
-            .map(|f| f.fee_sat)
+            .filter_map(|f| {
+                if f.out_channel == short_channel_id {
+                    // Actual fee earned when channel was outbound
+                    Some(f.fee_sat)
+                } else if f.in_channel == short_channel_id {
+                    // Potential fee value based on MY rate for this channel
+                    // Calculate: (amount_sat * my_ppm) / 1_000_000
+                    Some((f.out_sat * my_fee_ppm) / 1_000_000)
+                } else {
+                    None
+                }
+            })
             .sum()
     }
 
@@ -639,7 +656,8 @@ impl Store {
         let total_fees = self.get_channel_total_fees(short_channel_id);
 
         // APY = (total_fees / capacity) * (365 / age_days) * 100
-        let apy = (total_fees as f64 / channel_capacity_sat as f64) * (365.0 / age_days as f64) * 100.0;
+        let apy =
+            (total_fees as f64 / channel_capacity_sat as f64) * (365.0 / age_days as f64) * 100.0;
         Some(apy)
     }
 
@@ -662,7 +680,8 @@ impl Store {
         let total_fees = self.get_channel_total_fees_bidirectional(short_channel_id);
 
         // APY = (total_fees / capacity) * (365 / age_days) * 100
-        let apy = (total_fees as f64 / channel_capacity_sat as f64) * (365.0 / age_days as f64) * 100.0;
+        let apy =
+            (total_fees as f64 / channel_capacity_sat as f64) * (365.0 / age_days as f64) * 100.0;
         Some(apy)
     }
 
