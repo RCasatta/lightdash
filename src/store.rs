@@ -594,10 +594,7 @@ impl Store {
             let total_ppm: u64 = outbound_forwards.iter().map(|f| f.fee_ppm).sum();
             total_ppm / outbound_forwards.len() as u64
         } else {
-            // Fallback to current fee rate if no outbound forwards exist
-            self.get_channel(short_channel_id, &self.info.id)
-                .map(|c| c.fee_per_millionth)
-                .unwrap_or(0)
+            0
         };
 
         forwards
