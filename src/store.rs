@@ -576,44 +576,6 @@ impl Store {
             .sum()
     }
 
-    /// Get total fees earned for a specific channel (from both inbound and outbound forwards)
-    /// This captures the "turnaround value":
-    /// - For outbound: actual fees earned when routing out through this channel
-    /// - For inbound: potential fees based on the average fee rate historically earned on outbound
-    ///   forwards (representing the value of liquidity replenishment at historical rates)
-    pub fn get_channel_total_fees_bidirectional(&self, short_channel_id: &str) -> u64 {
-        let forwards = self.settled_forwards();
-
-        // Calculate average fee_ppm from actual outbound forwards (historical data)
-        let outbound_forwards: Vec<_> = forwards
-            .iter()
-            .filter(|f| f.out_channel == short_channel_id)
-            .collect();
-
-        let avg_fee_ppm = if !outbound_forwards.is_empty() {
-            let total_ppm: u64 = outbound_forwards.iter().map(|f| f.fee_ppm).sum();
-            total_ppm / outbound_forwards.len() as u64
-        } else {
-            0
-        };
-
-        forwards
-            .iter()
-            .filter_map(|f| {
-                if f.out_channel == short_channel_id {
-                    // Actual fee earned when channel was outbound
-                    Some(f.fee_sat)
-                } else if f.in_channel == short_channel_id {
-                    // Potential fee value based on average historical rate
-                    // Calculate: (amount_sat * avg_ppm) / 1_000_000
-                    Some((f.out_sat * avg_fee_ppm) / 1_000_000)
-                } else {
-                    None
-                }
-            })
-            .sum()
-    }
-
     /// Get channel age in days from block height (approximate)
     pub fn get_channel_age_days(&self, short_channel_id: &str) -> Option<i64> {
         // Parse block height directly from short_channel_id (format: "block_height x tx_index x output_index")
@@ -664,30 +626,6 @@ impl Store {
         }
 
         let total_fees = self.get_channel_total_fees(short_channel_id);
-
-        // APY = (total_fees / capacity) * (365 / age_days) * 100
-        let apy =
-            (total_fees as f64 / channel_capacity_sat as f64) * (365.0 / age_days as f64) * 100.0;
-        Some(apy)
-    }
-
-    /// Get channel APY (Annual Percentage Yield) considering both inbound and outbound forwards
-    /// This metric captures the total routing value of a channel, including fees earned when
-    /// the channel serves as the source (in_channel) for forwards routed through the node.
-    /// Formula: (total_bidirectional_fees_sat / channel_capacity_sat) * (365 / age_days) * 100
-    pub fn get_channel_apy_bidirectional(&self, short_channel_id: &str) -> Option<f64> {
-        let age_days = self.get_channel_age_days(short_channel_id)?;
-        if age_days <= 0 {
-            return Some(0.0);
-        }
-
-        let fund = self.get_fund(short_channel_id)?;
-        let channel_capacity_sat = fund.amount_msat / 1000;
-        if channel_capacity_sat == 0 {
-            return Some(0.0);
-        }
-
-        let total_fees = self.get_channel_total_fees_bidirectional(short_channel_id);
 
         // APY = (total_fees / capacity) * (365 / age_days) * 100
         let apy =
