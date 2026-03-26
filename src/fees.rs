@@ -112,13 +112,9 @@ pub fn calc_setchannel<'a>(
     let perc_change = if forwards_ok == 0 {
         // REDUCE FEE
         // the channel never succesfully forwarded, lower rates if enough liqudity.
-        if channel_fund_perc_ours > 0.2 {
-            // We reduce proportionally to how full is the channel
-            -STEP_PERC * channel_fund_perc_ours
-        } else {
-            // not enough liquidity, less than 20%, don't reduce fees
-            0.0
-        }
+
+        // We reduce proportionally to how full is the channel
+        -STEP_PERC * channel_fund_perc_ours
     } else {
         // INCREASE FEE
 
@@ -141,7 +137,15 @@ pub fn calc_setchannel<'a>(
     };
 
     let new_ppm = (current_ppm as f64 + (current_ppm as f64 * perc_change)) as u64;
-    let new_ppm = new_ppm.clamp(PPM_MIN, PPM_MAX);
+
+    // If the channel has less than 10% the minimum is set higher
+    let ppm_min = if channel_fund_perc_ours < 0.1 {
+        PPM_MAX / 2
+    } else {
+        PPM_MIN
+    };
+
+    let new_ppm = new_ppm.clamp(ppm_min, PPM_MAX);
 
     let changes = current_ppm != new_ppm
         || current_max_htlc_sat != new_max_htlc_msat
