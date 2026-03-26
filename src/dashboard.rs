@@ -1293,6 +1293,7 @@ fn create_channel_pages(
                         th style="text-align: right;" { "Balance %" }
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
+                        th style="text-align: right;" { "HTLC Max (sats)" }
                         th style="text-align: right;" { "Inbound PPM" }
                         th style="text-align: right;" { "APY%" }
                     }
@@ -1333,6 +1334,17 @@ fn create_channel_pages(
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(channel_info) = store.get_channel(scid, &store.info.id) {
                                         (channel_info.fee_per_millionth)
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
+                            }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(channel_info) = store.get_channel(scid, &store.info.id) {
+                                        (channel_info.htlc_maximum_msat / 1000)
                                     } @else {
                                         "-"
                                     }
@@ -1422,6 +1434,17 @@ fn create_channel_pages(
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(channel_info) = store.get_channel(scid, &store.info.id) {
                                         (channel_info.fee_per_millionth)
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
+                            }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(channel_info) = store.get_channel(scid, &store.info.id) {
+                                        (channel_info.htlc_maximum_msat / 1000)
                                     } @else {
                                         "-"
                                     }
