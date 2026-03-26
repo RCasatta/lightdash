@@ -126,9 +126,10 @@ pub fn calc_setchannel<'a>(
         // at 20% liq -> 1.8x boost
         let scarcity_mult = 1.0 + (1.0 - channel_fund_perc_ours);
 
-        // If we had MANY forwards (e.g. > 5), boost further.
-        // This compensates for the "sporadic" nature of events.
-        let volume_mult = if forwards_all > 5 { 1.5 } else { 1.0 };
+        // If we have 1 forward, normal boost
+        // for every additional forward boost 10% (eg. 6 forwards 1.5x)
+        let volume_mult = 0.9 + forwards_all as f64 * 0.1;
+        log::debug!("scarcity_mult:{scarcity_mult} volume_mult:{volume_mult}");
 
         // Combine them
         // If we are drained (0.2) and high volume, we hike by ~3x the normal step.
