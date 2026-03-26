@@ -24,7 +24,7 @@ pub fn run_htlc() {
         .filter(|c| c.state == "CHANNELD_NORMAL")
         .filter(|c| c.short_channel_id.is_some())
         .filter(|c| c.to_us_msat != 0)
-        .filter(|c| c.to_us_msat < c.maximum_htlc_out_msat)
+        .filter(|c| c.maximum_htlc_out_msat == 0 || c.to_us_msat < c.maximum_htlc_out_msat)
         .collect();
 
     log::info!(
