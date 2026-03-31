@@ -1393,6 +1393,7 @@ fn create_channel_pages(
                         th style="text-align: right;" { "Balance %" }
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
+                        th style="text-align: right;" { "HTLC Max (sats)" }
                         th style="text-align: right;" { "Inbound PPM" }
                         th style="text-align: right;" { "APY%" }
                         th style="text-align: right;" { "Age (days)" }
