@@ -3,6 +3,7 @@ use crate::store::Store;
 
 const SOURCE_PPM_MAX: u64 = 300;
 const MAX_BALANCE: f64 = 0.1;
+const LOOKBACK_DAYS: i64 = 30;
 const AMOUNT: u64 = 100000;
 const CMD: &str = "lightning-cli";
 /// Minimum balance percentage (our funds / total capacity) for a channel to be used as candidate.
@@ -44,11 +45,24 @@ fn candidates_to_json(candidates: &[&String]) -> String {
     )
 }
 
-fn compute_max_ppm(my_ppm: u64, forwards: u64) -> u64 {
-    // Established channels have a better ppm estimate, so allow a more aggressive
-    // rebalance budget. Cheap channels clamp to 0 instead of underflowing.
-    let factor = 20u64.saturating_sub(forwards) + 3u64;
-    my_ppm.saturating_sub(SOURCE_PPM_MAX) / factor
+fn recent_outbound_fees_sat(store: &Store, short_channel_id: &str) -> u64 {
+    store
+        .filter_settled_forwards_by_days(LOOKBACK_DAYS)
+        .into_iter()
+        .filter(|f| f.out_channel == short_channel_id)
+        .map(|f| f.fee_sat)
+        .sum()
+}
+
+fn compute_max_ppm(recent_fees_sat: u64) -> u64 {
+    if AMOUNT == 0 {
+        return 0;
+    }
+
+    // Cap rebalance spend to a third the realized fee rate over the last 30 days.
+    // This stays below the recent routing income for the channel even if the
+    // full onceamount is consumed.
+    recent_fees_sat.saturating_mul(1_000_000) / AMOUNT / 3
 }
 
 /// We search empty channels and try to pull sats on them from a list of candidates that are ~full and cheap.
@@ -72,15 +86,16 @@ pub fn run_sling(store: &Store) {
 
             let our = store.get_channel(scid, &store.info.id);
             if let Some(our) = our {
-                let forwards = store.get_channel_forwards(scid).len() as u64;
                 let alias = store.get_node_alias(&channel.peer_id);
-
-                // established channels have a good ppm estimation and we can risk more.
-                // New one on the contrary will have a bigger factor thus a lower maxppm to use.
-                // The 3 means I want to pay 33% of the ppm I am rebalancing, just to be conservative.
                 let my_ppm = our.fee_per_millionth;
-                let max_ppm = compute_max_ppm(my_ppm, forwards);
-                let factor = 20u64.saturating_sub(forwards) + 3u64;
+                let recent_fees_sat = recent_outbound_fees_sat(store, scid);
+                let max_ppm = compute_max_ppm(recent_fees_sat);
+                if max_ppm == 0 {
+                    log::info!(
+                        "{alias} recent_fees_30d:{recent_fees_sat}s channel_ppm:{my_ppm} maxppm:0, skipping"
+                    );
+                    continue;
+                }
 
                 // Build arguments as a Vec to avoid shell quoting issues.
                 // When calling a program directly (not via shell), we pass raw values
@@ -97,7 +112,7 @@ pub fn run_sling(store: &Store) {
                     &format!("onceamount={AMOUNT}"),
                 ];
                 log::info!(
-                    "{alias} factor:{factor} channel_ppm:{my_ppm} maxppm:{max_ppm} -> {CMD} {}",
+                    "{alias} recent_fees_30d:{recent_fees_sat}s channel_ppm:{my_ppm} maxppm:{max_ppm} -> {CMD} {}",
                     args.join(" ")
                 );
                 if std::env::var("EXECUTE_SLING").is_ok() {
@@ -116,14 +131,13 @@ mod tests {
     use super::compute_max_ppm;
 
     #[test]
-    fn compute_max_ppm_saturates_for_cheap_channels() {
-        assert_eq!(compute_max_ppm(250, 0), 0);
-        assert_eq!(compute_max_ppm(300, 5), 0);
+    fn compute_max_ppm_is_zero_without_recent_fees() {
+        assert_eq!(compute_max_ppm(0), 0);
     }
 
     #[test]
-    fn compute_max_ppm_scales_with_forward_history() {
-        assert_eq!(compute_max_ppm(530, 0), 10);
-        assert_eq!(compute_max_ppm(530, 25), 76);
+    fn compute_max_ppm_uses_half_of_recent_realized_fee_rate() {
+        assert_eq!(compute_max_ppm(50), 250);
+        assert_eq!(compute_max_ppm(1), 5);
     }
 }
