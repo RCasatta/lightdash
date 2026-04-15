@@ -67,15 +67,8 @@ fn recent_outbound_stats(
         })
 }
 
-fn compute_max_ppm(recent_fees_sat: u64) -> u64 {
-    if AMOUNT == 0 {
-        return 0;
-    }
-
-    // Cap rebalance spend to a third the realized fee rate over the last 30 days.
-    // This stays below the recent routing income for the channel even if the
-    // full onceamount is consumed.
-    recent_fees_sat.saturating_mul(1_000_000) / AMOUNT / 3
+fn compute_max_ppm(current_budget_ppm: u64, realized_ppm: u64) -> u64 {
+    current_budget_ppm.min(realized_ppm / 2)
 }
 
 /// We search empty channels and try to pull sats on them from a list of candidates that are ~full and cheap.
@@ -127,17 +120,25 @@ pub fn run_sling(store: &Store) {
         let alias = store.get_node_alias(&channel.peer_id);
         let my_ppm = our.fee_per_millionth;
         let recent = recent_outbound_stats(&recent_settled, scid);
-        let max_ppm = compute_max_ppm(recent.fees_sat);
         let realized_ppm = if recent.routed_sat > 0 {
             recent.fees_sat.saturating_mul(1_000_000) / recent.routed_sat
         } else {
             0
         };
+        let current_budget_ppm = if AMOUNT > 0 {
+            // Cap rebalance spend to a third the realized fee income over the last 30 days.
+            // This stays below the recent routing income for the channel even if the
+            // full onceamount is consumed.
+            recent.fees_sat.saturating_mul(1_000_000) / AMOUNT / 3
+        } else {
+            0
+        };
+        let max_ppm = compute_max_ppm(current_budget_ppm, realized_ppm);
 
         if max_ppm == 0 {
             skipped_zero_budget += 1;
             log::info!(
-                "{alias} balance:{:.1}% recent_out_{}d:{} recent_fees_{}d:{}s recent_routed_{}d:{}s realized_ppm:{} channel_ppm:{} maxppm:0, skipping",
+                "{alias} balance:{:.1}% recent_out_{}d:{} recent_fees_{}d:{}s recent_routed_{}d:{}s realized_ppm:{} budget_ppm:{} channel_ppm:{} maxppm:0, skipping",
                 balance * 100.0,
                 LOOKBACK_DAYS,
                 recent.count,
@@ -146,6 +147,7 @@ pub fn run_sling(store: &Store) {
                 LOOKBACK_DAYS,
                 recent.routed_sat,
                 realized_ppm,
+                current_budget_ppm,
                 my_ppm,
             );
             continue;
@@ -168,7 +170,7 @@ pub fn run_sling(store: &Store) {
             &format!("onceamount={AMOUNT}"),
         ];
         log::info!(
-            "{alias} balance:{:.1}% recent_out_{}d:{} recent_fees_{}d:{}s recent_routed_{}d:{}s realized_ppm:{} channel_ppm:{} maxppm:{} -> {CMD} {}",
+            "{alias} balance:{:.1}% recent_out_{}d:{} recent_fees_{}d:{}s recent_routed_{}d:{}s realized_ppm:{} budget_ppm:{} channel_ppm:{} maxppm:{} -> {CMD} {}",
             balance * 100.0,
             LOOKBACK_DAYS,
             recent.count,
@@ -177,6 +179,7 @@ pub fn run_sling(store: &Store) {
             LOOKBACK_DAYS,
             recent.routed_sat,
             realized_ppm,
+            current_budget_ppm,
             my_ppm,
             max_ppm,
             args.join(" ")
@@ -205,12 +208,13 @@ mod tests {
 
     #[test]
     fn compute_max_ppm_is_zero_without_recent_fees() {
-        assert_eq!(compute_max_ppm(0), 0);
+        assert_eq!(compute_max_ppm(0, 0), 0);
     }
 
     #[test]
-    fn compute_max_ppm_uses_third_of_recent_realized_fee_rate() {
-        assert_eq!(compute_max_ppm(50), 166);
-        assert_eq!(compute_max_ppm(1), 3);
+    fn compute_max_ppm_caps_budget_by_realized_ppm() {
+        assert_eq!(compute_max_ppm(9090, 446), 223);
+        assert_eq!(compute_max_ppm(400, 2085), 400);
+        assert_eq!(compute_max_ppm(743, 90), 45);
     }
 }
