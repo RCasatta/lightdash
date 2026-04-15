@@ -201,10 +201,6 @@ impl Store {
 
     /// Filter settled forwards to only include those resolved within the last N days
     pub fn filter_settled_forwards_by_days(&self, days: i64) -> Vec<SettledForward> {
-        log::info!(
-            "Filtering settled forwards to only include those resolved within the last {} days",
-            days
-        );
         self.settled_forwards()
             .into_iter()
             .filter(|f| self.now.signed_duration_since(f.resolved_time).num_hours() <= days * 24)
