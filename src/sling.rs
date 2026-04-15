@@ -112,6 +112,7 @@ pub fn run_sling(store: &Store) {
     let mut skipped_balance = 0u64;
     let mut skipped_missing_scid = 0u64;
     let mut skipped_missing_our = 0u64;
+    let mut skipped_no_recent_outbound = 0u64;
     let mut skipped_zero_budget = 0u64;
     let mut skipped_small_amount = 0u64;
     let mut suggested = 0u64;
@@ -130,6 +131,7 @@ pub fn run_sling(store: &Store) {
 
         let Some(our) = store.get_channel(scid, &store.info.id) else {
             skipped_missing_our += 1;
+            log::info!("missing local channel info for scid:{scid}, skipping");
             continue;
         };
 
@@ -139,6 +141,17 @@ pub fn run_sling(store: &Store) {
         let average_fee_ppm = recent.average_fee_ppm();
         let amount = recent.routed_sat;
         let max_ppm = compute_max_ppm(average_fee_ppm);
+
+        if recent.count == 0 {
+            skipped_no_recent_outbound += 1;
+            log::info!(
+                "{alias} balance:{:.1}% recent_out_{}h:0 amount:0s avg_fee_ppm:0 channel_ppm:{} no_recent_outbound, skipping",
+                balance * 100.0,
+                LOOKBACK_HOURS,
+                my_ppm,
+            );
+            continue;
+        }
 
         if amount < MIN_AMOUNT_SAT {
             skipped_small_amount += 1;
@@ -205,9 +218,10 @@ pub fn run_sling(store: &Store) {
     }
 
     log::info!(
-        "Sling summary: suggested:{} skipped_balance:{} skipped_small_amount:{} skipped_zero_budget:{} skipped_missing_scid:{} skipped_missing_our:{}",
+        "Sling summary: suggested:{} skipped_balance:{} skipped_no_recent_outbound:{} skipped_small_amount:{} skipped_zero_budget:{} skipped_missing_scid:{} skipped_missing_our:{}",
         suggested,
         skipped_balance,
+        skipped_no_recent_outbound,
         skipped_small_amount,
         skipped_zero_budget,
         skipped_missing_scid,
