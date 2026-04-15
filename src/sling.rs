@@ -44,6 +44,13 @@ fn candidates_to_json(candidates: &[&String]) -> String {
     )
 }
 
+fn compute_max_ppm(my_ppm: u64, forwards: u64) -> u64 {
+    // Established channels have a better ppm estimate, so allow a more aggressive
+    // rebalance budget. Cheap channels clamp to 0 instead of underflowing.
+    let factor = 20u64.saturating_sub(forwards) + 3u64;
+    my_ppm.saturating_sub(SOURCE_PPM_MAX) / factor
+}
+
 /// We search empty channels and try to pull sats on them from a list of candidates that are ~full and cheap.
 pub fn run_sling(store: &Store) {
     let channels = store.normal_channels();
@@ -71,10 +78,9 @@ pub fn run_sling(store: &Store) {
                 // established channels have a good ppm estimation and we can risk more.
                 // New one on the contrary will have a bigger factor thus a lower maxppm to use.
                 // The 3 means I want to pay 33% of the ppm I am rebalancing, just to be conservative.
-                let factor = 20u64.saturating_sub(forwards) + 3u64;
-
                 let my_ppm = our.fee_per_millionth;
-                let max_ppm = (my_ppm - SOURCE_PPM_MAX) / factor;
+                let max_ppm = compute_max_ppm(my_ppm, forwards);
+                let factor = 20u64.saturating_sub(forwards) + 3u64;
 
                 // Build arguments as a Vec to avoid shell quoting issues.
                 // When calling a program directly (not via shell), we pass raw values
@@ -102,5 +108,22 @@ pub fn run_sling(store: &Store) {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compute_max_ppm;
+
+    #[test]
+    fn compute_max_ppm_saturates_for_cheap_channels() {
+        assert_eq!(compute_max_ppm(250, 0), 0);
+        assert_eq!(compute_max_ppm(300, 5), 0);
+    }
+
+    #[test]
+    fn compute_max_ppm_scales_with_forward_history() {
+        assert_eq!(compute_max_ppm(530, 0), 10);
+        assert_eq!(compute_max_ppm(530, 25), 76);
     }
 }
