@@ -2,9 +2,9 @@ use crate::cmd::{Fund, SettledForward};
 use crate::store::Store;
 
 const SOURCE_PPM_MAX: u64 = 300;
-const MAX_BALANCE: f64 = 0.3;
-const LOOKBACK_DAYS: i64 = 30;
-const AMOUNT: u64 = 100000;
+const MAX_BALANCE: f64 = 0.5;
+const LOOKBACK_HOURS: i64 = 24;
+const MIN_AMOUNT_SAT: u64 = 10_000;
 const CMD: &str = "lightning-cli";
 /// Minimum balance percentage (our funds / total capacity) for a channel to be used as candidate.
 const MIN_CANDIDATE_BALANCE: f64 = 0.7;
@@ -48,7 +48,7 @@ fn candidates_to_json(candidates: &[&String]) -> String {
 #[derive(Default)]
 struct RecentOutboundStats {
     count: u64,
-    fees_sat: u64,
+    fee_ppm_weighted_sum: u64,
     routed_sat: u64,
 }
 
@@ -61,28 +61,43 @@ fn recent_outbound_stats(
         .filter(|f| f.out_channel == short_channel_id)
         .fold(RecentOutboundStats::default(), |mut acc, f| {
             acc.count += 1;
-            acc.fees_sat += f.fee_sat;
+            acc.fee_ppm_weighted_sum += f.fee_ppm.saturating_mul(f.out_sat);
             acc.routed_sat += f.out_sat;
             acc
         })
 }
 
-fn compute_max_ppm(current_budget_ppm: u64, realized_ppm: u64) -> u64 {
-    current_budget_ppm.min(realized_ppm / 2)
+impl RecentOutboundStats {
+    fn average_fee_ppm(&self) -> u64 {
+        if self.routed_sat == 0 {
+            0
+        } else {
+            self.fee_ppm_weighted_sum / self.routed_sat
+        }
+    }
+}
+
+fn compute_max_ppm(avg_fee_ppm: u64) -> u64 {
+    avg_fee_ppm / 2
 }
 
 /// We search empty channels and try to pull sats on them from a list of candidates that are ~full and cheap.
 pub fn run_sling(store: &Store) {
     let channels = store.normal_channels();
-    let recent_settled = store.filter_settled_forwards_by_days(LOOKBACK_DAYS);
+    let recent_settled = store.filter_forwards_by_hours(LOOKBACK_HOURS);
+    let recent_settled: Vec<_> = recent_settled
+        .into_iter()
+        .filter(|f| f.status == "settled")
+        .filter_map(|f| SettledForward::try_from(f).ok())
+        .collect();
     log::info!(
-        "Sling inputs: channels:{} recent_settled_{}d:{} target_balance<=:{:.0}% candidate_balance>=:{:.0}% amount:{}sat",
+        "Sling inputs: channels:{} recent_settled_{}h:{} target_balance<=:{:.0}% candidate_balance>=:{:.0}% min_amount:{}sat",
         channels.len(),
-        LOOKBACK_DAYS,
+        LOOKBACK_HOURS,
         recent_settled.len(),
         MAX_BALANCE * 100.0,
         MIN_CANDIDATE_BALANCE * 100.0,
-        AMOUNT
+        MIN_AMOUNT_SAT
     );
 
     let candidates = compute_candidates(store, &channels);
@@ -98,6 +113,7 @@ pub fn run_sling(store: &Store) {
     let mut skipped_missing_scid = 0u64;
     let mut skipped_missing_our = 0u64;
     let mut skipped_zero_budget = 0u64;
+    let mut skipped_small_amount = 0u64;
     let mut suggested = 0u64;
 
     for channel in channels {
@@ -120,34 +136,34 @@ pub fn run_sling(store: &Store) {
         let alias = store.get_node_alias(&channel.peer_id);
         let my_ppm = our.fee_per_millionth;
         let recent = recent_outbound_stats(&recent_settled, scid);
-        let realized_ppm = if recent.routed_sat > 0 {
-            recent.fees_sat.saturating_mul(1_000_000) / recent.routed_sat
-        } else {
-            0
-        };
-        let current_budget_ppm = if AMOUNT > 0 {
-            // Cap rebalance spend to a third the realized fee income over the last 30 days.
-            // This stays below the recent routing income for the channel even if the
-            // full onceamount is consumed.
-            recent.fees_sat.saturating_mul(1_000_000) / AMOUNT / 3
-        } else {
-            0
-        };
-        let max_ppm = compute_max_ppm(current_budget_ppm, realized_ppm);
+        let average_fee_ppm = recent.average_fee_ppm();
+        let amount = recent.routed_sat;
+        let max_ppm = compute_max_ppm(average_fee_ppm);
+
+        if amount < MIN_AMOUNT_SAT {
+            skipped_small_amount += 1;
+            log::info!(
+                "{alias} balance:{:.1}% recent_out_{}h:{} amount:{}s avg_fee_ppm:{} channel_ppm:{} below_min_amount:{}s, skipping",
+                balance * 100.0,
+                LOOKBACK_HOURS,
+                recent.count,
+                amount,
+                average_fee_ppm,
+                my_ppm,
+                MIN_AMOUNT_SAT,
+            );
+            continue;
+        }
 
         if max_ppm == 0 {
             skipped_zero_budget += 1;
             log::info!(
-                "{alias} balance:{:.1}% recent_out_{}d:{} recent_fees_{}d:{}s recent_routed_{}d:{}s realized_ppm:{} budget_ppm:{} channel_ppm:{} maxppm:0, skipping",
+                "{alias} balance:{:.1}% recent_out_{}h:{} amount:{}s avg_fee_ppm:{} channel_ppm:{} maxppm:0, skipping",
                 balance * 100.0,
-                LOOKBACK_DAYS,
+                LOOKBACK_HOURS,
                 recent.count,
-                LOOKBACK_DAYS,
-                recent.fees_sat,
-                LOOKBACK_DAYS,
-                recent.routed_sat,
-                realized_ppm,
-                current_budget_ppm,
+                amount,
+                average_fee_ppm,
                 my_ppm,
             );
             continue;
@@ -166,20 +182,16 @@ pub fn run_sling(store: &Store) {
             "direction=pull",
             &candidates_arg,
             &format!("maxppm={max_ppm}"),
-            &format!("amount={AMOUNT}"),
-            &format!("onceamount={AMOUNT}"),
+            &format!("amount={amount}"),
+            &format!("onceamount={amount}"),
         ];
         log::info!(
-            "{alias} balance:{:.1}% recent_out_{}d:{} recent_fees_{}d:{}s recent_routed_{}d:{}s realized_ppm:{} budget_ppm:{} channel_ppm:{} maxppm:{} -> {CMD} {}",
+            "{alias} balance:{:.1}% recent_out_{}h:{} amount:{}s avg_fee_ppm:{} channel_ppm:{} maxppm:{} -> {CMD} {}",
             balance * 100.0,
-            LOOKBACK_DAYS,
+            LOOKBACK_HOURS,
             recent.count,
-            LOOKBACK_DAYS,
-            recent.fees_sat,
-            LOOKBACK_DAYS,
-            recent.routed_sat,
-            realized_ppm,
-            current_budget_ppm,
+            amount,
+            average_fee_ppm,
             my_ppm,
             max_ppm,
             args.join(" ")
@@ -193,9 +205,10 @@ pub fn run_sling(store: &Store) {
     }
 
     log::info!(
-        "Sling summary: suggested:{} skipped_balance:{} skipped_zero_budget:{} skipped_missing_scid:{} skipped_missing_our:{}",
+        "Sling summary: suggested:{} skipped_balance:{} skipped_small_amount:{} skipped_zero_budget:{} skipped_missing_scid:{} skipped_missing_our:{}",
         suggested,
         skipped_balance,
+        skipped_small_amount,
         skipped_zero_budget,
         skipped_missing_scid,
         skipped_missing_our
@@ -207,14 +220,14 @@ mod tests {
     use super::compute_max_ppm;
 
     #[test]
-    fn compute_max_ppm_is_zero_without_recent_fees() {
-        assert_eq!(compute_max_ppm(0, 0), 0);
+    fn compute_max_ppm_is_zero_without_recent_avg_ppm() {
+        assert_eq!(compute_max_ppm(0), 0);
     }
 
     #[test]
-    fn compute_max_ppm_caps_budget_by_realized_ppm() {
-        assert_eq!(compute_max_ppm(9090, 446), 223);
-        assert_eq!(compute_max_ppm(400, 2085), 400);
-        assert_eq!(compute_max_ppm(743, 90), 45);
+    fn compute_max_ppm_uses_half_of_average_fee_ppm() {
+        assert_eq!(compute_max_ppm(446), 223);
+        assert_eq!(compute_max_ppm(2085), 1042);
+        assert_eq!(compute_max_ppm(90), 45);
     }
 }
