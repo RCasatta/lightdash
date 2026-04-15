@@ -81,6 +81,12 @@ fn compute_max_ppm(avg_fee_ppm: u64) -> u64 {
     avg_fee_ppm / 2
 }
 
+fn stop_existing_sling_jobs() {
+    log::info!("EXECUTE_SLING is set, stopping existing sling jobs before creating new ones");
+    let result = crate::cmd::cmd_result(CMD, &["sling-stop"]);
+    log::debug!("sling-stop return: {result}");
+}
+
 /// We search empty channels and try to pull sats on them from a list of candidates that are ~full and cheap.
 pub fn run_sling(store: &Store) {
     let channels = store.normal_channels();
@@ -108,6 +114,11 @@ pub fn run_sling(store: &Store) {
 
     let candidates_json = candidates_to_json(&candidates);
     log::info!("Using {} candidates: {candidates_json}", candidates.len());
+
+    let execute_sling = std::env::var("EXECUTE_SLING").is_ok();
+    if execute_sling {
+        stop_existing_sling_jobs();
+    }
 
     let mut skipped_balance = 0u64;
     let mut skipped_missing_scid = 0u64;
@@ -209,7 +220,7 @@ pub fn run_sling(store: &Store) {
             max_ppm,
             args.join(" ")
         );
-        if std::env::var("EXECUTE_SLING").is_ok() {
+        if execute_sling {
             log::info!("executing `{CMD} {}` {alias}", args.join(" "));
 
             let result = crate::cmd::cmd_result(CMD, &args);
