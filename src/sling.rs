@@ -136,8 +136,8 @@ mod tests {
     }
 
     #[test]
-    fn compute_max_ppm_uses_half_of_recent_realized_fee_rate() {
-        assert_eq!(compute_max_ppm(50), 250);
-        assert_eq!(compute_max_ppm(1), 5);
+    fn compute_max_ppm_uses_third_of_recent_realized_fee_rate() {
+        assert_eq!(compute_max_ppm(50), 166);
+        assert_eq!(compute_max_ppm(1), 3);
     }
 }
