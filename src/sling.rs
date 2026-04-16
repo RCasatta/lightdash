@@ -1,5 +1,8 @@
 use crate::cmd::{Fund, SettledForward};
 use crate::store::Store;
+use chrono::Utc;
+use std::fs;
+use std::path::Path;
 
 const SOURCE_PPM_MAX: u64 = 300;
 const MAX_BALANCE: f64 = 0.5;
@@ -87,8 +90,31 @@ fn stop_existing_sling_jobs() {
     log::debug!("sling-stop return: {result}");
 }
 
+fn snapshot_sling_stats(directory: &str) {
+    let path = Path::new(directory);
+    if let Err(e) = fs::create_dir_all(path) {
+        log::error!("failed to create sling stats directory {}: {}", directory, e);
+        return;
+    }
+
+    let stats = crate::cmd::cmd_result(CMD, &["sling-stats", "true"]);
+    let timestamp = Utc::now().format("%Y%m%dT%H%M%SZ");
+    let file_path = path.join(format!("sling-stats-{timestamp}.json"));
+    match serde_json::to_string_pretty(&stats) {
+        Ok(json) => match fs::write(&file_path, json) {
+            Ok(_) => log::info!("saved sling stats snapshot to {}", file_path.display()),
+            Err(e) => log::error!(
+                "failed to write sling stats snapshot {}: {}",
+                file_path.display(),
+                e
+            ),
+        },
+        Err(e) => log::error!("failed to serialize sling stats snapshot: {}", e),
+    }
+}
+
 /// We search empty channels and try to pull sats on them from a list of candidates that are ~full and cheap.
-pub fn run_sling(store: &Store) {
+pub fn run_sling(store: &Store, directory: &str) {
     let channels = store.normal_channels();
     let recent_settled = store.filter_forwards_by_hours(LOOKBACK_HOURS);
     let recent_settled: Vec<_> = recent_settled
@@ -96,6 +122,7 @@ pub fn run_sling(store: &Store) {
         .filter(|f| f.status == "settled")
         .filter_map(|f| SettledForward::try_from(f).ok())
         .collect();
+    snapshot_sling_stats(directory);
     log::info!(
         "Sling inputs: channels:{} recent_settled_{}h:{} target_balance<=:{:.0}% candidate_balance>=:{:.0}% min_amount:{}sat",
         channels.len(),
