@@ -122,7 +122,7 @@ pub fn run_sling(store: &Store) {
 
     let mut skipped_balance = 0u64;
     let mut skipped_missing_scid = 0u64;
-    let mut skipped_missing_our = 0u64;
+    let mut targets_without_local_channel_info = 0u64;
     let mut skipped_no_recent_outbound = 0u64;
     let mut skipped_zero_budget = 0u64;
     let mut skipped_small_amount = 0u64;
@@ -140,14 +140,17 @@ pub fn run_sling(store: &Store) {
             continue;
         };
 
-        let Some(our) = store.get_channel(scid, &store.info.id) else {
-            skipped_missing_our += 1;
-            log::info!("missing local channel info for scid:{scid}, skipping");
-            continue;
-        };
-
         let alias = store.get_node_alias(&channel.peer_id);
-        let my_ppm = our.fee_per_millionth;
+        let my_ppm = store.get_channel(scid, &store.info.id).map(|our| our.fee_per_millionth);
+        if my_ppm.is_none() {
+            targets_without_local_channel_info += 1;
+            log::info!(
+                "missing local channel info for scid:{scid}, continuing with forward-driven rebalance logic"
+            );
+        }
+        let my_ppm_log = my_ppm
+            .map(|ppm| ppm.to_string())
+            .unwrap_or_else(|| "n/a".to_string());
         let recent = recent_outbound_stats(&recent_settled, scid);
         let average_fee_ppm = recent.average_fee_ppm();
         let amount = recent.routed_sat;
@@ -159,7 +162,7 @@ pub fn run_sling(store: &Store) {
                 "{alias} balance:{:.1}% recent_out_{}h:0 amount:0s avg_fee_ppm:0 channel_ppm:{} no_recent_outbound, skipping",
                 balance * 100.0,
                 LOOKBACK_HOURS,
-                my_ppm,
+                my_ppm_log,
             );
             continue;
         }
@@ -173,7 +176,7 @@ pub fn run_sling(store: &Store) {
                 recent.count,
                 amount,
                 average_fee_ppm,
-                my_ppm,
+                my_ppm_log,
                 MIN_AMOUNT_SAT,
             );
             continue;
@@ -188,7 +191,7 @@ pub fn run_sling(store: &Store) {
                 recent.count,
                 amount,
                 average_fee_ppm,
-                my_ppm,
+                my_ppm_log,
             );
             continue;
         }
@@ -216,7 +219,7 @@ pub fn run_sling(store: &Store) {
             recent.count,
             amount,
             average_fee_ppm,
-            my_ppm,
+            my_ppm_log,
             max_ppm,
             args.join(" ")
         );
@@ -229,14 +232,14 @@ pub fn run_sling(store: &Store) {
     }
 
     log::info!(
-        "Sling summary: suggested:{} skipped_balance:{} skipped_no_recent_outbound:{} skipped_small_amount:{} skipped_zero_budget:{} skipped_missing_scid:{} skipped_missing_our:{}",
+        "Sling summary: suggested:{} skipped_balance:{} skipped_no_recent_outbound:{} skipped_small_amount:{} skipped_zero_budget:{} skipped_missing_scid:{} targets_without_local_channel_info:{}",
         suggested,
         skipped_balance,
         skipped_no_recent_outbound,
         skipped_small_amount,
         skipped_zero_budget,
         skipped_missing_scid,
-        skipped_missing_our
+        targets_without_local_channel_info
     );
 }
 
