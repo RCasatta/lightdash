@@ -38,6 +38,9 @@ enum Commands {
         /// Path to JSON file with channel correlation data from channels subcommand
         #[arg(long)]
         correlations: Option<String>,
+        /// Directory with timestamped sling-stats JSON snapshots
+        #[arg(long)]
+        rebalances: Option<String>,
     },
     /// Generate routing analysis page
     Routes {
@@ -84,10 +87,11 @@ fn main() {
             min_channels,
             availdb,
             correlations,
+            rebalances,
         } => {
             let store = Store::new(availdb);
             log::debug!("Dashboard directory: {}", directory);
-            dashboard::run_dashboard(&store, directory, min_channels, correlations);
+            dashboard::run_dashboard(&store, directory, min_channels, correlations, rebalances);
         }
         Commands::Routes { directory } => {
             let store = Store::new(None);
