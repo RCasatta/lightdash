@@ -1259,6 +1259,7 @@ fn create_channel_pages(
     } else {
         0.0
     };
+    let (balance_target_variance, balance_target_stddev) = calculate_balance_target_kpis(channels);
 
     // Create channels index page
     let channels_index_content = html! {
@@ -1277,6 +1278,14 @@ fn create_channel_pages(
             div class="info-item" {
                 span class="label" { "Global Balance: " }
                 span class="value" { (format!("{:.1}% inbound", global_balance_percentage)) }
+            }
+            div class="info-item" {
+                span class="label" { "Channel Balance Target Variance: " }
+                span class="value" { (format!("{:.2} pp²", balance_target_variance)) }
+            }
+            div class="info-item" {
+                span class="label" { "Channel Balance Target Std Dev: " }
+                span class="value" { (format!("{:.2} pp from 50%", balance_target_stddev)) }
             }
             @let (avg_fee, median_fee) = store.network_channel_fees();
             div class="info-item" {
@@ -2037,6 +2046,26 @@ fn create_channel_pages(
             Err(e) => log::debug!("Error writing channel page {}: {}", channel_file_path, e),
         }
     }
+}
+
+fn calculate_balance_target_kpis(channels: &[crate::cmd::Fund]) -> (f64, f64) {
+    if channels.is_empty() {
+        return (0.0, 0.0);
+    }
+
+    let target_balance = 0.5;
+    let variance = channels
+        .iter()
+        .map(|channel| {
+            let diff = channel.perc_float() - target_balance;
+            diff * diff
+        })
+        .sum::<f64>()
+        / channels.len() as f64;
+    let variance_percentage_points = variance * 10000.0;
+    let stddev_percentage_points = variance.sqrt() * 100.0;
+
+    (variance_percentage_points, stddev_percentage_points)
 }
 
 fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono::Utc>) {

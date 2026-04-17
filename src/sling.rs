@@ -93,7 +93,11 @@ fn stop_existing_sling_jobs() {
 fn snapshot_sling_stats(directory: &str) {
     let path = Path::new(directory);
     if let Err(e) = fs::create_dir_all(path) {
-        log::error!("failed to create sling stats directory {}: {}", directory, e);
+        log::error!(
+            "failed to create sling stats directory {}: {}",
+            directory,
+            e
+        );
         return;
     }
 
@@ -168,7 +172,9 @@ pub fn run_sling(store: &Store, directory: &str) {
         };
 
         let alias = store.get_node_alias(&channel.peer_id);
-        let my_ppm = store.get_channel(scid, &store.info.id).map(|our| our.fee_per_millionth);
+        let my_ppm = store
+            .get_channel(scid, &store.info.id)
+            .map(|our| our.fee_per_millionth);
         if my_ppm.is_none() {
             targets_without_local_channel_info += 1;
             log::info!(
