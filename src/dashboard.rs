@@ -34,6 +34,16 @@ struct RebalanceSnapshotFile {
     entries: Vec<RebalanceSnapshotEntry>,
 }
 
+impl RebalanceSnapshotFile {
+    fn detail_page_name(&self) -> String {
+        let slug = self
+            .file_name
+            .strip_suffix(".json")
+            .unwrap_or(&self.file_name);
+        format!("{slug}.html")
+    }
+}
+
 /// Create common HTML header with title
 fn create_html_header(title: &str) -> Markup {
     html! {
@@ -2639,6 +2649,147 @@ fn load_rebalance_snapshots(rebalances_path: Option<&str>) -> Vec<RebalanceSnaps
     snapshots
 }
 
+fn create_rebalance_snapshot_detail_section(
+    section_title: &str,
+    snapshot: &RebalanceSnapshotFile,
+    is_subdir: bool,
+) -> Markup {
+    let never_count = snapshot
+        .entries
+        .iter()
+        .filter(|e| e.last_success_reb == "Never")
+        .count();
+    let balanced = snapshot
+        .entries
+        .iter()
+        .filter(|e| e.status.iter().any(|s| s.contains("Balanced")))
+        .count();
+    let no_cheap_route = snapshot
+        .entries
+        .iter()
+        .filter(|e| e.status.iter().any(|s| s.contains("NoCheapRoute")))
+        .count();
+    let channel_prefix = if is_subdir { "../channels" } else { "channels" };
+
+    html! {
+        div class="info-card" {
+            h2 { (section_title) }
+            div class="info-item" {
+                span class="label" { "Snapshot File: " }
+                span class="value" { (&snapshot.file_name) }
+            }
+            div class="info-item" {
+                span class="label" { "Channels: " }
+                span class="value" { (snapshot.entries.len()) }
+            }
+            div class="info-item" {
+                span class="label" { "Balanced: " }
+                span class="value" { (balanced) }
+            }
+            div class="info-item" {
+                span class="label" { "No Cheap Route: " }
+                span class="value" { (no_cheap_route) }
+            }
+            div class="info-item" {
+                span class="label" { "Ever Rebalanced: " }
+                span class="value" { (snapshot.entries.len() - never_count) }
+            }
+        }
+
+        div class="info-card" {
+            h2 { "Rebalance Status" }
+            table class="sortable" {
+                thead {
+                    tr {
+                        th { "Alias" }
+                        th { "SCID" }
+                        th { "Status" }
+                        th style="text-align: right;" { "Reb Amount" }
+                        th style="text-align: right;" { "Weighted Fee PPM" }
+                        th { "Last Route Taken" }
+                        th { "Last Success Rebalance" }
+                    }
+                }
+                tbody {
+                    @for entry in snapshot.entries.iter() {
+                        tr {
+                            td { (&entry.alias) }
+                            td {
+                                a href={(format!("{channel_prefix}/{}.html", entry.scid))} {
+                                    (&entry.scid)
+                                }
+                            }
+                            td { (entry.status.join(", ")) }
+                            td style="text-align: right;" { (&entry.rebamount) }
+                            td style="text-align: right;" { (entry.w_feeppm) }
+                            td { (&entry.last_route_taken) }
+                            td { (&entry.last_success_reb) }
+                        }
+                    }
+                }
+            }
+        }
+
+        style {
+            r#"
+            .info-item {
+                display: flex;
+                margin: 10px 0;
+                padding: 8px 0;
+                border-bottom: 1px solid #4a5568;
+            }
+
+            .info-item:last-child {
+                border-bottom: none;
+            }
+
+            .label {
+                font-weight: bold;
+                color: #63b3ed;
+                min-width: 220px;
+            }
+
+            .value {
+                color: #f8f8f2;
+            }
+            "#
+        }
+    }
+}
+
+fn create_rebalance_snapshot_pages(
+    directory: &str,
+    now: &chrono::DateTime<chrono::Utc>,
+    snapshots: &[RebalanceSnapshotFile],
+) {
+    let snapshot_directory = format!("{directory}/rebalance");
+    if let Err(e) = fs::create_dir_all(&snapshot_directory) {
+        log::error!(
+            "Error creating rebalance snapshot directory {}: {}",
+            snapshot_directory,
+            e
+        );
+        return;
+    }
+
+    for snapshot in snapshots {
+        let title = format!("Rebalance Snapshot {}", snapshot.file_name);
+        let html = wrap_in_html_page(
+            &title,
+            html! {
+                (create_page_header(&title, true))
+                (create_rebalance_snapshot_detail_section("Snapshot Summary", snapshot, true))
+            },
+            &now.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+        );
+        let file_path = format!("{snapshot_directory}/{}", snapshot.detail_page_name());
+        match fs::write(&file_path, html.into_string()) {
+            Ok(_) => log::debug!("Rebalance snapshot page generated: {}", file_path),
+            Err(e) => log::error!("Error writing rebalance snapshot page {}: {}", file_path, e),
+        }
+    }
+}
+
 fn create_rebalance_page(
     directory: &str,
     now: &chrono::DateTime<chrono::Utc>,
@@ -2646,6 +2797,7 @@ fn create_rebalance_page(
 ) {
     let snapshots = load_rebalance_snapshots(rebalances_path);
     let latest_snapshot = snapshots.last();
+    create_rebalance_snapshot_pages(directory, now, &snapshots);
 
     let rebalance_content = html! {
         (create_page_header("Rebalance Recap", false))
@@ -2671,7 +2823,11 @@ fn create_rebalance_page(
                 @let never_count = snapshot.entries.iter().filter(|e| e.last_success_reb == "Never").count();
                 div class="info-item" {
                     span class="label" { "Latest Snapshot: " }
-                    span class="value" { (&snapshot.file_name) }
+                    span class="value" {
+                        a href={(format!("rebalance/{}", snapshot.detail_page_name()))} {
+                            (&snapshot.file_name)
+                        }
+                    }
                 }
                 div class="info-item" {
                     span class="label" { "Channels In Latest Snapshot: " }
@@ -2705,7 +2861,11 @@ fn create_rebalance_page(
                             @let no_cheap_route = snapshot.entries.iter().filter(|e| e.status.iter().any(|s| s.contains("NoCheapRoute"))).count();
                             @let ever_successful = snapshot.entries.iter().filter(|e| e.last_success_reb != "Never").count();
                             tr {
-                                td { (&snapshot.file_name) }
+                                td {
+                                    a href={(format!("rebalance/{}", snapshot.detail_page_name()))} {
+                                        (&snapshot.file_name)
+                                    }
+                                }
                                 td style="text-align: right;" { (snapshot.entries.len()) }
                                 td style="text-align: right;" { (balanced) }
                                 td style="text-align: right;" { (no_cheap_route) }
@@ -2717,40 +2877,11 @@ fn create_rebalance_page(
             }
         }
 
-        div class="info-card" {
-            h2 { "Latest Rebalance Status" }
-            @if let Some(snapshot) = latest_snapshot {
-                table class="sortable" {
-                    thead {
-                        tr {
-                            th { "Alias" }
-                            th { "SCID" }
-                            th { "Status" }
-                            th style="text-align: right;" { "Reb Amount" }
-                            th style="text-align: right;" { "Weighted Fee PPM" }
-                            th { "Last Route Taken" }
-                            th { "Last Success Rebalance" }
-                        }
-                    }
-                    tbody {
-                        @for entry in snapshot.entries.iter() {
-                            tr {
-                                td { (&entry.alias) }
-                                td {
-                                    a href={(format!("channels/{}.html", entry.scid))} {
-                                        (&entry.scid)
-                                    }
-                                }
-                                td { (entry.status.join(", ")) }
-                                td style="text-align: right;" { (&entry.rebamount) }
-                                td style="text-align: right;" { (entry.w_feeppm) }
-                                td { (&entry.last_route_taken) }
-                                td { (&entry.last_success_reb) }
-                            }
-                        }
-                    }
-                }
-            } @else {
+        @if let Some(snapshot) = latest_snapshot {
+            (create_rebalance_snapshot_detail_section("Latest Rebalance Status", snapshot, false))
+        } @else {
+            div class="info-card" {
+                h2 { "Latest Rebalance Status" }
                 p { "No rebalance snapshot data available." }
             }
         }
