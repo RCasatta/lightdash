@@ -34,6 +34,10 @@ struct RebalanceSnapshotFile {
     entries: Vec<RebalanceSnapshotEntry>,
 }
 
+fn has_balanced_status(entry: &RebalanceSnapshotEntry) -> bool {
+    entry.status.iter().any(|s| s.contains("Balanced"))
+}
+
 impl RebalanceSnapshotFile {
     fn detail_page_name(&self) -> String {
         let slug = self
@@ -2654,15 +2658,10 @@ fn create_rebalance_snapshot_detail_section(
     snapshot: &RebalanceSnapshotFile,
     is_subdir: bool,
 ) -> Markup {
-    let never_count = snapshot
-        .entries
-        .iter()
-        .filter(|e| e.last_success_reb == "Never")
-        .count();
     let balanced = snapshot
         .entries
         .iter()
-        .filter(|e| e.status.iter().any(|s| s.contains("Balanced")))
+        .filter(|e| has_balanced_status(e))
         .count();
     let no_cheap_route = snapshot
         .entries
@@ -2691,8 +2690,8 @@ fn create_rebalance_snapshot_detail_section(
                 span class="value" { (no_cheap_route) }
             }
             div class="info-item" {
-                span class="label" { "Ever Rebalanced: " }
-                span class="value" { (snapshot.entries.len() - never_count) }
+                span class="label" { "Successful Rebalances: " }
+                span class="value" { (balanced) }
             }
         }
 
@@ -2820,7 +2819,7 @@ fn create_rebalance_page(
                 span class="value" { (snapshots.len()) }
             }
             @if let Some(snapshot) = latest_snapshot {
-                @let never_count = snapshot.entries.iter().filter(|e| e.last_success_reb == "Never").count();
+                @let successful_rebalances = snapshot.entries.iter().filter(|e| has_balanced_status(e)).count();
                 div class="info-item" {
                     span class="label" { "Latest Snapshot: " }
                     span class="value" {
@@ -2834,8 +2833,8 @@ fn create_rebalance_page(
                     span class="value" { (snapshot.entries.len()) }
                 }
                 div class="info-item" {
-                    span class="label" { "Ever Rebalanced In Latest Snapshot: " }
-                    span class="value" { (snapshot.entries.len() - never_count) }
+                    span class="label" { "Successful Rebalances In Latest Snapshot: " }
+                    span class="value" { (successful_rebalances) }
                 }
             }
         }
@@ -2852,14 +2851,13 @@ fn create_rebalance_page(
                             th style="text-align: right;" { "Entries" }
                             th style="text-align: right;" { "Balanced" }
                             th style="text-align: right;" { "No Cheap Route" }
-                            th style="text-align: right;" { "Ever Successful" }
+                            th style="text-align: right;" { "Successful Rebalances" }
                         }
                     }
                     tbody {
                         @for snapshot in snapshots.iter().rev() {
-                            @let balanced = snapshot.entries.iter().filter(|e| e.status.iter().any(|s| s.contains("Balanced"))).count();
+                            @let balanced = snapshot.entries.iter().filter(|e| has_balanced_status(e)).count();
                             @let no_cheap_route = snapshot.entries.iter().filter(|e| e.status.iter().any(|s| s.contains("NoCheapRoute"))).count();
-                            @let ever_successful = snapshot.entries.iter().filter(|e| e.last_success_reb != "Never").count();
                             tr {
                                 td {
                                     a href={(format!("rebalance/{}", snapshot.detail_page_name()))} {
@@ -2869,7 +2867,7 @@ fn create_rebalance_page(
                                 td style="text-align: right;" { (snapshot.entries.len()) }
                                 td style="text-align: right;" { (balanced) }
                                 td style="text-align: right;" { (no_cheap_route) }
-                                td style="text-align: right;" { (ever_successful) }
+                                td style="text-align: right;" { (balanced) }
                             }
                         }
                     }
