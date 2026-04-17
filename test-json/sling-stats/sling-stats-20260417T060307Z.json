@@ -1,0 +1,26 @@
+[
+  {
+    "alias": "HOPPINGSQUIRREL",
+    "last_route_taken": "Never",
+    "last_success_reb": "Never",
+    "pubkey": "029fe435040c8b665f731f2b0c81d039238ef1e3a1b1de0afac2b476361a26d675",
+    "rebamount": "0",
+    "scid": "882249x867x0",
+    "status": [
+      "1:NoCheapRoute"
+    ],
+    "w_feeppm": 0
+  },
+  {
+    "alias": "SLEEPYWHISPER",
+    "last_route_taken": "2026-04-16 07:23:22",
+    "last_success_reb": "2026-04-16 07:23:22",
+    "pubkey": "0362dfd94dab64f1d00775aeae4365c1755360353b2f0a54d6f37cc8d438aed008",
+    "rebamount": "25,799",
+    "scid": "866191x460x2",
+    "status": [
+      "1:Balanced"
+    ],
+    "w_feeppm": 1019
+  }
+]
