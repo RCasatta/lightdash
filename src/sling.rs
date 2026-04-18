@@ -334,8 +334,8 @@ mod tests {
     use super::{compute_max_ppm, enrich_sling_stats_with_last_channel_partner};
     use serde_json::Value;
 
-    fn read_json(path: &str) -> Value {
-        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+    fn read_json(content: &str) -> Value {
+        serde_json::from_str(content).unwrap()
     }
 
     #[test]
@@ -352,8 +352,12 @@ mod tests {
 
     #[test]
     fn enriches_snapshot_entries_with_last_channel_partner_when_available() {
-        let mut stats = read_json("test-json/sling-stats/sling-stats-20260416T060307Z.json");
-        let details = read_json("test-json/sling-stats/sling-stats-details.json");
+        let mut stats = read_json(include_str!(
+            "../test-json/sling-stats/sling-stats-20260416T060307Z.json"
+        ));
+        let details = read_json(include_str!(
+            "../test-json/sling-stats/sling-stats-details.json"
+        ));
 
         enrich_sling_stats_with_last_channel_partner(&mut stats, |_scid| details.clone());
 
