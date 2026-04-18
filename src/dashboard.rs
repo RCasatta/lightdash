@@ -1680,13 +1680,6 @@ fn create_channel_pages(
             @if let Some(scid) = &channel.short_channel_id {
                 @if let Some(funds_charts_url) = funds_charts_url {
                     div class="info-card" {
-                        h2 { "Channel Liquidity History" }
-                        div class="chart-container" {
-                            object data={(format!("{}/liquidity/{}.svgz", funds_charts_url, scid))} type="image/svg+xml" style="width: 100%; background-color:rgb(235, 230, 230); margin:10px" {
-                                p { "Liquidity chart not available for this channel." }
-                            }
-                        }
-
                         h2 { "Channel Liquidity Ratio History" }
                         div class="chart-container" {
                             object data={(format!("{}/ratio/{}.svgz", funds_charts_url, scid))} type="image/svg+xml" style="width: 100%; background-color:rgb(235, 230, 230); margin:10px" {

@@ -17,13 +17,11 @@ struct ChannelSeries {
 struct FundSnapshot {
     timestamp: u32,
     our_amount_sat: u64,
-    remote_amount_sat: u64,
     total_amount_sat: u64,
 }
 
 #[derive(Clone, Copy)]
 enum ChartType {
-    Liquidity,
     Ratio,
 }
 
@@ -31,17 +29,7 @@ pub fn run_funds(dir: &str, output_dir: &str) {
     log::info!("Running funds command for directory: {}", dir);
     log::info!("Output directory: {}", output_dir);
 
-    let liquidity_dir = format!("{}/liquidity", output_dir);
     let ratio_dir = format!("{}/ratio", output_dir);
-    if let Err(e) = fs::create_dir_all(&liquidity_dir) {
-        log::error!(
-            "Failed to create liquidity directory {}: {}",
-            liquidity_dir,
-            e
-        );
-        return;
-    }
-
     if let Err(e) = fs::create_dir_all(&ratio_dir) {
         log::error!("Failed to create ratio directory {}: {}", ratio_dir, e);
         return;
@@ -99,7 +87,6 @@ pub fn run_funds(dir: &str, output_dir: &str) {
             let channel_key = channel_key(&fund);
             let our_amount_sat = fund.our_amount_msat / 1000;
             let total_amount_sat = fund.amount_msat / 1000;
-            let remote_amount_sat = total_amount_sat.saturating_sub(our_amount_sat);
 
             let series = channels
                 .entry(channel_key)
@@ -111,7 +98,6 @@ pub fn run_funds(dir: &str, output_dir: &str) {
             series.samples.push(FundSnapshot {
                 timestamp,
                 our_amount_sat,
-                remote_amount_sat,
                 total_amount_sat,
             });
         }
@@ -125,16 +111,6 @@ pub fn run_funds(dir: &str, output_dir: &str) {
 
         series.samples.sort_by_key(|sample| sample.timestamp);
         series.samples.dedup_by_key(|sample| sample.timestamp);
-
-        let liquidity_svg_filename = format!("{}/liquidity/{}.svgz", output_dir, channel_key);
-        match generate_svg_chart(series, ChartType::Liquidity) {
-            Ok(svg_content) => write_compressed_svg(&liquidity_svg_filename, &svg_content),
-            Err(e) => log::error!(
-                "Failed to generate liquidity chart for {}: {}",
-                channel_key,
-                e
-            ),
-        }
 
         let ratio_svg_filename = format!("{}/ratio/{}.svgz", output_dir, channel_key);
         match generate_svg_chart(series, ChartType::Ratio) {
@@ -180,26 +156,15 @@ fn generate_svg_chart(series: &ChannelSeries, chart_type: ChartType) -> Result<S
     let mut max_value = 0u64;
 
     for sample in &series.samples {
-        let (value_0, value_1) = match chart_type {
-            ChartType::Liquidity => (sample.our_amount_sat, sample.remote_amount_sat),
-            ChartType::Ratio => {
-                let ratio = liquidity_percent(sample);
-                (ratio, 100_u64.saturating_sub(ratio))
-            }
+        let value = match chart_type {
+            ChartType::Ratio => liquidity_percent(sample),
         };
-        min_value = min_value.min(value_0).min(value_1);
-        max_value = max_value.max(value_0).max(value_1);
+        min_value = min_value.min(value);
+        max_value = max_value.max(value);
     }
 
-    let y_padding = (max_value - min_value).max(1) / 10;
-
-    if matches!(chart_type, ChartType::Liquidity) {
-        min_value = 0;
-        max_value += y_padding;
-    } else {
-        min_value = 0;
-        max_value = 100;
-    }
+    min_value = 0;
+    max_value = 100;
 
     let width = 1200;
     let height = 600;
@@ -228,24 +193,17 @@ fn generate_svg_chart(series: &ChannelSeries, chart_type: ChartType) -> Result<S
                 as i32
     };
 
-    let mut local_points = Vec::new();
-    let mut remote_points = Vec::new();
+    let mut ratio_points = Vec::new();
 
     for sample in &series.samples {
         let x = scale_x(sample.timestamp);
-        let (local_value, remote_value) = match chart_type {
-            ChartType::Liquidity => (sample.our_amount_sat, sample.remote_amount_sat),
-            ChartType::Ratio => {
-                let ratio = liquidity_percent(sample);
-                (ratio, 100_u64.saturating_sub(ratio))
-            }
+        let value = match chart_type {
+            ChartType::Ratio => liquidity_percent(sample),
         };
-        local_points.push((x, scale_y(local_value), sample.timestamp, local_value));
-        remote_points.push((x, scale_y(remote_value), sample.timestamp, remote_value));
+        ratio_points.push((x, scale_y(value), sample.timestamp, value));
     }
 
-    let local_points = deduplicate_consecutive_points(local_points);
-    let remote_points = deduplicate_consecutive_points(remote_points);
+    let ratio_points = deduplicate_consecutive_points(ratio_points);
 
     let mut svg = String::new();
     svg.push_str(&format!(
@@ -260,8 +218,7 @@ fn generate_svg_chart(series: &ChannelSeries, chart_type: ChartType) -> Result<S
     svg.push('\n');
 
     let title = match chart_type {
-        ChartType::Liquidity => "Channel Liquidity Over Time",
-        ChartType::Ratio => "Channel Liquidity Ratio Over Time",
+        ChartType::Ratio => "Channel Local Liquidity Ratio Over Time",
     };
     svg.push_str(&format!(
         r##"  <text x="{}" y="25" font-family="Arial, sans-serif" font-size="18" font-weight="bold" text-anchor="middle">{}</text>"##,
@@ -293,7 +250,6 @@ fn generate_svg_chart(series: &ChannelSeries, chart_type: ChartType) -> Result<S
     svg.push('\n');
 
     let y_axis_label = match chart_type {
-        ChartType::Liquidity => "Satoshis",
         ChartType::Ratio => "Percent",
     };
     svg.push_str(&format!(
@@ -317,7 +273,6 @@ fn generate_svg_chart(series: &ChannelSeries, chart_type: ChartType) -> Result<S
         svg.push('\n');
 
         let tick_label = match chart_type {
-            ChartType::Liquidity => value.to_string(),
             ChartType::Ratio => format!("{}%", value),
         };
         svg.push_str(&format!(
@@ -340,14 +295,19 @@ fn generate_svg_chart(series: &ChannelSeries, chart_type: ChartType) -> Result<S
         svg.push('\n');
     }
 
-    append_series_to_svg(&mut svg, &local_points, "#2563eb", "Local", chart_type);
-    append_series_to_svg(&mut svg, &remote_points, "#dc2626", "Remote", chart_type);
+    append_series_to_svg(
+        &mut svg,
+        &ratio_points,
+        "#2563eb",
+        "Local ratio",
+        chart_type,
+    );
 
     let legend_x = width - margin_right + 20;
     let legend_y = margin_top + 20;
 
     svg.push_str(&format!(
-        r##"  <rect x="{}" y="{}" width="200" height="105" fill="white" stroke="black" stroke-width="1"/>"##,
+        r##"  <rect x="{}" y="{}" width="200" height="85" fill="white" stroke="black" stroke-width="1"/>"##,
         legend_x - 10, legend_y - 10
     ));
     svg.push('\n');
@@ -366,31 +326,16 @@ fn generate_svg_chart(series: &ChannelSeries, chart_type: ChartType) -> Result<S
     ));
     svg.push('\n');
     svg.push_str(&format!(
-        r##"  <text x="{}" y="{}" font-family="Arial, monospace" font-size="10" alignment-baseline="middle">Local</text>"##,
+        r##"  <text x="{}" y="{}" font-family="Arial, monospace" font-size="10" alignment-baseline="middle">Local ratio</text>"##,
         legend_x + 40,
         legend_y + 25
     ));
     svg.push('\n');
 
     svg.push_str(&format!(
-        r##"  <line x1="{}" y1="{}" x2="{}" y2="{}" stroke="#dc2626" stroke-width="3"/>"##,
-        legend_x,
-        legend_y + 50,
-        legend_x + 30,
-        legend_y + 50
-    ));
-    svg.push('\n');
-    svg.push_str(&format!(
-        r##"  <text x="{}" y="{}" font-family="Arial, monospace" font-size="10" alignment-baseline="middle">Remote</text>"##,
-        legend_x + 40,
-        legend_y + 50
-    ));
-    svg.push('\n');
-
-    svg.push_str(&format!(
         r##"  <text x="{}" y="{}" font-family="Arial, monospace" font-size="10">Peer: {}</text>"##,
         legend_x,
-        legend_y + 78,
+        legend_y + 50,
         truncate_node_id(&series.peer_id)
     ));
     svg.push('\n');
@@ -403,7 +348,7 @@ fn generate_svg_chart(series: &ChannelSeries, chart_type: ChartType) -> Result<S
     svg.push_str(&format!(
         r##"  <text x="{}" y="{}" font-family="Arial, monospace" font-size="10">Cap: {} sats</text>"##,
         legend_x,
-        legend_y + 95,
+        legend_y + 67,
         total_capacity
     ));
     svg.push('\n');
@@ -451,7 +396,6 @@ fn append_series_to_svg(
     for (x, y, timestamp, value) in points {
         let date_str = format_timestamp(*timestamp);
         let value_label = match chart_type {
-            ChartType::Liquidity => format!("{}: {} sats", label, value),
             ChartType::Ratio => format!("{}: {}%", label, value),
         };
         svg.push_str(&format!(
