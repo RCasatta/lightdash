@@ -19,6 +19,8 @@ struct NodeChannelDisplay {
 #[derive(Clone, Deserialize)]
 struct RebalanceSnapshotEntry {
     alias: String,
+    #[serde(default)]
+    last_channel_partner: Option<String>,
     last_route_taken: String,
     last_success_reb: String,
     #[allow(dead_code)]
@@ -2710,6 +2712,7 @@ fn create_rebalance_snapshot_detail_section(
                     tr {
                         th { "Alias" }
                         th { "SCID" }
+                        th { "Channel Partner" }
                         th { "Status" }
                         th style="text-align: right;" { "Reb Amount" }
                         th style="text-align: right;" { "Weighted Fee PPM" }
@@ -2724,6 +2727,13 @@ fn create_rebalance_snapshot_detail_section(
                             td {
                                 a href={(format!("{channel_prefix}/{}.html", entry.scid))} {
                                     (&entry.scid)
+                                }
+                            }
+                            td {
+                                @if let Some(last_channel_partner) = &entry.last_channel_partner {
+                                    a href={(format!("{channel_prefix}/{}.html", last_channel_partner))} {
+                                        (last_channel_partner)
+                                    }
                                 }
                             }
                             td { (entry.status.join(", ")) }
