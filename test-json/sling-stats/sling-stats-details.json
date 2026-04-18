@@ -1,0 +1,107 @@
+{
+   "failures_in_time_window": {
+      "most_common_hop_count": 5,
+      "time_of_last_attempt": "2026-04-18 18:02:33",
+      "time_window_days": "30",
+      "top_5_channel_partners": [
+         {
+            "alias": "033769 💚 🌽 💚",
+            "sats": 65516134,
+            "scid": "867798x3251x1"
+         },
+         {
+            "alias": "Boltz",
+            "sats": 58473354,
+            "scid": "854856x814x3"
+         },
+         {
+            "alias": "Sunny Sarah ☀️",
+            "sats": 39883283,
+            "scid": "921910x508x3"
+         },
+         {
+            "alias": "CoinGate",
+            "sats": 34197584,
+            "scid": "924606x2371x0"
+         },
+         {
+            "alias": "Fedi us-east-1 [fedi.xyz]",
+            "sats": 20563362,
+            "scid": "861028x1821x0"
+         }
+      ],
+      "top_5_fail_nodes": [
+         {
+            "alias": "Boltz",
+            "count": 204,
+            "peer_id": "026165850492521f4ac8abd9bd8088123446d126f648ca35e60f88177dc149ceb2"
+         },
+         {
+            "alias": "CoinGate",
+            "count": 105,
+            "peer_id": "0242a4ae0c5bef18048fbecf995094b74bfb0f7391418d71ed394784373f41e4f3"
+         },
+         {
+            "alias": "Boltz|CLN",
+            "count": 60,
+            "peer_id": "02d96eadea3d780104449aca5c93461ce67c1564e2e1d73225fa67dd3b997a6018"
+         },
+         {
+            "alias": "1ML.com node ALPHA",
+            "count": 49,
+            "peer_id": "0217890e3aad8d35bc054f43acc00084b25229ecff0ab68debd82883ad65ee8266"
+         },
+         {
+            "alias": "Fedi us-east-1 [fedi.xyz]",
+            "count": 48,
+            "peer_id": "02dd3fcdaa17b9bc83bf7138fbea85d0e83385a68b5fc8f9933658c8ee04644f68"
+         }
+      ],
+      "top_5_failure_reasons": [
+         {
+            "failure_count": 951,
+            "failure_reason": "WIRE_TEMPORARY_CHANNEL_FAILURE"
+         },
+         {
+            "failure_count": 4,
+            "failure_reason": "WIRE_FEE_INSUFFICIENT"
+         },
+         {
+            "failure_count": 3,
+            "failure_reason": "WIRE_EXPIRY_TOO_FAR"
+         },
+         {
+            "failure_count": 2,
+            "failure_reason": "WIRE_UNKNOWN_NEXT_PEER"
+         },
+         {
+            "failure_count": 1,
+            "failure_reason": "WIRE_CHANNEL_DISABLED"
+         }
+      ],
+      "total_amount_tried_sats": 269641589,
+      "total_rebalances_tried": 962
+   },
+   "successes_in_time_window": {
+      "feeppm_90th_percentile": 80,
+      "feeppm_max": 80,
+      "feeppm_median": 80,
+      "feeppm_min": 68,
+      "feeppm_weighted_avg": 78,
+      "last_channel_partner": "867798x3251x1",
+      "most_common_hop_count": 5,
+      "time_of_last_rebalance": "2026-04-18 00:46:30",
+      "time_window_days": "30",
+      "top_5_channel_partners": [
+         {
+            "alias": "033769 💚 🌽 💚",
+            "sats": 494498,
+            "scid": "867798x3251x1"
+         }
+      ],
+      "total_amount_sats": 494498,
+      "total_rebalances": 2,
+      "total_spent_sats": 38
+   }
+}
+

@@ -1,6 +1,7 @@
 use crate::cmd::{Fund, SettledForward};
 use crate::store::Store;
 use chrono::Utc;
+use serde_json::Value;
 use std::fs;
 use std::path::Path;
 
@@ -90,6 +91,57 @@ fn stop_existing_sling_jobs() {
     log::debug!("sling-stop return: {result}");
 }
 
+fn get_sling_stats(scid: Option<&str>) -> Value {
+    if cfg!(debug_assertions) {
+        match scid {
+            Some(_) => {
+                crate::cmd::cmd_result("cat", &["test-json/sling-stats/sling-stats-details.json"])
+            }
+            None => crate::cmd::cmd_result(
+                "cat",
+                &["test-json/sling-stats/sling-stats-20260416T060307Z.json"],
+            ),
+        }
+    } else {
+        match scid {
+            Some(scid) => crate::cmd::cmd_result(CMD, &["sling-stats", scid, "true"]),
+            None => crate::cmd::cmd_result(CMD, &["sling-stats", "true"]),
+        }
+    }
+}
+
+fn enrich_sling_stats_with_last_channel_partner(
+    stats: &mut Value,
+    mut get_details: impl FnMut(&str) -> Value,
+) {
+    let Some(entries) = stats.as_array_mut() else {
+        log::error!("sling-stats snapshot is not an array, skipping channel detail enrichment");
+        return;
+    };
+
+    for entry in entries {
+        let Some(scid) = entry.get("scid").and_then(Value::as_str) else {
+            continue;
+        };
+
+        let details = get_details(scid);
+        let Some(last_channel_partner) = details
+            .get("successes_in_time_window")
+            .and_then(|v| v.get("last_channel_partner"))
+            .and_then(Value::as_str)
+        else {
+            continue;
+        };
+
+        if let Some(entry_object) = entry.as_object_mut() {
+            entry_object.insert(
+                "last_channel_partner".to_string(),
+                Value::String(last_channel_partner.to_string()),
+            );
+        }
+    }
+}
+
 fn snapshot_sling_stats(directory: &str) {
     let path = Path::new(directory);
     if let Err(e) = fs::create_dir_all(path) {
@@ -101,7 +153,8 @@ fn snapshot_sling_stats(directory: &str) {
         return;
     }
 
-    let stats = crate::cmd::cmd_result(CMD, &["sling-stats", "true"]);
+    let mut stats = get_sling_stats(None);
+    enrich_sling_stats_with_last_channel_partner(&mut stats, |scid| get_sling_stats(Some(scid)));
     let timestamp = Utc::now().format("%Y%m%dT%H%M%SZ");
     let file_path = path.join(format!("sling-stats-{timestamp}.json"));
     match serde_json::to_string_pretty(&stats) {
@@ -278,7 +331,12 @@ pub fn run_sling(store: &Store, directory: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::compute_max_ppm;
+    use super::{compute_max_ppm, enrich_sling_stats_with_last_channel_partner};
+    use serde_json::Value;
+
+    fn read_json(path: &str) -> Value {
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+    }
 
     #[test]
     fn compute_max_ppm_is_zero_without_recent_avg_ppm() {
@@ -290,5 +348,27 @@ mod tests {
         assert_eq!(compute_max_ppm(446), 223);
         assert_eq!(compute_max_ppm(2085), 1042);
         assert_eq!(compute_max_ppm(90), 45);
+    }
+
+    #[test]
+    fn enriches_snapshot_entries_with_last_channel_partner_when_available() {
+        let mut stats = read_json("test-json/sling-stats/sling-stats-20260416T060307Z.json");
+        let details = read_json("test-json/sling-stats/sling-stats-details.json");
+
+        enrich_sling_stats_with_last_channel_partner(&mut stats, |_scid| details.clone());
+
+        let entries = stats.as_array().unwrap();
+        assert_eq!(
+            entries[0]
+                .get("last_channel_partner")
+                .and_then(Value::as_str),
+            Some("867798x3251x1")
+        );
+        assert_eq!(
+            entries[1]
+                .get("last_channel_partner")
+                .and_then(Value::as_str),
+            Some("867798x3251x1")
+        );
     }
 }
