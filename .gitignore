@@ -2,4 +2,5 @@
 .direnv
 .cursor/
 .env
+.codex
 node_analytics.json.xz
