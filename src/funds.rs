@@ -1,7 +1,6 @@
 use crate::cmd;
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use maud::{html, Markup, DOCTYPE};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
@@ -12,8 +11,6 @@ type ChannelHistory = HashMap<ChannelKey, ChannelSeries>;
 
 struct ChannelSeries {
     peer_id: PeerId,
-    channel_id: String,
-    short_channel_id: Option<String>,
     samples: Vec<FundSnapshot>,
 }
 
@@ -36,8 +33,6 @@ pub fn run_funds(dir: &str, output_dir: &str) {
 
     let liquidity_dir = format!("{}/liquidity", output_dir);
     let ratio_dir = format!("{}/ratio", output_dir);
-    let channels_dir = format!("{}/channels", output_dir);
-
     if let Err(e) = fs::create_dir_all(&liquidity_dir) {
         log::error!(
             "Failed to create liquidity directory {}: {}",
@@ -49,15 +44,6 @@ pub fn run_funds(dir: &str, output_dir: &str) {
 
     if let Err(e) = fs::create_dir_all(&ratio_dir) {
         log::error!("Failed to create ratio directory {}: {}", ratio_dir, e);
-        return;
-    }
-
-    if let Err(e) = fs::create_dir_all(&channels_dir) {
-        log::error!(
-            "Failed to create channels directory {}: {}",
-            channels_dir,
-            e
-        );
         return;
     }
 
@@ -119,8 +105,6 @@ pub fn run_funds(dir: &str, output_dir: &str) {
                 .entry(channel_key)
                 .or_insert_with(|| ChannelSeries {
                     peer_id: fund.peer_id.clone(),
-                    channel_id: fund.channel_id.clone(),
-                    short_channel_id: fund.short_channel_id.clone(),
                     samples: Vec::new(),
                 });
 
@@ -161,17 +145,6 @@ pub fn run_funds(dir: &str, output_dir: &str) {
                 e
             ),
         }
-
-        let channel_html = create_channel_page(channel_key, series);
-        let channel_html_filename = format!("{}/channels/{}.html", output_dir, channel_key);
-        match fs::write(&channel_html_filename, channel_html.into_string()) {
-            Ok(_) => log::debug!("Funds page generated: {}", channel_html_filename),
-            Err(e) => log::error!(
-                "Failed to write funds page {}: {}",
-                channel_html_filename,
-                e
-            ),
-        }
     }
 
     log::info!("Funds command completed");
@@ -195,127 +168,6 @@ fn write_compressed_svg(filename: &str, svg_content: &str) {
             Err(e) => log::error!("Failed to finish gzip compression: {}", e),
         },
         Err(e) => log::error!("Failed to compress SVG data: {}", e),
-    }
-}
-
-fn create_channel_page(channel_key: &str, series: &ChannelSeries) -> Markup {
-    let short_channel_id = series.short_channel_id.as_deref().unwrap_or("N/A");
-    html! {
-        (DOCTYPE)
-        html {
-            head {
-                title { "Funds " (channel_key) }
-                meta charset="utf-8";
-                link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>";
-                style {
-                    r#"
-                    body {
-                        font-family: 'Courier New', monospace;
-                        background-color: #1e1e1e;
-                        color: #f8f8f2;
-                        margin: 0;
-                        padding: 20px;
-                        line-height: 1.4;
-                    }
-                    .container {
-                        max-width: 1400px;
-                        margin: 0 auto;
-                    }
-                    .header {
-                        background-color: #2c3e50;
-                        color: white;
-                        padding: 20px;
-                        border-radius: 8px;
-                        margin-bottom: 20px;
-                        text-align: center;
-                    }
-                    .info-card {
-                        background-color: #2d3748;
-                        padding: 20px;
-                        border-radius: 8px;
-                        margin-bottom: 20px;
-                    }
-                    .info-item {
-                        margin: 10px 0;
-                    }
-                    .label {
-                        color: #a0aec0;
-                    }
-                    .value {
-                        color: #63b3ed;
-                        font-weight: bold;
-                    }
-                    a {
-                        color: #63b3ed;
-                        text-decoration: none;
-                    }
-                    a:hover {
-                        text-decoration: underline;
-                    }
-                    h1 { color: #f8f8f2; margin: 0; }
-                    h2 { color: #63b3ed; margin-top: 0; }
-                    .chart-container {
-                        margin: 20px 0;
-                    }
-                    .timestamp {
-                        color: #a0aec0;
-                        font-size: 0.9em;
-                        text-align: center;
-                        margin-top: 20px;
-                    }
-                    "#
-                }
-            }
-            body {
-                div class="container" {
-                    div class="header" {
-                        h1 { "⚡ Funds " (channel_key) }
-                    }
-
-                    div class="info-card" {
-                        h2 { "Channel Information" }
-                        div class="info-item" {
-                            span class="label" { "Short Channel ID: " }
-                            span class="value" { (short_channel_id) }
-                        }
-                        div class="info-item" {
-                            span class="label" { "Channel ID: " }
-                            span class="value" { (series.channel_id) }
-                        }
-                        div class="info-item" {
-                            span class="label" { "Peer: " }
-                            span class="value" {
-                                a href={(format!("https://mempool.space/lightning/node/{}", series.peer_id))} target="_blank" {
-                                    (truncate_id(&series.peer_id))
-                                }
-                            }
-                        }
-                    }
-
-                    div class="info-card" {
-                        h2 { "Liquidity History" }
-                        div class="chart-container" {
-                            object data={(format!("../liquidity/{channel_key}.svgz"))} type="image/svg+xml" style="width: 100%; background-color:rgb(235, 230, 230); margin:10px" {
-                                p { "Liquidity chart not available for this channel." }
-                            }
-                        }
-                    }
-
-                    div class="info-card" {
-                        h2 { "Liquidity Ratio History" }
-                        div class="chart-container" {
-                            object data={(format!("../ratio/{channel_key}.svgz"))} type="image/svg+xml" style="width: 100%; background-color:rgb(235, 230, 230); margin:10px" {
-                                p { "Liquidity ratio chart not available for this channel." }
-                            }
-                        }
-                    }
-
-                    div class="timestamp" {
-                        "Generated by lightdash funds command"
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -539,7 +391,7 @@ fn generate_svg_chart(series: &ChannelSeries, chart_type: ChartType) -> Result<S
         r##"  <text x="{}" y="{}" font-family="Arial, monospace" font-size="10">Peer: {}</text>"##,
         legend_x,
         legend_y + 78,
-        truncate_id(&series.peer_id)
+        truncate_node_id(&series.peer_id)
     ));
     svg.push('\n');
 
@@ -659,14 +511,6 @@ fn is_leap_year(year: u32) -> bool {
     (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
 }
 
-fn truncate_id(value: &str) -> String {
-    if value.len() > 16 {
-        format!("{}...{}", &value[..8], &value[value.len() - 8..])
-    } else {
-        value.to_string()
-    }
-}
-
 fn deduplicate_consecutive_points(points: Vec<(i32, i32, u32, u64)>) -> Vec<(i32, i32, u32, u64)> {
     if points.len() <= 2 {
         return points;
@@ -691,4 +535,12 @@ fn deduplicate_consecutive_points(points: Vec<(i32, i32, u32, u64)>) -> Vec<(i32
     }
 
     result
+}
+
+fn truncate_node_id(node_id: &str) -> String {
+    if node_id.len() > 16 {
+        format!("{}...{}", &node_id[..8], &node_id[node_id.len() - 8..])
+    } else {
+        node_id.to_string()
+    }
 }

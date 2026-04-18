@@ -1221,6 +1221,7 @@ fn create_channel_pages(
     per_channel_last_forward_in: &HashMap<String, DateTime<Utc>>,
     per_channel_last_forward_out: &HashMap<String, DateTime<Utc>>,
     avail_map: &HashMap<String, f64>,
+    funds_charts_url: Option<&str>,
 ) {
     let channels_dir = format!("{}/channels", directory);
 
@@ -1671,6 +1672,26 @@ fn create_channel_pages(
                     div class="chart-container" {
                         object data={(format!("/charts/htlc-max/{}.svgz", scid))} type="image/svg+xml" style="width: 100%; background-color:rgb(235, 230, 230); margin:10px" {
                             p { "Chart not available for this channel." }
+                        }
+                    }
+                }
+            }
+
+            @if let Some(scid) = &channel.short_channel_id {
+                @if let Some(funds_charts_url) = funds_charts_url {
+                    div class="info-card" {
+                        h2 { "Channel Liquidity History" }
+                        div class="chart-container" {
+                            object data={(format!("{}/liquidity/{}.svgz", funds_charts_url, scid))} type="image/svg+xml" style="width: 100%; background-color:rgb(235, 230, 230); margin:10px" {
+                                p { "Liquidity chart not available for this channel." }
+                            }
+                        }
+
+                        h2 { "Channel Liquidity Ratio History" }
+                        div class="chart-container" {
+                            object data={(format!("{}/ratio/{}.svgz", funds_charts_url, scid))} type="image/svg+xml" style="width: 100%; background-color:rgb(235, 230, 230); margin:10px" {
+                                p { "Liquidity ratio chart not available for this channel." }
+                            }
                         }
                     }
                 }
@@ -2953,6 +2974,7 @@ pub fn run_dashboard(
     min_channels: usize,
     correlations_path: Option<String>,
     rebalances_path: Option<String>,
+    funds_charts_url: Option<String>,
 ) {
     let now = Utc::now();
     log::debug!("{}", now);
@@ -3492,6 +3514,7 @@ pub fn run_dashboard(
         &per_channel_last_forward_in,
         &per_channel_last_forward_out,
         &store.avail_map,
+        funds_charts_url.as_deref(),
     );
 
     log::info!("Creating forwards page");

@@ -42,6 +42,9 @@ enum Commands {
         /// Directory with timestamped sling-stats JSON snapshots
         #[arg(long)]
         rebalances: Option<String>,
+        /// Base URL where funds charts are served, e.g. /auth/funds-charts
+        #[arg(long)]
+        funds_charts_url: Option<String>,
     },
     /// Generate routing analysis page
     Routes {
@@ -98,10 +101,18 @@ fn main() {
             availdb,
             correlations,
             rebalances,
+            funds_charts_url,
         } => {
             let store = Store::new(availdb);
             log::debug!("Dashboard directory: {}", directory);
-            dashboard::run_dashboard(&store, directory, min_channels, correlations, rebalances);
+            dashboard::run_dashboard(
+                &store,
+                directory,
+                min_channels,
+                correlations,
+                rebalances,
+                funds_charts_url,
+            );
         }
         Commands::Routes { directory } => {
             let store = Store::new(None);
