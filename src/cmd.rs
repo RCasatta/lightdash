@@ -1,19 +1,8 @@
-use std::collections::HashMap;
-
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::error_panic;
-
-pub fn _sling_jobsettings() -> HashMap<String, JobSetting> {
-    let v = if cfg!(debug_assertions) {
-        cmd_result("cat", &["test-json/sling-jobsettings"])
-    } else {
-        cmd_result("lightning-cli", &["sling-jobsettings"])
-    };
-    serde_json::from_value(v).unwrap()
-}
 
 pub fn list_funds() -> ListFunds {
     let v = if cfg!(debug_assertions) {
@@ -110,9 +99,11 @@ pub fn get_route(id: &str, amount_msat: u64) -> Option<GetRoute> {
 }
 
 /// Sign a message with the node's key for authentication purposes
-pub fn signmessage(message: &str) -> SignMessageResponse {
+pub fn signmessage(message: &str) -> String {
     let v = cmd_result("lightning-cli", &["signmessage", message]);
-    serde_json::from_value(v).unwrap()
+    serde_json::from_value::<SignMessageResponse>(v)
+        .unwrap()
+        .zbase
 }
 
 pub fn cmd_result(cmd: &str, args: &[impl AsRef<str>]) -> Value {
@@ -153,22 +144,12 @@ pub struct GetInfo {
 
 #[derive(Deserialize, Debug)]
 pub struct SignMessageResponse {
-    pub signature: String,
-    pub recid: String,
     pub zbase: String,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct ListChannels {
     pub channels: Vec<Channel>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct JobSetting {
-    pub amount_msat: u64,
-    pub maxppm: u64,
-    pub outppm: u64,
-    pub sat_direction: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -193,24 +174,7 @@ pub struct ListPeerChannelsChannel {
 #[derive(Deserialize, Debug, Clone)]
 pub struct Peer {
     pub id: String,
-    pub connected: bool,
     pub num_channels: u64,
-    pub features: String,
-    #[serde(default)]
-    pub channels: Vec<PeerChannel>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct PeerChannel {
-    pub state: String,
-    #[serde(default)]
-    pub short_channel_id: Option<String>,
-    #[serde(default)]
-    pub direction: Option<u64>,
-    #[serde(default)]
-    pub channel_id: Option<String>,
-    #[serde(default)]
-    pub funding_txid: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -219,14 +183,12 @@ pub struct Channel {
     pub destination: String,
     pub short_channel_id: String,
     pub amount_msat: u64,
-    pub active: bool,
     pub last_update: u64,
     pub base_fee_millisatoshi: u64,
     pub fee_per_millionth: u64,
     pub delay: u64,
     pub htlc_minimum_msat: u64,
     pub htlc_maximum_msat: u64,
-    pub features: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -263,7 +225,6 @@ pub struct Fund {
 #[derive(Deserialize, Debug, Clone)]
 pub struct Output {
     pub amount_msat: u64,
-    pub scriptpubkey: String,
 }
 
 impl Fund {
@@ -304,49 +265,18 @@ pub struct ListClosedChannels {
 pub struct ClosedChannel {
     #[serde(default)]
     pub peer_id: Option<String>,
-    pub channel_id: String,
     #[serde(default)]
     pub short_channel_id: Option<String>,
-    #[serde(default)]
-    pub alias: Option<ChannelAlias>,
     pub opener: String,
     #[serde(default)]
     pub closer: Option<String>,
     #[serde(default)]
-    pub private: Option<bool>,
-    #[serde(default)]
-    pub channel_type: Option<ChannelType>,
-    #[serde(default)]
-    pub total_local_commitments: Option<u64>,
-    #[serde(default)]
-    pub total_remote_commitments: Option<u64>,
-    #[serde(default)]
     pub total_htlcs_sent: Option<u64>,
     pub funding_txid: String,
-    pub funding_outnum: u32,
-    #[serde(default)]
-    pub leased: Option<bool>,
-    pub total_msat: u64,
     pub final_to_us_msat: u64,
-    pub min_to_us_msat: u64,
-    pub max_to_us_msat: u64,
     #[serde(default)]
     pub last_commitment_txid: Option<String>,
-    #[serde(default)]
-    pub last_commitment_fee_msat: Option<u64>,
     pub close_cause: String,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct ChannelAlias {
-    #[serde(rename = "local")]
-    pub local_alias: String,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct ChannelType {
-    pub bits: Vec<u32>,
-    pub names: Vec<String>,
 }
 
 impl ClosedChannel {
@@ -398,11 +328,6 @@ pub struct SettledForward {
 #[derive(Deserialize, Debug, Clone)]
 pub struct RouteNode {
     pub id: String,
-    pub channel: String,
-    pub direction: u8,
-    pub amount_msat: u64,
-    pub delay: u64,
-    pub style: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -448,8 +373,6 @@ pub fn datastore_string(
         log::debug!("Debug mode: Skipping datastore_string for key {:?}", key);
         return Ok(DatastoreResponse {
             key: key.iter().map(|s| s.to_string()).collect(),
-            generation: Some(1),
-            hex: None,
             string: Some(value.to_string()),
         });
     }
@@ -515,8 +438,6 @@ pub fn _deldatastore(key: &[&str]) -> Result<DatastoreResponse, String> {
         log::debug!("Debug mode: Skipping _deldatastore for key {:?}", key);
         return Ok(DatastoreResponse {
             key: key.iter().map(|s| s.to_string()).collect(),
-            generation: Some(1),
-            hex: None,
             string: None,
         });
     }
@@ -554,10 +475,6 @@ impl DatastoreMode {
 #[derive(Deserialize, Debug, Clone)]
 pub struct DatastoreResponse {
     pub key: Vec<String>,
-    #[serde(default)]
-    pub generation: Option<u64>,
-    #[serde(default)]
-    pub hex: Option<String>,
     #[serde(default)]
     pub string: Option<String>,
 }

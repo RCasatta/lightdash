@@ -588,17 +588,6 @@ impl Store {
         Some((age_blocks / blocks_per_day) as i64)
     }
 
-    /// Get average satoshis earned per day for a specific channel
-    pub fn get_channel_sats_per_day(&self, short_channel_id: &str) -> Option<f64> {
-        let age_days = self.get_channel_age_days(short_channel_id)?;
-        if age_days <= 0 {
-            return Some(0.0);
-        }
-
-        let total_fees = self.get_channel_total_fees(short_channel_id);
-        Some(total_fees as f64 / age_days as f64)
-    }
-
     /// Get fund (channel capacity info) by short_channel_id
     pub fn get_fund(&self, short_channel_id: &str) -> Option<&cmd::Fund> {
         self.funds
@@ -781,15 +770,6 @@ impl Store {
         result
     }
 
-    /// Get count of forwards by status
-    pub fn count_forwards_by_status(&self, status: &str) -> usize {
-        self.forwards
-            .forwards
-            .iter()
-            .filter(|f| f.status == status)
-            .count()
-    }
-
     /// Get count of forwards by status within the last N days
     pub fn count_forwards_by_status_days(&self, status: &str, days: i64) -> usize {
         self.forwards
@@ -809,12 +789,6 @@ impl Store {
 
     /// Get forward statistics for different time periods
     pub fn get_forward_statistics(&self) -> ForwardStatistics {
-        // Total counts
-        let total_settled = self.count_forwards_by_status("settled");
-        let total_failed = self.count_forwards_by_status("failed");
-        let total_local_failed = self.count_forwards_by_status("local_failed");
-        let total_all = total_settled + total_failed + total_local_failed;
-
         // Last day
         let day_settled = self.count_forwards_by_status_days("settled", 1);
         let day_failed = self.count_forwards_by_status_days("failed", 1);
@@ -834,10 +808,6 @@ impl Store {
         let month_all = month_settled + month_failed + month_local_failed;
 
         ForwardStatistics {
-            total_settled,
-            total_failed,
-            total_local_failed,
-            total_all,
             day_settled,
             day_failed,
             day_local_failed,
@@ -941,10 +911,6 @@ pub struct ApyData {
 
 /// Forward statistics for different time periods
 pub struct ForwardStatistics {
-    pub total_settled: usize,
-    pub total_failed: usize,
-    pub total_local_failed: usize,
-    pub total_all: usize,
     pub day_settled: usize,
     pub day_failed: usize,
     pub day_local_failed: usize,

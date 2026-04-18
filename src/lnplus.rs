@@ -14,16 +14,12 @@ const LNPLUS_API_BASE: &str = "https://lightningnetwork.plus/api/2";
 #[derive(Debug, Clone, Copy)]
 pub enum SwapStatus {
     Pending,
-    Opening,
-    Completed,
 }
 
 impl fmt::Display for SwapStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SwapStatus::Pending => write!(f, "pending"),
-            SwapStatus::Opening => write!(f, "opening"),
-            SwapStatus::Completed => write!(f, "completed"),
         }
     }
 }
@@ -59,7 +55,7 @@ impl LnPlusClient {
 
         Ok(Self {
             message: response.message,
-            signature: sign_response.zbase,
+            signature: sign_response,
         })
     }
 

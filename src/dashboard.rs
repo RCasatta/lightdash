@@ -346,12 +346,6 @@ fn create_node_pages(
         let num_channels = store.node_total_channels(&nodeid);
 
         let note = store.get_peer_note(&nodeid);
-        let _peer_channels = if let Some(peer) = peer_map.get(&nodeid) {
-            peer.channels.clone()
-        } else {
-            vec![]
-        };
-
         // Fee distribution based on channels to this node
         let fee_dist = store.get_peer_fee_distribution(&nodeid);
         let fee_stats = store.get_peer_fee_stats(&nodeid);
