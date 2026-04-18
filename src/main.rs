@@ -9,6 +9,7 @@ mod cmd;
 mod common;
 mod dashboard;
 mod fees;
+mod funds;
 mod htlc;
 mod lnplus;
 mod routes;
@@ -67,6 +68,15 @@ enum Commands {
         #[arg(long)]
         output_dir: String,
     },
+    /// Display funds information
+    Funds {
+        /// Path to directory with listfunds history
+        #[arg(long)]
+        path: String,
+        /// Output directory for charts
+        #[arg(long)]
+        output_dir: String,
+    },
     /// Adjust HTLC max on channels where local balance is lower than current htlc max
     Htlc,
     /// Fetch data from LightningNetwork.Plus API
@@ -112,6 +122,9 @@ fn main() {
         }
         Commands::Channels { path, output_dir } => {
             channels::run_channels(path.as_str(), output_dir.as_str());
+        }
+        Commands::Funds { path, output_dir } => {
+            funds::run_funds(path.as_str(), output_dir.as_str());
         }
         Commands::Htlc => {
             htlc::run_htlc();

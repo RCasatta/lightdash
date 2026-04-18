@@ -47,6 +47,11 @@ pub fn read_xz_channels(path: &str) -> ListChannels {
     serde_json::from_value(v).unwrap()
 }
 
+pub fn read_xz_funds(path: &str) -> ListFunds {
+    let v = cmd_result("xzcat", &[path]);
+    serde_json::from_value(v).unwrap()
+}
+
 pub fn list_peers() -> ListPeers {
     let v = if cfg!(debug_assertions) {
         cmd_result("zcat", &["test-json/listpeers.gz"])
