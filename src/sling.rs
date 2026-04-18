@@ -352,12 +352,41 @@ mod tests {
 
     #[test]
     fn enriches_snapshot_entries_with_last_channel_partner_when_available() {
-        let mut stats = read_json(include_str!(
-            "../test-json/sling-stats/sling-stats-20260416T060307Z.json"
-        ));
-        let details = read_json(include_str!(
-            "../test-json/sling-stats/sling-stats-details.json"
-        ));
+        let mut stats = read_json(
+            r#"
+            [
+              {
+                "alias": "HOPPINGSQUIRREL",
+                "last_route_taken": "Never",
+                "last_success_reb": "Never",
+                "pubkey": "029fe435040c8b665f731f2b0c81d039238ef1e3a1b1de0afac2b476361a26d675",
+                "rebamount": "0",
+                "scid": "882249x867x0",
+                "status": ["1:NoCheapRoute"],
+                "w_feeppm": 0
+              },
+              {
+                "alias": "SLEEPYWHISPER",
+                "last_route_taken": "2026-04-16 07:23:22",
+                "last_success_reb": "2026-04-16 07:23:22",
+                "pubkey": "0362dfd94dab64f1d00775aeae4365c1755360353b2f0a54d6f37cc8d438aed008",
+                "rebamount": "25,799",
+                "scid": "866191x460x2",
+                "status": ["1:Balanced"],
+                "w_feeppm": 1019
+              }
+            ]
+            "#,
+        );
+        let details = read_json(
+            r#"
+            {
+              "successes_in_time_window": {
+                "last_channel_partner": "867798x3251x1"
+              }
+            }
+            "#,
+        );
 
         enrich_sling_stats_with_last_channel_partner(&mut stats, |_scid| details.clone());
 
