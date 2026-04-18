@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
 
 use crate::channels::ChannelCorrelation;
 use crate::cmd;
@@ -33,53 +32,10 @@ struct RebalanceSnapshotEntry {
 struct RebalanceSnapshotFile {
     file_name: String,
     entries: Vec<RebalanceSnapshotEntry>,
-    opposites: HashMap<String, RebalanceOppositeEntry>,
-}
-
-#[derive(Clone, Deserialize)]
-struct RebalanceOppositeEntry {
-    target_scid: String,
-    match_status: String,
-    opposite_scid: Option<String>,
-    #[serde(default)]
-    candidate_opposite_scids: Vec<String>,
 }
 
 fn has_balanced_status(entry: &RebalanceSnapshotEntry) -> bool {
     entry.status.iter().any(|s| s.contains("Balanced"))
-}
-
-fn opposite_snapshot_file_name(snapshot_file_name: &str) -> Option<String> {
-    snapshot_file_name
-        .strip_prefix("sling-stats-")
-        .map(|suffix| format!("sling-opposites-{suffix}"))
-}
-
-fn load_rebalance_opposites(
-    path: &str,
-    snapshot_file_name: &str,
-) -> HashMap<String, RebalanceOppositeEntry> {
-    let Some(sidecar_name) = opposite_snapshot_file_name(snapshot_file_name) else {
-        return HashMap::new();
-    };
-    let sidecar_path = Path::new(path).join(sidecar_name);
-    let Ok(content) = fs::read_to_string(&sidecar_path) else {
-        return HashMap::new();
-    };
-    match serde_json::from_str::<Vec<RebalanceOppositeEntry>>(&content) {
-        Ok(entries) => entries
-            .into_iter()
-            .map(|entry| (entry.target_scid.clone(), entry))
-            .collect(),
-        Err(e) => {
-            log::error!(
-                "Failed to parse rebalance opposites sidecar {}: {}",
-                sidecar_path.display(),
-                e
-            );
-            HashMap::new()
-        }
-    }
 }
 
 impl RebalanceSnapshotFile {
@@ -2680,16 +2636,12 @@ fn load_rebalance_snapshots(rebalances_path: Option<&str>) -> Vec<RebalanceSnaps
         let Some(file_name) = file_path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
-        if !file_name.starts_with("sling-stats-") {
-            continue;
-        }
 
         match fs::read_to_string(&file_path) {
             Ok(content) => match serde_json::from_str::<Vec<RebalanceSnapshotEntry>>(&content) {
                 Ok(entries) => snapshots.push(RebalanceSnapshotFile {
                     file_name: file_name.to_string(),
                     entries,
-                    opposites: load_rebalance_opposites(path, file_name),
                 }),
                 Err(e) => log::error!(
                     "Failed to parse rebalance snapshot {}: {}",
@@ -2763,12 +2715,10 @@ fn create_rebalance_snapshot_detail_section(
                         th style="text-align: right;" { "Weighted Fee PPM" }
                         th { "Last Route Taken" }
                         th { "Last Success Rebalance" }
-                        th { "Opposite Channel" }
                     }
                 }
                 tbody {
                     @for entry in snapshot.entries.iter() {
-                        @let opposite = snapshot.opposites.get(&entry.scid);
                         tr {
                             td { (&entry.alias) }
                             td {
@@ -2781,28 +2731,6 @@ fn create_rebalance_snapshot_detail_section(
                             td style="text-align: right;" { (entry.w_feeppm) }
                             td { (&entry.last_route_taken) }
                             td { (&entry.last_success_reb) }
-                            td {
-                                @match opposite {
-                                    Some(opposite) if opposite.match_status == "matched" => {
-                                        @if let Some(opposite_scid) = &opposite.opposite_scid {
-                                            a href={(format!("{channel_prefix}/{}.html", opposite_scid))} {
-                                                (opposite_scid)
-                                            }
-                                        } @else {
-                                            "not found"
-                                        }
-                                    }
-                                    Some(opposite) if opposite.match_status == "ambiguous" => {
-                                        @if opposite.candidate_opposite_scids.is_empty() {
-                                            "ambiguous"
-                                        } @else {
-                                            ("ambiguous: ")(opposite.candidate_opposite_scids.join(", "))
-                                        }
-                                    }
-                                    Some(_) => { "not found" }
-                                    None => { "-" }
-                                }
-                            }
                         }
                     }
                 }
