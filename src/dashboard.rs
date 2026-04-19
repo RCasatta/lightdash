@@ -2663,6 +2663,19 @@ fn load_rebalance_snapshots(rebalances_path: Option<&str>) -> Vec<RebalanceSnaps
     snapshots
 }
 
+fn load_current_rebalance_snapshot() -> Option<RebalanceSnapshotFile> {
+    match serde_json::from_value::<Vec<RebalanceSnapshotEntry>>(crate::sling::current_sling_stats()) {
+        Ok(entries) => Some(RebalanceSnapshotFile {
+            file_name: "live sling-stats".to_string(),
+            entries,
+        }),
+        Err(e) => {
+            log::error!("Failed to parse current sling stats for dashboard: {}", e);
+            None
+        }
+    }
+}
+
 fn create_rebalance_snapshot_detail_section(
     section_title: &str,
     snapshot: &RebalanceSnapshotFile,
@@ -2814,6 +2827,7 @@ fn create_rebalance_page(
 ) {
     let snapshots = load_rebalance_snapshots(rebalances_path);
     let latest_snapshot = snapshots.last();
+    let current_snapshot = load_current_rebalance_snapshot();
     create_rebalance_snapshot_pages(directory, now, &snapshots);
 
     let rebalance_content = html! {
@@ -2893,7 +2907,9 @@ fn create_rebalance_page(
             }
         }
 
-        @if let Some(snapshot) = latest_snapshot {
+        @if let Some(snapshot) = current_snapshot.as_ref() {
+            (create_rebalance_snapshot_detail_section("Latest Rebalance Status", snapshot, false))
+        } @else if let Some(snapshot) = latest_snapshot {
             (create_rebalance_snapshot_detail_section("Latest Rebalance Status", snapshot, false))
         } @else {
             div class="info-card" {

@@ -110,6 +110,12 @@ fn get_sling_stats(scid: Option<&str>) -> Value {
     }
 }
 
+pub fn current_sling_stats() -> Value {
+    let mut stats = get_sling_stats(None);
+    enrich_sling_stats_with_last_channel_partner(&mut stats, |scid| get_sling_stats(Some(scid)));
+    stats
+}
+
 fn enrich_sling_stats_with_last_channel_partner(
     stats: &mut Value,
     mut get_details: impl FnMut(&str) -> Value,
@@ -153,8 +159,7 @@ fn snapshot_sling_stats(directory: &str) {
         return;
     }
 
-    let mut stats = get_sling_stats(None);
-    enrich_sling_stats_with_last_channel_partner(&mut stats, |scid| get_sling_stats(Some(scid)));
+    let stats = current_sling_stats();
     let timestamp = Utc::now().format("%Y%m%dT%H%M%SZ");
     let file_path = path.join(format!("sling-stats-{timestamp}.json"));
     match serde_json::to_string_pretty(&stats) {
