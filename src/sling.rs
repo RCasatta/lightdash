@@ -9,6 +9,7 @@ const SOURCE_PPM_MAX: u64 = 300;
 const MAX_BALANCE: f64 = 0.5;
 const LOOKBACK_HOURS: i64 = 24;
 const MIN_AMOUNT_SAT: u64 = 10_000;
+const REBALANCE_SPLIT_THRESHOLD_SAT: u64 = 400_000;
 const CMD: &str = "lightning-cli";
 /// Minimum balance percentage (our funds / total capacity) for a channel to be used as candidate.
 const MIN_CANDIDATE_BALANCE: f64 = 0.7;
@@ -83,6 +84,18 @@ impl RecentOutboundStats {
 
 fn compute_max_ppm(avg_fee_ppm: u64) -> u64 {
     avg_fee_ppm / 2
+}
+
+fn compute_rebalance_amounts(routed_sat: u64) -> (u64, u64) {
+    let onceamount = routed_sat - (routed_sat % 4);
+    let amount = if onceamount > 2 * REBALANCE_SPLIT_THRESHOLD_SAT {
+        onceamount / 4
+    } else if onceamount > REBALANCE_SPLIT_THRESHOLD_SAT {
+        onceamount / 2
+    } else {
+        onceamount
+    };
+    (amount, onceamount)
 }
 
 fn stop_existing_sling_jobs() {
@@ -244,7 +257,7 @@ pub fn run_sling(store: &Store, directory: &str) {
             .unwrap_or_else(|| "n/a".to_string());
         let recent = recent_outbound_stats(&recent_settled, scid);
         let average_fee_ppm = recent.average_fee_ppm();
-        let amount = recent.routed_sat;
+        let (amount, onceamount) = compute_rebalance_amounts(recent.routed_sat);
         let max_ppm = compute_max_ppm(average_fee_ppm);
 
         if recent.count == 0 {
@@ -301,14 +314,15 @@ pub fn run_sling(store: &Store, directory: &str) {
             &candidates_arg,
             &format!("maxppm={max_ppm}"),
             &format!("amount={amount}"),
-            &format!("onceamount={amount}"),
+            &format!("onceamount={onceamount}"),
         ];
         log::info!(
-            "{alias} balance:{:.1}% recent_out_{}h:{} amount:{}s avg_fee_ppm:{} channel_ppm:{} maxppm:{} -> {CMD} {}",
+            "{alias} balance:{:.1}% recent_out_{}h:{} amount:{}s onceamount:{}s avg_fee_ppm:{} channel_ppm:{} maxppm:{} -> {CMD} {}",
             balance * 100.0,
             LOOKBACK_HOURS,
             recent.count,
             amount,
+            onceamount,
             average_fee_ppm,
             my_ppm_log,
             max_ppm,
@@ -336,7 +350,10 @@ pub fn run_sling(store: &Store, directory: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{compute_max_ppm, enrich_sling_stats_with_last_channel_partner};
+    use super::{
+        compute_max_ppm, compute_rebalance_amounts, enrich_sling_stats_with_last_channel_partner,
+        REBALANCE_SPLIT_THRESHOLD_SAT,
+    };
     use serde_json::Value;
 
     fn read_json(content: &str) -> Value {
@@ -353,6 +370,28 @@ mod tests {
         assert_eq!(compute_max_ppm(446), 223);
         assert_eq!(compute_max_ppm(2085), 1042);
         assert_eq!(compute_max_ppm(90), 45);
+    }
+
+    #[test]
+    fn compute_rebalance_amounts_rounds_onceamount_down_to_multiple_of_four() {
+        assert_eq!(compute_rebalance_amounts(399_999), (399_996, 399_996));
+        assert_eq!(compute_rebalance_amounts(400_003), (400_000, 400_000));
+    }
+
+    #[test]
+    fn compute_rebalance_amounts_halves_onceamount_above_threshold() {
+        let (amount, onceamount) = compute_rebalance_amounts(REBALANCE_SPLIT_THRESHOLD_SAT + 4);
+        assert_eq!(onceamount, REBALANCE_SPLIT_THRESHOLD_SAT + 4);
+        assert_eq!(amount, onceamount / 2);
+        assert_eq!(onceamount % amount, 0);
+    }
+
+    #[test]
+    fn compute_rebalance_amounts_quarters_onceamount_above_double_threshold() {
+        let (amount, onceamount) = compute_rebalance_amounts(2 * REBALANCE_SPLIT_THRESHOLD_SAT + 4);
+        assert_eq!(onceamount, 2 * REBALANCE_SPLIT_THRESHOLD_SAT + 4);
+        assert_eq!(amount, onceamount / 4);
+        assert_eq!(onceamount % amount, 0);
     }
 
     #[test]
