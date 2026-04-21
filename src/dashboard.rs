@@ -1602,6 +1602,21 @@ fn create_channel_pages(
                 }
 
                 div class="info-item" {
+                    span class="label" { "APY%: " }
+                    span class="value" {
+                        @if let Some(scid) = &channel.short_channel_id {
+                            @if let Some(apy) = store.get_channel_apy(scid) {
+                                (format!("{:.2}%", apy))
+                            } @else {
+                                "-"
+                            }
+                        } @else {
+                            "-"
+                        }
+                    }
+                }
+
+                div class="info-item" {
                     span class="label" { "State: " }
                     span class="value" { (channel.state) }
                 }
@@ -1775,7 +1790,7 @@ fn create_channel_pages(
 
                     @if let Some(apy) = store.get_channel_apy(scid) {
                         div class="info-item" {
-                            span class="label" { "APY: " }
+                            span class="label" { "APY%: " }
                             span class="value" {
                                 (format!("{:.2}%", apy))
                             }
@@ -2664,7 +2679,8 @@ fn load_rebalance_snapshots(rebalances_path: Option<&str>) -> Vec<RebalanceSnaps
 }
 
 fn load_current_rebalance_snapshot() -> Option<RebalanceSnapshotFile> {
-    match serde_json::from_value::<Vec<RebalanceSnapshotEntry>>(crate::sling::current_sling_stats()) {
+    match serde_json::from_value::<Vec<RebalanceSnapshotEntry>>(crate::sling::current_sling_stats())
+    {
         Ok(entries) => Some(RebalanceSnapshotFile {
             file_name: "live sling-stats".to_string(),
             entries,
