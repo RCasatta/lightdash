@@ -333,11 +333,21 @@ impl Store {
             .sum()
     }
 
+    /// Get total channel funds in BTC
+    pub fn channels_balance_btc(&self) -> f64 {
+        (self.total_channel_funds_sats() as f64) / 100_000_000.0
+    }
+
     /// Get total onchain balance in BTC
     pub fn onchain_balance_btc(&self) -> f64 {
         let total_msat: u64 = self.funds.outputs.iter().map(|o| o.amount_msat).sum();
         // Convert from msat to sats, then to BTC
         (total_msat as f64) / 1_000.0 / 100_000_000.0
+    }
+
+    /// Get total wallet balance in BTC
+    pub fn total_balance_btc(&self) -> f64 {
+        self.onchain_balance_btc() + self.channels_balance_btc()
     }
 
     /// Calculate projected yearly APY percentage for given time period

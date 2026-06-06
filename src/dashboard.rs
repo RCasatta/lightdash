@@ -3046,6 +3046,16 @@ pub fn run_dashboard(
                 span class="value" { (format!("{:.8} BTC", store.onchain_balance_btc())) }
             }
 
+            div class="info-item" {
+                span class="label" { "Channels Balance: " }
+                span class="value" { (format!("{:.8} BTC", store.channels_balance_btc())) }
+            }
+
+            div class="info-item" {
+                span class="label" { "Total Balance: " }
+                span class="value" { (format!("{:.8} BTC", store.total_balance_btc())) }
+            }
+
         }
 
         div class="info-card" {
