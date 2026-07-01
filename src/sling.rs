@@ -9,6 +9,10 @@ const SOURCE_PPM_MAX: u64 = 300;
 const MAX_BALANCE: f64 = 0.5;
 const LOOKBACK_HOURS: i64 = 24;
 const MIN_AMOUNT_SAT: u64 = 10_000;
+const BOOTSTRAP_MAX_BALANCE: f64 = 0.1;
+const BOOTSTRAP_MAX_PPM: u64 = 5;
+const BOOTSTRAP_AMOUNT_CAP_SAT: u64 = 50_000;
+const BOOTSTRAP_CAPACITY_DIVISOR: u64 = 20;
 const REBALANCE_SPLIT_THRESHOLD_SAT: u64 = 400_000;
 const CMD: &str = "lightning-cli";
 /// Minimum balance percentage (our funds / total capacity) for a channel to be used as candidate.
@@ -62,7 +66,7 @@ fn recent_outbound_stats(
     short_channel_id: &str,
 ) -> RecentOutboundStats {
     settled_forwards
-        .into_iter()
+        .iter()
         .filter(|f| f.out_channel == short_channel_id)
         .fold(RecentOutboundStats::default(), |mut acc, f| {
             acc.count += 1;
@@ -96,6 +100,18 @@ fn compute_rebalance_amounts(routed_sat: u64) -> (u64, u64) {
         onceamount
     };
     (amount, onceamount)
+}
+
+fn compute_bootstrap_rebalance_amounts(channel_capacity_sat: u64) -> Option<(u64, u64)> {
+    let target_amount =
+        (channel_capacity_sat / BOOTSTRAP_CAPACITY_DIVISOR).min(BOOTSTRAP_AMOUNT_CAP_SAT);
+    let amount = target_amount - (target_amount % 4);
+
+    if amount < MIN_AMOUNT_SAT {
+        None
+    } else {
+        Some((amount, amount))
+    }
 }
 
 fn delete_existing_sling_jobs() {
@@ -229,6 +245,7 @@ pub fn run_sling(store: &Store, directory: &str) {
     let mut skipped_zero_budget = 0u64;
     let mut skipped_small_amount = 0u64;
     let mut suggested = 0u64;
+    let mut suggested_bootstrap = 0u64;
 
     for channel in channels {
         let balance = channel.perc_float();
@@ -261,6 +278,56 @@ pub fn run_sling(store: &Store, directory: &str) {
         let max_ppm = compute_max_ppm(average_fee_ppm);
 
         if recent.count == 0 {
+            if balance <= BOOTSTRAP_MAX_BALANCE {
+                // node that have no recent forwards and a very low amount attempt to be rebalanced anyway (with a very low fee)
+                let channel_capacity_sat = channel.amount_msat / 1000;
+                if let Some((amount, onceamount)) =
+                    compute_bootstrap_rebalance_amounts(channel_capacity_sat)
+                {
+                    suggested += 1;
+                    suggested_bootstrap += 1;
+
+                    let candidates_arg = format!("candidates={candidates_json}");
+                    let args = [
+                        "sling-once",
+                        "-k",
+                        &format!("scid={scid}"),
+                        "direction=pull",
+                        &candidates_arg,
+                        &format!("maxppm={BOOTSTRAP_MAX_PPM}"),
+                        &format!("amount={amount}"),
+                        &format!("onceamount={onceamount}"),
+                    ];
+                    log::info!(
+                        "{alias} balance:{:.1}% recent_out_{}h:0 amount:{}s onceamount:{}s avg_fee_ppm:0 channel_ppm:{} maxppm:{} bootstrap -> {CMD} {}",
+                        balance * 100.0,
+                        LOOKBACK_HOURS,
+                        amount,
+                        onceamount,
+                        my_ppm_log,
+                        BOOTSTRAP_MAX_PPM,
+                        args.join(" ")
+                    );
+                    if execute_sling {
+                        log::info!("executing `{CMD} {}` {alias}", args.join(" "));
+
+                        let result = crate::cmd::cmd_result(CMD, &args);
+                        log::debug!("cmd return: {result}");
+                    }
+                    continue;
+                }
+
+                skipped_small_amount += 1;
+                log::info!(
+                    "{alias} balance:{:.1}% recent_out_{}h:0 amount:0s avg_fee_ppm:0 channel_ppm:{} bootstrap_below_min_amount:{}s, skipping",
+                    balance * 100.0,
+                    LOOKBACK_HOURS,
+                    my_ppm_log,
+                    MIN_AMOUNT_SAT,
+                );
+                continue;
+            }
+
             skipped_no_recent_outbound += 1;
             log::info!(
                 "{alias} balance:{:.1}% recent_out_{}h:0 amount:0s avg_fee_ppm:0 channel_ppm:{} no_recent_outbound, skipping",
@@ -337,8 +404,9 @@ pub fn run_sling(store: &Store, directory: &str) {
     }
 
     log::info!(
-        "Sling summary: suggested:{} skipped_balance:{} skipped_no_recent_outbound:{} skipped_small_amount:{} skipped_zero_budget:{} skipped_missing_scid:{} targets_without_local_channel_info:{}",
+        "Sling summary: suggested:{} suggested_bootstrap:{} skipped_balance:{} skipped_no_recent_outbound:{} skipped_small_amount:{} skipped_zero_budget:{} skipped_missing_scid:{} targets_without_local_channel_info:{}",
         suggested,
+        suggested_bootstrap,
         skipped_balance,
         skipped_no_recent_outbound,
         skipped_small_amount,
@@ -351,8 +419,8 @@ pub fn run_sling(store: &Store, directory: &str) {
 #[cfg(test)]
 mod tests {
     use super::{
-        compute_max_ppm, compute_rebalance_amounts, enrich_sling_stats_with_last_channel_partner,
-        REBALANCE_SPLIT_THRESHOLD_SAT,
+        compute_bootstrap_rebalance_amounts, compute_max_ppm, compute_rebalance_amounts,
+        enrich_sling_stats_with_last_channel_partner, REBALANCE_SPLIT_THRESHOLD_SAT,
     };
     use serde_json::Value;
 
@@ -392,6 +460,27 @@ mod tests {
         assert_eq!(onceamount, 2 * REBALANCE_SPLIT_THRESHOLD_SAT + 4);
         assert_eq!(amount, onceamount / 4);
         assert_eq!(onceamount % amount, 0);
+    }
+
+    #[test]
+    fn compute_bootstrap_rebalance_amounts_caps_large_channels() {
+        assert_eq!(
+            compute_bootstrap_rebalance_amounts(2_000_000),
+            Some((50_000, 50_000))
+        );
+    }
+
+    #[test]
+    fn compute_bootstrap_rebalance_amounts_uses_five_percent_for_smaller_channels() {
+        assert_eq!(
+            compute_bootstrap_rebalance_amounts(300_000),
+            Some((15_000, 15_000))
+        );
+    }
+
+    #[test]
+    fn compute_bootstrap_rebalance_amounts_skips_below_minimum() {
+        assert_eq!(compute_bootstrap_rebalance_amounts(199_999), None);
     }
 
     #[test]
