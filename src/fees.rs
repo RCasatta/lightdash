@@ -7,6 +7,7 @@ use chrono::Utc;
 pub const PPM_MIN: u64 = 10;
 pub const PPM_MAX: u64 = 5000;
 pub const SLING_AMOUNT: u64 = 50000; // amount used for rebalancing
+pub const DEPLETED_LOCAL_BALANCE_SAT: u64 = SLING_AMOUNT; // this allows a succesfull bootstrap rebalance to make the channel graduate to normal operation
 pub const MIN_HTLC: u64 = 100000; // msat
 pub const INCREASE_STEP_PERC: f64 = 0.1;
 pub const DECREASE_STEP_PERC: f64 = 0.05;
@@ -68,6 +69,14 @@ fn fee_perc_change(forwards_ok: usize) -> f64 {
     }
 }
 
+fn fee_min_ppm(local_balance_sat: u64) -> u64 {
+    if local_balance_sat < DEPLETED_LOCAL_BALANCE_SAT {
+        PPM_MAX / 2
+    } else {
+        PPM_MIN
+    }
+}
+
 pub fn calc_setchannel(
     short_channel_id: &str,
     alias: &str,
@@ -122,12 +131,8 @@ pub fn calc_setchannel(
 
     let new_ppm = (current_ppm as f64 + (current_ppm as f64 * perc_change)) as u64;
 
-    // If the channel has less than 10% the minimum is set higher
-    let ppm_min = if channel_fund_perc_ours < 0.1 {
-        PPM_MAX / 2
-    } else {
-        PPM_MIN
-    };
+    let local_balance_sat = our_amount_msat / 1000;
+    let ppm_min = fee_min_ppm(local_balance_sat);
 
     let new_ppm = new_ppm.clamp(ppm_min, PPM_MAX);
 
@@ -216,6 +221,16 @@ mod tests {
     fn fee_perc_change_uses_fixed_increase_with_forwards() {
         assert_eq!(fee_perc_change(1), INCREASE_STEP_PERC);
         assert_eq!(fee_perc_change(12), INCREASE_STEP_PERC);
+    }
+
+    #[test]
+    fn fee_min_ppm_uses_high_floor_below_depleted_balance() {
+        assert_eq!(fee_min_ppm(DEPLETED_LOCAL_BALANCE_SAT - 1), PPM_MAX / 2);
+    }
+
+    #[test]
+    fn fee_min_ppm_uses_normal_floor_at_depleted_balance() {
+        assert_eq!(fee_min_ppm(DEPLETED_LOCAL_BALANCE_SAT), PPM_MIN);
     }
 
     #[test]
