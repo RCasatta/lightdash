@@ -1259,14 +1259,14 @@ fn create_channel_pages(
         .collect::<Vec<_>>();
 
     // Calculate global channel statistics
-    let total_inbound: u64 = channels.iter().map(|c| c.our_amount_msat / 1000).sum();
-    let total_outbound: u64 = channels
+    let total_outbound_liquidity: u64 = channels.iter().map(|c| c.our_amount_msat / 1000).sum();
+    let total_inbound_liquidity: u64 = channels
         .iter()
         .map(|c| (c.amount_msat - c.our_amount_msat) / 1000)
         .sum();
-    let total_liquidity = total_inbound + total_outbound;
-    let global_balance_percentage = if total_liquidity > 0 {
-        (total_inbound as f64 / total_liquidity as f64) * 100.0
+    let total_liquidity = total_outbound_liquidity + total_inbound_liquidity;
+    let global_outbound_percentage = if total_liquidity > 0 {
+        (total_outbound_liquidity as f64 / total_liquidity as f64) * 100.0
     } else {
         0.0
     };
@@ -1279,16 +1279,16 @@ fn create_channel_pages(
         div class="info-card" {
             h2 { "Channel Liquidity Summary" }
             div class="info-item" {
-                span class="label" { "Total Inbound Available: " }
-                span class="value" { (format!("{} sats", total_inbound)) }
+                span class="label" { "Total Outbound Liquidity: " }
+                span class="value" { (format!("{} sats", total_outbound_liquidity)) }
             }
             div class="info-item" {
-                span class="label" { "Total Outbound Available: " }
-                span class="value" { (format!("{} sats", total_outbound)) }
+                span class="label" { "Total Inbound Liquidity: " }
+                span class="value" { (format!("{} sats", total_inbound_liquidity)) }
             }
             div class="info-item" {
                 span class="label" { "Global Balance: " }
-                span class="value" { (format!("{:.1}% inbound", global_balance_percentage)) }
+                span class="value" { (format!("{:.1}% outbound", global_outbound_percentage)) }
             }
             div class="info-item" {
                 span class="label" { "Channel Balance Target Variance: " }
@@ -1318,7 +1318,7 @@ fn create_channel_pages(
             }
             div class="progress-bar" {
                 div class="progress-fill" style={
-                    (format!("width: {:.1}%", global_balance_percentage))
+                    (format!("width: {:.1}%", global_outbound_percentage))
                 } {}
             }
         }
