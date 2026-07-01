@@ -1,4 +1,4 @@
-use std::cmp::{max, min};
+use std::cmp::{max, min, Ordering};
 
 use crate::cmd::Forward;
 use crate::store::Store;
@@ -8,7 +8,8 @@ pub const PPM_MIN: u64 = 10;
 pub const PPM_MAX: u64 = 5000;
 pub const SLING_AMOUNT: u64 = 50000; // amount used for rebalancing
 pub const MIN_HTLC: u64 = 100000; // msat
-pub const STEP_PERC: f64 = 0.1; // percentage change when channel is doing routing (+) in the last 24 hours or not doing it (-)
+pub const INCREASE_STEP_PERC: f64 = 0.1;
+pub const DECREASE_STEP_PERC: f64 = 0.05;
 pub const FEE_BASE: u64 = 1000; // msat
 
 pub fn run_fees(store: &Store) {
@@ -32,7 +33,7 @@ pub fn run_fees(store: &Store) {
         let trend = calc_setchannel(
             &short_channel_id,
             &alias_or_id,
-            &fund,
+            fund,
             our,
             &forwards_24h,
             avail,
@@ -59,7 +60,15 @@ pub fn largest_power_of_two_leq(n: u64) -> u64 {
     }
 }
 
-pub fn calc_setchannel<'a>(
+fn fee_perc_change(forwards_ok: usize) -> f64 {
+    if forwards_ok == 0 {
+        -DECREASE_STEP_PERC
+    } else {
+        INCREASE_STEP_PERC
+    }
+}
+
+pub fn calc_setchannel(
     short_channel_id: &str,
     alias: &str,
     fund: &crate::cmd::Fund,
@@ -69,7 +78,7 @@ pub fn calc_setchannel<'a>(
 ) -> &'static str {
     let channel_fund_perc_ours = fund.perc_float(); // how full of our funds is the channel
     let disp_perc = format!("{:.1}%", channel_fund_perc_ours * 100.0);
-    let current_channel_forwards = did_forward(short_channel_id, &forwards_24h);
+    let current_channel_forwards = did_forward(short_channel_id, forwards_24h);
     let forwards_all = current_channel_forwards.len();
     let forwards_ok = current_channel_forwards
         .iter()
@@ -109,33 +118,7 @@ pub fn calc_setchannel<'a>(
         max(new_max_htlc_msat, 1), // min_htlc cannot be greater than max_htlc and lower than 1
     );
 
-    let perc_change = if forwards_ok == 0 {
-        // REDUCE FEE
-        // the channel never succesfully forwarded, lower rates if enough liqudity.
-
-        // We reduce proportionally to how full is the channel
-        -STEP_PERC * channel_fund_perc_ours
-    } else {
-        // INCREASE FEE
-
-        // Calculate Scarcity Multiplier:
-        // We want to scale the step up as liquidity goes down.
-        // Formula: 1.0 + (1.0 - liquidity)
-        // at 90% liq -> 1.1x boost
-        // at 50% liq -> 1.5x boost
-        // at 20% liq -> 1.8x boost
-        let scarcity_mult = 1.0 + (1.0 - channel_fund_perc_ours);
-
-        // If we have 1 forward, normal boost
-        // for every additional forward boost 10% (eg. 6 forwards 1.5x)
-        let volume_mult = 0.9 + forwards_all as f64 * 0.1;
-        log::debug!("scarcity_mult:{scarcity_mult} volume_mult:{volume_mult}");
-
-        // Combine them
-        // If we are drained (0.2) and high volume, we hike by ~3x the normal step.
-        let total_boost = scarcity_mult * volume_mult;
-        STEP_PERC as f64 * total_boost
-    };
+    let perc_change = fee_perc_change(forwards_ok);
 
     let new_ppm = (current_ppm as f64 + (current_ppm as f64 * perc_change)) as u64;
 
@@ -152,12 +135,10 @@ pub fn calc_setchannel<'a>(
         || current_max_htlc_sat != new_max_htlc_msat
         || current_min_htlc_sat != new_min_htlc_msat;
 
-    let data = if new_ppm == current_ppm {
-        "EQU"
-    } else if new_ppm > current_ppm {
-        "INC"
-    } else {
-        "DEC"
+    let data = match new_ppm.cmp(&current_ppm) {
+        Ordering::Equal => "EQU",
+        Ordering::Greater => "INC",
+        Ordering::Less => "DEC",
     };
 
     if changes {
@@ -218,13 +199,24 @@ pub fn did_forward<'a>(
 ) -> Vec<&'a crate::cmd::Forward> {
     forwards
         .iter()
-        .filter(|f| f.out_channel.as_ref().unwrap_or(&"".to_string()) == short_channel_id)
+        .filter(|f| f.out_channel.as_deref() == Some(short_channel_id))
         .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fee_perc_change_uses_fixed_decrease_without_forwards() {
+        assert_eq!(fee_perc_change(0), -DECREASE_STEP_PERC);
+    }
+
+    #[test]
+    fn fee_perc_change_uses_fixed_increase_with_forwards() {
+        assert_eq!(fee_perc_change(1), INCREASE_STEP_PERC);
+        assert_eq!(fee_perc_change(12), INCREASE_STEP_PERC);
+    }
 
     #[test]
     fn test_largest_power_of_two_leq() {
