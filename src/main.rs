@@ -36,9 +36,6 @@ enum Commands {
         /// Path to JSON file with node uptime data (format: {node_id: {avail: float}})
         #[arg(long)]
         availdb: Option<String>,
-        /// Path to JSON file with channel correlation data from channels subcommand
-        #[arg(long)]
-        correlations: Option<String>,
         /// Directory with timestamped sling-stats JSON snapshots
         #[arg(long)]
         rebalances: Option<String>,
@@ -99,7 +96,6 @@ fn main() {
             directory,
             min_channels,
             availdb,
-            correlations,
             rebalances,
             funds_charts_url,
         } => {
@@ -109,7 +105,6 @@ fn main() {
                 &store,
                 directory,
                 min_channels,
-                correlations,
                 rebalances,
                 funds_charts_url,
             );
