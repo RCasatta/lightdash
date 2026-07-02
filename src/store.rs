@@ -325,6 +325,16 @@ impl Store {
             .sum()
     }
 
+    /// Get total routed amount in sats for the last N months from settled forwards
+    pub fn routed_last_months_sats(&self, months: i64) -> u64 {
+        let days = months * 30; // Approximating 30 days per month like the bash script
+        self.settled_forwards()
+            .into_iter()
+            .filter(|f| self.now.signed_duration_since(f.resolved_time).num_days() <= days)
+            .map(|f| f.out_sat)
+            .sum()
+    }
+
     /// Get total channel funds in sats
     pub fn total_channel_funds_sats(&self) -> u64 {
         self.normal_channels()
@@ -365,11 +375,31 @@ impl Store {
 
     /// Get total amount transacted in sats for the last month
     pub fn transacted_last_month_sats(&self) -> u64 {
-        self.settled_forwards()
-            .into_iter()
-            .filter(|f| self.now.signed_duration_since(f.resolved_time).num_days() <= 30)
-            .map(|f| f.out_sat)
-            .sum()
+        self.routed_last_months_sats(1)
+    }
+
+    /// Calculate the annualized capital velocity for a period.
+    ///
+    /// This follows the ROIC decomposition convention: routed volume divided by
+    /// deployed channel funds, annualized for periods shorter than one year.
+    pub fn calculate_capital_velocity(&self, months: i64) -> f64 {
+        let total_funds = self.total_channel_funds_sats();
+        if total_funds == 0 {
+            return 0.0;
+        }
+
+        let annualization_factor = 12.0 / months as f64;
+        self.routed_last_months_sats(months) as f64 * annualization_factor / total_funds as f64
+    }
+
+    /// Calculate the effective fee rate in basis points for a period.
+    pub fn calculate_effective_fee_rate_bps(&self, months: i64) -> f64 {
+        let total_routed = self.routed_last_months_sats(months);
+        if total_routed == 0 {
+            return 0.0;
+        }
+
+        self.fees_earned_last_months(months) as f64 * 10_000.0 / total_routed as f64
     }
 
     /// Get APY data structure with all calculations
@@ -385,6 +415,10 @@ impl Store {
             apy_6_months: self.calculate_apy_percent(6),
             apy_12_months: self.calculate_apy_percent(12),
             transacted_last_month: self.transacted_last_month_sats(),
+            routed_12_months: self.routed_last_months_sats(12),
+            capital_velocity_12_months: self.calculate_capital_velocity(12),
+            effective_fee_rate_12_months_bps: self.calculate_effective_fee_rate_bps(12),
+            gross_roic_12_months: self.calculate_apy_percent(12),
         }
     }
 
@@ -917,6 +951,10 @@ pub struct ApyData {
     pub apy_6_months: f64,
     pub apy_12_months: f64,
     pub transacted_last_month: u64,
+    pub routed_12_months: u64,
+    pub capital_velocity_12_months: f64,
+    pub effective_fee_rate_12_months_bps: f64,
+    pub gross_roic_12_months: f64,
 }
 
 /// Forward statistics for different time periods

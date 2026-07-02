@@ -2121,6 +2121,49 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
             h2 { "Annual Percentage Yield (APY) Analysis" }
 
             div class="section" {
+                h3 class="section-title" { "Capital Efficiency Metrics" }
+                p class="section-note" {
+                    "Trailing 12-month ROIC decomposition using current total channel funds as deployed capital."
+                }
+
+                div class="metric-equation" {
+                    div class="metric-box" {
+                        div class="metric-title" { "Effective Fee Rate" }
+                        div class="metric-subtitle" { "Fees earned / Total routed" }
+                        div class="metric-value" {
+                            (format!("{:.2} bps", apy_data.effective_fee_rate_12_months_bps))
+                        }
+                    }
+                    div class="metric-operator" { "x" }
+                    div class="metric-box" {
+                        div class="metric-title" { "Capital Velocity" }
+                        div class="metric-subtitle" { "Total routed / Channel funds" }
+                        div class="metric-value" {
+                            (format!("{:.2}x", apy_data.capital_velocity_12_months))
+                        }
+                    }
+                    div class="metric-operator" { "=" }
+                    div class="metric-result" {
+                        div class="metric-value" {
+                            (format!("{:.2}%", apy_data.gross_roic_12_months))
+                        }
+                        div class="metric-subtitle" { "Gross ROIC" }
+                    }
+                }
+
+                div class="metric-context" {
+                    div class="info-item" {
+                        span class="label" { "Routed Last 12 Months: " }
+                        span class="value" { (format!("{} sats", apy_data.routed_12_months)) }
+                    }
+                    div class="info-item" {
+                        span class="label" { "Fees Last 12 Months: " }
+                        span class="value" { (format!("{} sats", apy_data.fees_12_months)) }
+                    }
+                }
+            }
+
+            div class="section" {
                 h3 class="section-title" { "Fee Income Summary" }
 
                 table {
@@ -2180,6 +2223,11 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
                 p {
                     "Formula: APY% = (Fees Earned × 12 ÷ Period in Months × 100) ÷ Total Funds"
                 }
+                p {
+                    "ROIC decomposition: Effective Fee Rate (bps) = Fees Earned × 10,000 ÷ Total Routed; "
+                    "Capital Velocity = Total Routed ÷ Total Funds; "
+                    "Gross ROIC% = Effective Fee Rate × Capital Velocity ÷ 100."
+                }
             }
         }
 
@@ -2217,6 +2265,70 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
             .section p {
                 margin: 10px 0;
                 line-height: 1.6;
+            }
+
+            .section-note {
+                color: #a0aec0;
+            }
+
+            .metric-equation {
+                display: grid;
+                grid-template-columns: minmax(220px, 1fr) auto minmax(220px, 1fr) auto minmax(140px, 0.5fr);
+                gap: 14px;
+                align-items: center;
+                margin: 20px 0;
+            }
+
+            .metric-box,
+            .metric-result {
+                border: 1px solid #ed8936;
+                border-radius: 8px;
+                padding: 18px;
+                text-align: center;
+                background-color: #1a202c;
+            }
+
+            .metric-result {
+                border-color: #4a5568;
+            }
+
+            .metric-title {
+                color: #f8f8f2;
+                font-weight: bold;
+                margin-bottom: 12px;
+                padding-bottom: 10px;
+                border-bottom: 1px solid #4a5568;
+            }
+
+            .metric-subtitle {
+                color: #a0aec0;
+                font-size: 0.9em;
+            }
+
+            .metric-value {
+                color: #ed8936;
+                font-size: 1.8em;
+                margin: 12px 0 4px;
+            }
+
+            .metric-operator {
+                color: #a0aec0;
+                font-size: 1.8em;
+                text-align: center;
+            }
+
+            .metric-context {
+                max-width: 620px;
+            }
+
+            @media (max-width: 900px) {
+                .metric-equation {
+                    grid-template-columns: 1fr;
+                }
+
+                .metric-operator {
+                    font-size: 1.2em;
+                }
             }
             "#
         }
