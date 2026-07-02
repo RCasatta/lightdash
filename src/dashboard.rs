@@ -2160,6 +2160,10 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
                         span class="label" { "Fees Last 12 Months: " }
                         span class="value" { (format!("{} sats", apy_data.fees_12_months)) }
                     }
+                    div class="info-item" {
+                        span class="label" { "Channel Funds: " }
+                        span class="value" { (format!("{} sats", apy_data.total_funds)) }
+                    }
                 }
             }
 
