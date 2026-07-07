@@ -1355,9 +1355,10 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
                         th style="text-align: right;" { "Hist PPM" }
+                        th style="text-align: right;" { "Hist Reb PPM" }
                         th style="text-align: right;" { "HTLC Max (sats)" }
                         th style="text-align: right;" { "Inbound PPM" }
-                        th style="text-align: right;" { "APY%" }
+                        th style="text-align: right;" { "Net ROIC%" }
                     }
                 }
                 tbody {
@@ -1416,6 +1417,17 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             }
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(rebalance_fee_ppm) = store.get_channel_rebalance_effective_fee_ppm(scid) {
+                                        (format!("{rebalance_fee_ppm:.0}"))
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
+                            }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(channel_info) = store.get_channel(scid, &store.info.id) {
                                         (channel_info.htlc_maximum_msat / 1000)
                                     } @else {
@@ -1438,8 +1450,8 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             }
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
-                                    @if let Some(apy) = store.get_channel_apy(scid) {
-                                        (format!("{:.2}%", apy))
+                                    @if let Some(net_roic) = store.get_channel_net_roic(scid) {
+                                        (format!("{:.2}%", net_roic))
                                     } @else {
                                         "-"
                                     }
@@ -1467,9 +1479,10 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
                         th style="text-align: right;" { "Hist PPM" }
+                        th style="text-align: right;" { "Hist Reb PPM" }
                         th style="text-align: right;" { "HTLC Max (sats)" }
                         th style="text-align: right;" { "Inbound PPM" }
-                        th style="text-align: right;" { "APY%" }
+                        th style="text-align: right;" { "Net ROIC%" }
                         th style="text-align: right;" { "Age (days)" }
                     }
                 }
@@ -1529,6 +1542,17 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             }
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(rebalance_fee_ppm) = store.get_channel_rebalance_effective_fee_ppm(scid) {
+                                        (format!("{rebalance_fee_ppm:.0}"))
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
+                            }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(channel_info) = store.get_channel(scid, &store.info.id) {
                                         (channel_info.htlc_maximum_msat / 1000)
                                     } @else {
@@ -1551,8 +1575,8 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             }
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
-                                    @if let Some(apy) = store.get_channel_apy(scid) {
-                                        (format!("{:.2}%", apy))
+                                    @if let Some(net_roic) = store.get_channel_net_roic(scid) {
+                                        (format!("{:.2}%", net_roic))
                                     } @else {
                                         "-"
                                     }

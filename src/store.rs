@@ -840,6 +840,26 @@ impl Store {
             - self.get_channel_rebalance_target_cost_msat(short_channel_id) as i64
     }
 
+    pub fn get_channel_net_roic(&self, short_channel_id: &str) -> Option<f64> {
+        let age_days = self.get_channel_age_days(short_channel_id)?;
+        if age_days <= 0 {
+            return Some(0.0);
+        }
+
+        let fund = self.get_fund(short_channel_id)?;
+        let channel_capacity_msat = fund.amount_msat;
+        if channel_capacity_msat == 0 {
+            return Some(0.0);
+        }
+
+        let net_revenue_msat = self.get_channel_net_routing_revenue_msat(short_channel_id);
+        Some(
+            (net_revenue_msat as f64 / channel_capacity_msat as f64)
+                * (365.0 / age_days as f64)
+                * 100.0,
+        )
+    }
+
     /// Get channel age in days from block height (approximate)
     pub fn get_channel_age_days(&self, short_channel_id: &str) -> Option<i64> {
         // Parse block height directly from short_channel_id (format: "block_height x tx_index x output_index")
