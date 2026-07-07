@@ -5,6 +5,20 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RebalancePart {
+    pub payment_id: String,
+    pub part_id: u64,
+    pub source_account: String,
+    pub target_account: String,
+    pub source_channel_id: Option<String>,
+    pub target_channel_id: Option<String>,
+    pub debit_msat: u64,
+    pub credit_msat: u64,
+    pub fees_msat: u64,
+    pub timestamp: Option<u64>,
+}
+
 /// Store containing all data fetched from the Lightning node
 pub struct Store {
     pub info: cmd::GetInfo,
@@ -14,6 +28,7 @@ pub struct Store {
     pub forwards: cmd::ListForwards,
     pub nodes: cmd::ListNodes,
     pub closed_channels: cmd::ListClosedChannels,
+    rebalance_parts: Vec<RebalancePart>,
     // Cached computed data
     nodes_by_id: HashMap<String, cmd::Node>,
     channels_by_id: HashMap<(String, String), cmd::Channel>,
@@ -22,6 +37,89 @@ pub struct Store {
     setchannel_timestamps: HashMap<String, i64>,
     now: DateTime<Utc>,
     pub avail_map: HashMap<String, f64>,
+}
+
+fn account_to_channel_map(funds: &cmd::ListFunds) -> HashMap<String, String> {
+    funds
+        .channels
+        .iter()
+        .map(|channel| {
+            (
+                channel.channel_id.clone(),
+                channel
+                    .short_channel_id
+                    .clone()
+                    .unwrap_or_else(|| channel.channel_id.clone()),
+            )
+        })
+        .collect()
+}
+
+#[derive(Default)]
+struct RebalancePartBuilder {
+    debit: Option<cmd::BkprAccountEvent>,
+    credit: Option<cmd::BkprAccountEvent>,
+    fees_msat: u64,
+    timestamp: Option<u64>,
+}
+
+pub(crate) fn match_rebalance_parts(
+    events: &[cmd::BkprAccountEvent],
+    account_to_channel: &HashMap<String, String>,
+) -> Vec<RebalancePart> {
+    let mut grouped: HashMap<(String, u64), RebalancePartBuilder> = HashMap::new();
+
+    for event in events.iter().filter(|event| event.is_rebalance) {
+        let (Some(payment_id), Some(part_id)) = (&event.payment_id, event.part_id) else {
+            log::debug!(
+                "Ignoring rebalance event without payment_id or part_id on account {}",
+                event.account
+            );
+            continue;
+        };
+
+        let builder = grouped.entry((payment_id.clone(), part_id)).or_default();
+        builder.fees_msat += event.fees_msat.unwrap_or(0);
+        builder.timestamp = builder.timestamp.or(event.timestamp);
+
+        if event.debit_msat > 0 {
+            builder.debit = Some(event.clone());
+        }
+        if event.credit_msat > 0 {
+            builder.credit = Some(event.clone());
+        }
+    }
+
+    grouped
+        .into_iter()
+        .filter_map(|((payment_id, part_id), builder)| {
+            let Some(debit) = builder.debit else {
+                log::debug!(
+                    "Ignoring rebalance payment {payment_id} part {part_id} without debit row"
+                );
+                return None;
+            };
+            let Some(credit) = builder.credit else {
+                log::debug!(
+                    "Ignoring rebalance payment {payment_id} part {part_id} without credit row"
+                );
+                return None;
+            };
+
+            Some(RebalancePart {
+                payment_id,
+                part_id,
+                source_channel_id: account_to_channel.get(&debit.account).cloned(),
+                target_channel_id: account_to_channel.get(&credit.account).cloned(),
+                source_account: debit.account,
+                target_account: credit.account,
+                debit_msat: debit.debit_msat,
+                credit_msat: credit.credit_msat,
+                fees_msat: builder.fees_msat,
+                timestamp: builder.timestamp,
+            })
+        })
+        .collect()
 }
 
 impl Store {
@@ -35,6 +133,7 @@ impl Store {
         let peers = cmd::list_peers();
         let funds = cmd::list_funds();
         let forwards = cmd::list_forwards();
+        let account_events = cmd::bkpr_list_account_events();
         let nodes = cmd::list_nodes();
         let closed_channels = cmd::list_closed_channels();
         log::debug!("Data fetched successfully");
@@ -84,6 +183,13 @@ impl Store {
             .iter()
             .map(|e| ((e.short_channel_id.clone(), e.source.clone()), e.clone()))
             .collect();
+
+        let account_to_channel = account_to_channel_map(&funds);
+        let rebalance_parts = match_rebalance_parts(&account_events.events, &account_to_channel);
+        log::info!(
+            "Loaded {} matched rebalance parts from bookkeeper events",
+            rebalance_parts.len()
+        );
 
         // Precompute node channel counts
         let mut node_channel_counts: HashMap<String, usize> = HashMap::new();
@@ -158,6 +264,7 @@ impl Store {
             forwards,
             nodes,
             closed_channels,
+            rebalance_parts,
             nodes_by_id,
             channels_by_id,
             node_channel_counts,
@@ -205,6 +312,21 @@ impl Store {
             .into_iter()
             .filter(|f| self.now.signed_duration_since(f.resolved_time).num_hours() <= days * 24)
             .collect()
+    }
+
+    pub fn total_rebalance_cost_msat(&self) -> u64 {
+        self.rebalance_parts.iter().map(|part| part.fees_msat).sum()
+    }
+
+    pub fn total_forwarding_fees_sat(&self) -> u64 {
+        self.settled_forwards()
+            .iter()
+            .map(|forward| forward.fee_sat)
+            .sum()
+    }
+
+    pub fn net_routing_revenue_msat(&self) -> i64 {
+        self.total_forwarding_fees_sat() as i64 * 1000 - self.total_rebalance_cost_msat() as i64
     }
 
     pub fn channels_len(&self) -> usize {
@@ -282,9 +404,7 @@ impl Store {
         let mut chan_meta: HashMap<&str, ChannelFee> = HashMap::new();
 
         for c in &self.channels.channels {
-            let meta = chan_meta
-                .entry(&c.source)
-                .or_insert_with(ChannelFee::default);
+            let meta = chan_meta.entry(&c.source).or_default();
             meta.count += 1;
             meta.fee_sum += c.fee_per_millionth;
             meta.fee_rates.insert(c.fee_per_millionth);
@@ -636,6 +756,43 @@ impl Store {
         Some(total_fees as f64 * 1_000_000.0 / total_routed as f64)
     }
 
+    pub fn get_channel_rebalance_target_cost_msat(&self, short_channel_id: &str) -> u64 {
+        self.rebalance_parts
+            .iter()
+            .filter(|part| part.target_channel_id.as_deref() == Some(short_channel_id))
+            .map(|part| part.fees_msat)
+            .sum()
+    }
+
+    pub fn get_channel_rebalance_source_cost_msat(&self, short_channel_id: &str) -> u64 {
+        self.rebalance_parts
+            .iter()
+            .filter(|part| part.source_channel_id.as_deref() == Some(short_channel_id))
+            .map(|part| part.fees_msat)
+            .sum()
+    }
+
+    pub fn get_channel_rebalance_target_part_count(&self, short_channel_id: &str) -> usize {
+        self.rebalance_parts
+            .iter()
+            .filter(|part| part.target_channel_id.as_deref() == Some(short_channel_id))
+            .count()
+    }
+
+    pub fn get_channel_rebalance_target_payment_count(&self, short_channel_id: &str) -> usize {
+        self.rebalance_parts
+            .iter()
+            .filter(|part| part.target_channel_id.as_deref() == Some(short_channel_id))
+            .map(|part| part.payment_id.as_str())
+            .collect::<HashSet<_>>()
+            .len()
+    }
+
+    pub fn get_channel_net_routing_revenue_msat(&self, short_channel_id: &str) -> i64 {
+        self.get_channel_total_fees(short_channel_id) as i64 * 1000
+            - self.get_channel_rebalance_target_cost_msat(short_channel_id) as i64
+    }
+
     /// Get channel age in days from block height (approximate)
     pub fn get_channel_age_days(&self, short_channel_id: &str) -> Option<i64> {
         // Parse block height directly from short_channel_id (format: "block_height x tx_index x output_index")
@@ -956,6 +1113,199 @@ impl Store {
             })
             .cloned()
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_events(json: &str) -> Vec<cmd::BkprAccountEvent> {
+        serde_json::from_str::<cmd::BkprListAccountEvents>(json)
+            .unwrap()
+            .events
+    }
+
+    fn account_map() -> HashMap<String, String> {
+        HashMap::from([
+            ("source-account".to_string(), "source-scid".to_string()),
+            ("target-account".to_string(), "target-scid".to_string()),
+            ("other-source".to_string(), "other-source-scid".to_string()),
+            ("other-target".to_string(), "other-target-scid".to_string()),
+        ])
+    }
+
+    #[test]
+    fn rebalance_matching_builds_debit_credit_pair_with_fees() {
+        let events = parse_events(
+            r#"{
+                "events": [
+                    {
+                        "account": "source-account",
+                        "tag": "routed",
+                        "credit_msat": 0,
+                        "debit_msat": 100500,
+                        "timestamp": 1000,
+                        "payment_id": "payment-1",
+                        "fees_msat": 500,
+                        "is_rebalance": true,
+                        "part_id": 0
+                    },
+                    {
+                        "account": "target-account",
+                        "tag": "routed",
+                        "credit_msat": 100000,
+                        "debit_msat": 0,
+                        "timestamp": 1000,
+                        "payment_id": "payment-1",
+                        "is_rebalance": true,
+                        "part_id": 0
+                    }
+                ]
+            }"#,
+        );
+
+        let parts = match_rebalance_parts(&events, &account_map());
+
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].payment_id, "payment-1");
+        assert_eq!(parts[0].part_id, 0);
+        assert_eq!(parts[0].source_channel_id.as_deref(), Some("source-scid"));
+        assert_eq!(parts[0].target_channel_id.as_deref(), Some("target-scid"));
+        assert_eq!(parts[0].fees_msat, 500);
+        assert_eq!(parts[0].debit_msat, 100500);
+        assert_eq!(parts[0].credit_msat, 100000);
+    }
+
+    #[test]
+    fn rebalance_matching_keeps_multiple_parts_for_same_payment() {
+        let events = parse_events(
+            r#"{
+                "events": [
+                    {
+                        "account": "source-account",
+                        "credit_msat": 0,
+                        "debit_msat": 100100,
+                        "payment_id": "payment-2",
+                        "fees_msat": 100,
+                        "is_rebalance": true,
+                        "part_id": 0
+                    },
+                    {
+                        "account": "target-account",
+                        "credit_msat": 100000,
+                        "debit_msat": 0,
+                        "payment_id": "payment-2",
+                        "is_rebalance": true,
+                        "part_id": 0
+                    },
+                    {
+                        "account": "other-source",
+                        "credit_msat": 0,
+                        "debit_msat": 200200,
+                        "payment_id": "payment-2",
+                        "fees_msat": 200,
+                        "is_rebalance": true,
+                        "part_id": 1
+                    },
+                    {
+                        "account": "other-target",
+                        "credit_msat": 200000,
+                        "debit_msat": 0,
+                        "payment_id": "payment-2",
+                        "is_rebalance": true,
+                        "part_id": 1
+                    }
+                ]
+            }"#,
+        );
+
+        let mut parts = match_rebalance_parts(&events, &account_map());
+        parts.sort_by_key(|part| part.part_id);
+
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0].payment_id, "payment-2");
+        assert_eq!(parts[0].part_id, 0);
+        assert_eq!(parts[0].fees_msat, 100);
+        assert_eq!(parts[1].payment_id, "payment-2");
+        assert_eq!(parts[1].part_id, 1);
+        assert_eq!(parts[1].fees_msat, 200);
+        assert_eq!(parts.iter().map(|part| part.fees_msat).sum::<u64>(), 300);
+    }
+
+    #[test]
+    fn rebalance_matching_treats_missing_or_null_fees_as_zero() {
+        let events = parse_events(
+            r#"{
+                "events": [
+                    {
+                        "account": "source-account",
+                        "credit_msat": 0,
+                        "debit_msat": 100000,
+                        "payment_id": "payment-3",
+                        "fees_msat": null,
+                        "is_rebalance": true,
+                        "part_id": 0
+                    },
+                    {
+                        "account": "target-account",
+                        "credit_msat": 100000,
+                        "debit_msat": 0,
+                        "payment_id": "payment-3",
+                        "is_rebalance": true,
+                        "part_id": 0
+                    }
+                ]
+            }"#,
+        );
+
+        let parts = match_rebalance_parts(&events, &account_map());
+
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].fees_msat, 0);
+    }
+
+    #[test]
+    fn rebalance_matching_ignores_unmatched_rows_without_panic() {
+        let events = parse_events(
+            r#"{
+                "events": [
+                    {
+                        "account": "source-account",
+                        "credit_msat": 0,
+                        "debit_msat": 100500,
+                        "payment_id": "payment-4",
+                        "fees_msat": 500,
+                        "is_rebalance": true,
+                        "part_id": 0
+                    },
+                    {
+                        "account": "target-account",
+                        "credit_msat": 100000,
+                        "debit_msat": 0,
+                        "payment_id": "payment-5",
+                        "is_rebalance": true,
+                        "part_id": 0
+                    }
+                ]
+            }"#,
+        );
+
+        let parts = match_rebalance_parts(&events, &account_map());
+
+        assert!(parts.is_empty());
+    }
+
+    #[test]
+    fn gz_bkpr_fixture_matches_expected_rebalance_parts() {
+        let events = cmd::bkpr_list_account_events();
+        let parts = match_rebalance_parts(&events.events, &HashMap::new());
+
+        assert_eq!(parts.len(), 1593);
+        assert_eq!(
+            parts.iter().map(|part| part.fees_msat).sum::<u64>(),
+            7_598_600
+        );
     }
 }
 
