@@ -1852,6 +1852,17 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                     }
 
                     div class="info-item" {
+                        span class="label" { "Historical Rebalance Fee Rate: " }
+                        span class="value" {
+                            @if let Some(rebalance_fee_ppm) = store.get_channel_rebalance_effective_fee_ppm(scid) {
+                                (format!("{rebalance_fee_ppm:.0} ppm"))
+                            } @else {
+                                "-"
+                            }
+                        }
+                    }
+
+                    div class="info-item" {
                         span class="label" { "Rebalance Parts: " }
                         span class="value" {
                             (store.get_channel_rebalance_target_part_count(scid))

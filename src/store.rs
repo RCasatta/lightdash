@@ -764,6 +764,22 @@ impl Store {
             .sum()
     }
 
+    pub fn get_channel_rebalance_effective_fee_ppm(&self, short_channel_id: &str) -> Option<f64> {
+        let (fees_msat, credited_msat) = self
+            .rebalance_parts
+            .iter()
+            .filter(|part| part.target_channel_id.as_deref() == Some(short_channel_id))
+            .fold((0u64, 0u64), |(fees, credited), part| {
+                (fees + part.fees_msat, credited + part.credit_msat)
+            });
+
+        if credited_msat == 0 {
+            return None;
+        }
+
+        Some(fees_msat as f64 * 1_000_000.0 / credited_msat as f64)
+    }
+
     pub fn get_channel_rebalance_source_cost_msat(&self, short_channel_id: &str) -> u64 {
         self.rebalance_parts
             .iter()
@@ -1175,6 +1191,10 @@ mod tests {
         assert_eq!(parts[0].fees_msat, 500);
         assert_eq!(parts[0].debit_msat, 100500);
         assert_eq!(parts[0].credit_msat, 100000);
+
+        let target_rebalance_ppm =
+            parts[0].fees_msat as f64 * 1_000_000.0 / parts[0].credit_msat as f64;
+        assert_eq!(target_rebalance_ppm, 5000.0);
     }
 
     #[test]
