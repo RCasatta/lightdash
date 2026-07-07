@@ -318,6 +318,23 @@ impl Store {
         self.rebalance_parts.iter().map(|part| part.fees_msat).sum()
     }
 
+    pub fn rebalance_cost_last_months_msat(&self, months: i64) -> u64 {
+        let days = months * 30;
+        self.rebalance_parts
+            .iter()
+            .filter(|part| {
+                let Some(timestamp) = part.timestamp else {
+                    return false;
+                };
+                let Some(datetime) = DateTime::from_timestamp(timestamp as i64, 0) else {
+                    return false;
+                };
+                self.now.signed_duration_since(datetime).num_days() <= days
+            })
+            .map(|part| part.fees_msat)
+            .sum()
+    }
+
     pub fn total_forwarding_fees_sat(&self) -> u64 {
         self.settled_forwards()
             .iter()
@@ -493,6 +510,18 @@ impl Store {
         (fees_earned as f64 * 100.0 * annualization_factor) / total_funds as f64
     }
 
+    pub fn calculate_net_apy_percent(&self, months: i64) -> f64 {
+        let total_funds = self.total_channel_funds_sats();
+        if total_funds == 0 {
+            return 0.0;
+        }
+
+        let net_fees_msat = self.fees_earned_last_months(months) as i64 * 1000
+            - self.rebalance_cost_last_months_msat(months) as i64;
+        let annualization_factor = 12.0 / months as f64;
+        (net_fees_msat as f64 / 1000.0 * 100.0 * annualization_factor) / total_funds as f64
+    }
+
     /// Get total amount transacted in sats for the last month
     pub fn transacted_last_month_sats(&self) -> u64 {
         self.routed_last_months_sats(1)
@@ -539,6 +568,8 @@ impl Store {
             capital_velocity_12_months: self.calculate_capital_velocity(12),
             effective_fee_rate_12_months_bps: self.calculate_effective_fee_rate_bps(12),
             gross_roic_12_months: self.calculate_apy_percent(12),
+            rebalance_cost_12_months_msat: self.rebalance_cost_last_months_msat(12),
+            net_roic_12_months: self.calculate_net_apy_percent(12),
         }
     }
 
@@ -1346,6 +1377,8 @@ pub struct ApyData {
     pub capital_velocity_12_months: f64,
     pub effective_fee_rate_12_months_bps: f64,
     pub gross_roic_12_months: f64,
+    pub rebalance_cost_12_months_msat: u64,
+    pub net_roic_12_months: f64,
 }
 
 /// Forward statistics for different time periods

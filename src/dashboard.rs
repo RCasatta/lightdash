@@ -2257,12 +2257,27 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
 
                 div class="metric-context" {
                     div class="info-item" {
+                        span class="label" { "Net ROIC: " }
+                        span class="value" {
+                            (format!("{:.2}%", apy_data.net_roic_12_months))
+                        }
+                    }
+                }
+
+                div class="metric-context" {
+                    div class="info-item" {
                         span class="label" { "Routed Last 12 Months: " }
                         span class="value" { (format!("{} sats", apy_data.routed_12_months)) }
                     }
                     div class="info-item" {
                         span class="label" { "Fees Last 12 Months: " }
                         span class="value" { (format!("{} sats", apy_data.fees_12_months)) }
+                    }
+                    div class="info-item" {
+                        span class="label" { "Rebalance Cost Last 12 Months: " }
+                        span class="value" {
+                            (format!("{} sats", apy_data.rebalance_cost_12_months_msat / 1000))
+                        }
                     }
                     div class="info-item" {
                         span class="label" { "Channel Funds: " }
@@ -2367,6 +2382,10 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
                     "ROIC decomposition: Effective Fee Rate (bps) = Fees Earned × 10,000 ÷ Total Routed; "
                     "Capital Velocity = Total Routed ÷ Total Funds; "
                     "Gross ROIC% = Effective Fee Rate × Capital Velocity ÷ 100."
+                }
+                p {
+                    "Net ROIC subtracts Core Lightning bookkeeper rebalance fees from forwarding fees before dividing by total funds. "
+                    "On-chain fees are not included."
                 }
             }
         }
