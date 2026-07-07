@@ -77,6 +77,15 @@ pub fn list_closed_channels() -> ListClosedChannels {
     serde_json::from_value(v).unwrap()
 }
 
+pub fn bkpr_list_account_events() -> BkprListAccountEvents {
+    let v = if cfg!(debug_assertions) {
+        cmd_result("zcat", &["test-json/bkpr-listaccountevents.gz"])
+    } else {
+        cmd_result("lightning-cli", &["bkpr-listaccountevents"])
+    };
+    serde_json::from_value(v).unwrap()
+}
+
 pub fn get_info() -> GetInfo {
     let v = if cfg!(debug_assertions) {
         cmd_result("cat", &["test-json/getinfo"])
@@ -118,7 +127,7 @@ pub fn cmd_result(cmd: &str, args: &[impl AsRef<str>]) -> Value {
         }
     };
     let s = std::str::from_utf8(&data.stdout).unwrap();
-    match serde_json::from_str(&s) {
+    match serde_json::from_str(s) {
         Ok(v) => v,
         Err(e) => {
             error_panic!("executing `{cmd}` returned {s} with error {e:?}");
@@ -232,9 +241,7 @@ impl Fund {
         (self.perc_float() * 100.0).floor() as u64
     }
     pub fn perc_float(&self) -> f64 {
-        (self.our_amount_msat as f64 / self.amount_msat as f64)
-            .min(1.0)
-            .max(0.0)
+        (self.our_amount_msat as f64 / self.amount_msat as f64).clamp(0.0, 1.0)
     }
 
     pub fn short_channel_id(&self) -> String {
@@ -259,6 +266,30 @@ pub struct ListForwards {
 #[derive(Deserialize, Debug)]
 pub struct ListClosedChannels {
     pub closedchannels: Vec<ClosedChannel>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct BkprListAccountEvents {
+    pub events: Vec<BkprAccountEvent>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct BkprAccountEvent {
+    pub account: String,
+    #[serde(default)]
+    pub credit_msat: u64,
+    #[serde(default)]
+    pub debit_msat: u64,
+    #[serde(default)]
+    pub timestamp: Option<u64>,
+    #[serde(default)]
+    pub payment_id: Option<String>,
+    #[serde(default)]
+    pub fees_msat: Option<u64>,
+    #[serde(default)]
+    pub is_rebalance: bool,
+    #[serde(default)]
+    pub part_id: Option<u64>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -482,4 +513,38 @@ pub struct DatastoreResponse {
 #[derive(Deserialize, Debug)]
 pub struct ListDatastore {
     pub datastore: Vec<DatastoreResponse>,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use super::*;
+
+    #[test]
+    fn gz_bkpr_fixture_matches_confirmed_rebalance_totals() {
+        let events = bkpr_list_account_events();
+        let rebalance_events: Vec<_> = events
+            .events
+            .iter()
+            .filter(|event| event.is_rebalance)
+            .collect();
+        let payments: HashSet<_> = rebalance_events
+            .iter()
+            .filter_map(|event| event.payment_id.as_deref())
+            .collect();
+        let fees_msat: u64 = rebalance_events
+            .iter()
+            .map(|event| event.fees_msat.unwrap_or(0))
+            .sum();
+        let net_debit_msat: i64 = rebalance_events
+            .iter()
+            .map(|event| event.debit_msat as i64 - event.credit_msat as i64)
+            .sum();
+
+        assert_eq!(rebalance_events.len(), 3186);
+        assert_eq!(payments.len(), 1593);
+        assert_eq!(fees_msat, 7_598_600);
+        assert_eq!(net_debit_msat, 7_598_600);
+    }
 }
