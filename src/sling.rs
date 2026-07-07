@@ -90,6 +90,14 @@ fn compute_max_ppm(avg_fee_ppm: u64) -> u64 {
     avg_fee_ppm / 2
 }
 
+fn compute_bootstrap_max_ppm(historical_fee_ppm: Option<f64>) -> u64 {
+    historical_fee_ppm
+        .filter(|ppm| ppm.is_finite() && *ppm > 0.0)
+        .map(|ppm| (ppm / 3.0) as u64)
+        .filter(|ppm| *ppm > 0)
+        .unwrap_or(BOOTSTRAP_MAX_PPM)
+}
+
 fn compute_rebalance_amounts(routed_sat: u64) -> (u64, u64) {
     let onceamount = routed_sat - (routed_sat % 4);
     let amount = if onceamount > 2 * REBALANCE_SPLIT_THRESHOLD_SAT {
@@ -286,6 +294,11 @@ pub fn run_sling(store: &Store, directory: &str) {
                 {
                     suggested += 1;
                     suggested_bootstrap += 1;
+                    let historical_fee_ppm = store.get_channel_effective_fee_ppm(scid);
+                    let bootstrap_max_ppm = compute_bootstrap_max_ppm(historical_fee_ppm);
+                    let historical_fee_ppm_log = historical_fee_ppm
+                        .map(|ppm| ppm.trunc().to_string())
+                        .unwrap_or_else(|| "n/a".to_string());
 
                     let candidates_arg = format!("candidates={candidates_json}");
                     let args = [
@@ -294,18 +307,19 @@ pub fn run_sling(store: &Store, directory: &str) {
                         &format!("scid={scid}"),
                         "direction=pull",
                         &candidates_arg,
-                        &format!("maxppm={BOOTSTRAP_MAX_PPM}"),
+                        &format!("maxppm={bootstrap_max_ppm}"),
                         &format!("amount={amount}"),
                         &format!("onceamount={onceamount}"),
                     ];
                     log::info!(
-                        "{alias} balance:{:.1}% recent_out_{}h:0 amount:{}s onceamount:{}s avg_fee_ppm:0 channel_ppm:{} maxppm:{} bootstrap -> {CMD} {}",
+                        "{alias} balance:{:.1}% recent_out_{}h:0 amount:{}s onceamount:{}s avg_fee_ppm:0 historical_fee_ppm:{} channel_ppm:{} maxppm:{} bootstrap -> {CMD} {}",
                         balance * 100.0,
                         LOOKBACK_HOURS,
                         amount,
                         onceamount,
+                        historical_fee_ppm_log,
                         my_ppm_log,
-                        BOOTSTRAP_MAX_PPM,
+                        bootstrap_max_ppm,
                         args.join(" ")
                     );
                     if execute_sling {
@@ -419,8 +433,9 @@ pub fn run_sling(store: &Store, directory: &str) {
 #[cfg(test)]
 mod tests {
     use super::{
-        compute_bootstrap_rebalance_amounts, compute_max_ppm, compute_rebalance_amounts,
-        enrich_sling_stats_with_last_channel_partner, REBALANCE_SPLIT_THRESHOLD_SAT,
+        compute_bootstrap_max_ppm, compute_bootstrap_rebalance_amounts, compute_max_ppm,
+        compute_rebalance_amounts, enrich_sling_stats_with_last_channel_partner, BOOTSTRAP_MAX_PPM,
+        REBALANCE_SPLIT_THRESHOLD_SAT,
     };
     use serde_json::Value;
 
@@ -438,6 +453,24 @@ mod tests {
         assert_eq!(compute_max_ppm(446), 223);
         assert_eq!(compute_max_ppm(2085), 1042);
         assert_eq!(compute_max_ppm(90), 45);
+    }
+
+    #[test]
+    fn compute_bootstrap_max_ppm_falls_back_without_historical_fee_ppm() {
+        assert_eq!(compute_bootstrap_max_ppm(None), BOOTSTRAP_MAX_PPM);
+    }
+
+    #[test]
+    fn compute_bootstrap_max_ppm_uses_third_of_historical_fee_ppm() {
+        assert_eq!(compute_bootstrap_max_ppm(Some(300.0)), 100);
+        assert_eq!(compute_bootstrap_max_ppm(Some(178.0)), 59);
+        assert_eq!(compute_bootstrap_max_ppm(Some(31.9)), 10);
+    }
+
+    #[test]
+    fn compute_bootstrap_max_ppm_falls_back_for_unusable_historical_fee_ppm() {
+        assert_eq!(compute_bootstrap_max_ppm(Some(0.0)), BOOTSTRAP_MAX_PPM);
+        assert_eq!(compute_bootstrap_max_ppm(Some(f64::NAN)), BOOTSTRAP_MAX_PPM);
     }
 
     #[test]
