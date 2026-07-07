@@ -616,6 +616,26 @@ impl Store {
             .sum()
     }
 
+    /// Get historical effective fee rate in ppm for outbound forwards on a channel.
+    ///
+    /// This is the per-channel version of the APY page effective fee rate:
+    /// fees earned divided by total routed amount.
+    pub fn get_channel_effective_fee_ppm(&self, short_channel_id: &str) -> Option<f64> {
+        let (total_fees, total_routed) = self
+            .settled_forwards()
+            .iter()
+            .filter(|f| f.out_channel == short_channel_id)
+            .fold((0u64, 0u64), |(fees, routed), f| {
+                (fees + f.fee_sat, routed + f.out_sat)
+            });
+
+        if total_routed == 0 {
+            return None;
+        }
+
+        Some(total_fees as f64 * 1_000_000.0 / total_routed as f64)
+    }
+
     /// Get channel age in days from block height (approximate)
     pub fn get_channel_age_days(&self, short_channel_id: &str) -> Option<i64> {
         // Parse block height directly from short_channel_id (format: "block_height x tx_index x output_index")

@@ -1340,6 +1340,7 @@ fn create_channel_pages(
                         th style="text-align: right;" { "Balance %" }
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
+                        th style="text-align: right;" { "Hist PPM" }
                         th style="text-align: right;" { "HTLC Max (sats)" }
                         th style="text-align: right;" { "Inbound PPM" }
                         th style="text-align: right;" { "APY%" }
@@ -1381,6 +1382,17 @@ fn create_channel_pages(
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(channel_info) = store.get_channel(scid, &store.info.id) {
                                         (channel_info.fee_per_millionth)
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
+                            }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(effective_fee_ppm) = store.get_channel_effective_fee_ppm(scid) {
+                                        (format!("{effective_fee_ppm:.0}"))
                                     } @else {
                                         "-"
                                     }
@@ -1440,6 +1452,7 @@ fn create_channel_pages(
                         th style="text-align: right;" { "Balance %" }
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
+                        th style="text-align: right;" { "Hist PPM" }
                         th style="text-align: right;" { "HTLC Max (sats)" }
                         th style="text-align: right;" { "Inbound PPM" }
                         th style="text-align: right;" { "APY%" }
@@ -1482,6 +1495,17 @@ fn create_channel_pages(
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(channel_info) = store.get_channel(scid, &store.info.id) {
                                         (channel_info.fee_per_millionth)
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
+                            }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(effective_fee_ppm) = store.get_channel_effective_fee_ppm(scid) {
+                                        (format!("{effective_fee_ppm:.0}"))
                                     } @else {
                                         "-"
                                     }
@@ -1790,6 +1814,17 @@ fn create_channel_pages(
                     div class="info-item" {
                         span class="label" { "Total Fees Earned: " }
                         span class="value" { (format!("{} sats", store.get_channel_total_fees(scid))) }
+                    }
+
+                    div class="info-item" {
+                        span class="label" { "Historical Effective Fee Rate: " }
+                        span class="value" {
+                            @if let Some(effective_fee_ppm) = store.get_channel_effective_fee_ppm(scid) {
+                                (format!("{effective_fee_ppm:.0} ppm"))
+                            } @else {
+                                "-"
+                            }
+                        }
                     }
 
                     @if let Some(apy) = store.get_channel_apy(scid) {
