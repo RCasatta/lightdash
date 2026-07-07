@@ -19,7 +19,7 @@ pub fn run_routes(store: &Store, directory: &str, amount_sat: u64) {
         // Skip nodes that have less than 2 channels
         if chan_meta
             .get(id.as_str())
-            .map_or(true, |chan_info| chan_info.count < 2)
+            .is_none_or(|chan_info| chan_info.count < 2)
         {
             continue;
         }
