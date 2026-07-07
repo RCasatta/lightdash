@@ -108,10 +108,8 @@ pub fn run_channels(dir: &str, output_dir: &str) {
             let _channel_count = list_channels.channels.len();
 
             for channel in list_channels.channels {
-                let el = channels
-                    .entry(channel.short_channel_id)
-                    .or_insert(HashMap::new());
-                let vec = el.entry(channel.source).or_insert(Vec::new());
+                let el = channels.entry(channel.short_channel_id).or_default();
+                let vec = el.entry(channel.source).or_default();
                 vec.push(ElementData {
                     timestamp: timestamp as u32,
                     // base_fee_millisatoshi: channel.base_fee_millisatoshi as u32,
@@ -479,7 +477,7 @@ fn generate_svg_chart(
     // Add some padding to the y-axis
     let y_padding = (max_value - min_value).max(1) / 10;
     min_value = min_value.saturating_sub(y_padding);
-    max_value = max_value + y_padding;
+    max_value += y_padding;
 
     // Cap the y-axis for Fee charts to avoid outliers squashing the chart
     const FEE_Y_AXIS_MAX: u32 = 4000;
@@ -528,14 +526,14 @@ fn generate_svg_chart(
         r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}" width="{}" height="{}">"##,
         width, height, width, height
     ));
-    svg.push_str("\n");
+    svg.push('\n');
 
     // Add background
     svg.push_str(&format!(
         r##"  <rect width="{}" height="{}" fill="#f5f5f5"/>"##,
         width, height
     ));
-    svg.push_str("\n");
+    svg.push('\n');
 
     // Add title based on chart type
     let title = match chart_type {
@@ -546,7 +544,7 @@ fn generate_svg_chart(
         r##"  <text x="{}" y="25" font-family="Arial, sans-serif" font-size="18" font-weight="bold" text-anchor="middle">{}</text>"##,
         width / 2, title
     ));
-    svg.push_str("\n");
+    svg.push('\n');
 
     // Draw axes
     svg.push_str(&format!(
@@ -556,7 +554,7 @@ fn generate_svg_chart(
         margin_left + plot_width,
         margin_top + plot_height
     ));
-    svg.push_str("\n");
+    svg.push('\n');
     svg.push_str(&format!(
         r##"  <line x1="{}" y1="{}" x2="{}" y2="{}" stroke="black" stroke-width="2"/>"##,
         margin_left,
@@ -564,14 +562,14 @@ fn generate_svg_chart(
         margin_left,
         margin_top + plot_height
     ));
-    svg.push_str("\n");
+    svg.push('\n');
 
     // Add axis labels
     svg.push_str(&format!(
         r##"  <text x="{}" y="{}" font-family="Arial, sans-serif" font-size="14" text-anchor="middle">Date</text>"##,
         margin_left + plot_width / 2, height - 20
     ));
-    svg.push_str("\n");
+    svg.push('\n');
 
     let y_axis_label = match chart_type {
         ChartType::Fee => "Fee Per Millionth",
@@ -581,7 +579,7 @@ fn generate_svg_chart(
         r##"  <text x="{}" y="{}" font-family="Arial, sans-serif" font-size="14" text-anchor="middle" transform="rotate(-90, {}, {})">{}</text>"##,
         20, margin_top + plot_height / 2, 20, margin_top + plot_height / 2, y_axis_label
     ));
-    svg.push_str("\n");
+    svg.push('\n');
 
     // Add y-axis ticks and grid
     let num_y_ticks = 5;
@@ -597,14 +595,14 @@ fn generate_svg_chart(
             margin_left + plot_width,
             y
         ));
-        svg.push_str("\n");
+        svg.push('\n');
 
         // Tick label
         svg.push_str(&format!(
             r##"  <text x="{}" y="{}" font-family="Arial, sans-serif" font-size="12" text-anchor="end" alignment-baseline="middle">{}</text>"##,
             margin_left - 10, y, value
         ));
-        svg.push_str("\n");
+        svg.push('\n');
     }
 
     // Add x-axis ticks with dates
@@ -620,7 +618,7 @@ fn generate_svg_chart(
             r##"  <text x="{}" y="{}" font-family="Arial, sans-serif" font-size="11" text-anchor="end" transform="rotate(-45, {}, {})">{}  </text>"##,
             x, margin_top + plot_height + 15, x, margin_top + plot_height + 15, date
         ));
-        svg.push_str("\n");
+        svg.push('\n');
     }
 
     // Plot data for node_0
@@ -656,7 +654,7 @@ fn generate_svg_chart(
             r##"  <path d="{}" fill="none" stroke="#2563eb" stroke-width="2" opacity="0.7"/>"##,
             path_data
         ));
-        svg.push_str("\n");
+        svg.push('\n');
 
         // Add circles for data points
         for (x, y, timestamp, value) in points_0 {
@@ -669,7 +667,7 @@ fn generate_svg_chart(
                 r##"  <circle cx="{}" cy="{}" r="4" fill="#2563eb" opacity="0.7"><title>{} ({})</title></circle>"##,
                 x, y, value_label, date_str
             ));
-            svg.push_str("\n");
+            svg.push('\n');
         }
     }
 
@@ -706,7 +704,7 @@ fn generate_svg_chart(
             r##"  <path d="{}" fill="none" stroke="#dc2626" stroke-width="2" opacity="0.7"/>"##,
             path_data
         ));
-        svg.push_str("\n");
+        svg.push('\n');
 
         // Add circles for data points
         for (x, y, timestamp, value) in points_1 {
@@ -719,7 +717,7 @@ fn generate_svg_chart(
                 r##"  <circle cx="{}" cy="{}" r="4" fill="#dc2626" opacity="0.7"><title>{} ({})</title></circle>"##,
                 x, y, value_label, date_str
             ));
-            svg.push_str("\n");
+            svg.push('\n');
         }
     }
 
@@ -731,13 +729,13 @@ fn generate_svg_chart(
         r##"  <rect x="{}" y="{}" width="200" height="80" fill="white" stroke="black" stroke-width="1"/>"##,
         legend_x - 10, legend_y - 10
     ));
-    svg.push_str("\n");
+    svg.push('\n');
 
     svg.push_str(&format!(
         r##"  <text x="{}" y="{}" font-family="Arial, sans-serif" font-size="14" font-weight="bold">Legend</text>"##,
         legend_x, legend_y + 5
     ));
-    svg.push_str("\n");
+    svg.push('\n');
 
     // Node 0 legend
     svg.push_str(&format!(
@@ -747,12 +745,12 @@ fn generate_svg_chart(
         legend_x + 30,
         legend_y + 25
     ));
-    svg.push_str("\n");
+    svg.push('\n');
     svg.push_str(&format!(
         r##"  <text x="{}" y="{}" font-family="Arial, monospace" font-size="10" alignment-baseline="middle">{}</text>"##,
         legend_x + 40, legend_y + 25, truncate_node_id(node_0)
     ));
-    svg.push_str("\n");
+    svg.push('\n');
 
     // Node 1 legend
     svg.push_str(&format!(
@@ -762,19 +760,19 @@ fn generate_svg_chart(
         legend_x + 30,
         legend_y + 50
     ));
-    svg.push_str("\n");
+    svg.push('\n');
     svg.push_str(&format!(
         r##"  <text x="{}" y="{}" font-family="Arial, monospace" font-size="10" alignment-baseline="middle">{}</text>"##,
         legend_x + 40, legend_y + 50, truncate_node_id(node_1)
     ));
-    svg.push_str("\n");
+    svg.push('\n');
 
     // Add watermark
     svg.push_str(&format!(
         r##"  <text x="{}" y="{}" font-family="Arial, sans-serif" font-size="14" font-style="italic" fill="#888888" text-anchor="end">LOUDTOLL since 2019</text>"##,
         width - 20, height - 15
     ));
-    svg.push_str("\n");
+    svg.push('\n');
 
     svg.push_str("</svg>\n");
 
