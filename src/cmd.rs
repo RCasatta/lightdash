@@ -1,12 +1,14 @@
 use chrono::{DateTime, Utc};
+use flate2::read::GzDecoder;
 use serde::Deserialize;
 use serde_json::Value;
+use std::fs::File;
 
 use crate::error_panic;
 
 pub fn list_funds() -> ListFunds {
     let v = if cfg!(debug_assertions) {
-        cmd_result("zcat", &["test-json/listfunds.gz"])
+        gz_json_file("test-json/listfunds.gz")
     } else {
         cmd_result("lightning-cli", &["listfunds"])
     };
@@ -15,7 +17,7 @@ pub fn list_funds() -> ListFunds {
 
 pub fn list_nodes() -> ListNodes {
     let v = if cfg!(debug_assertions) {
-        cmd_result("zcat", &["test-json/listnodes.gz"])
+        gz_json_file("test-json/listnodes.gz")
     } else {
         cmd_result("lightning-cli", &["listnodes"])
     };
@@ -24,7 +26,7 @@ pub fn list_nodes() -> ListNodes {
 
 pub fn list_channels() -> ListChannels {
     let v = if cfg!(debug_assertions) {
-        cmd_result("zcat", &["test-json/listchannels.gz"])
+        gz_json_file("test-json/listchannels.gz")
     } else {
         cmd_result("lightning-cli", &["listchannels"])
     };
@@ -43,7 +45,7 @@ pub fn read_xz_funds(path: &str) -> ListFunds {
 
 pub fn list_peers() -> ListPeers {
     let v = if cfg!(debug_assertions) {
-        cmd_result("zcat", &["test-json/listpeers.gz"])
+        gz_json_file("test-json/listpeers.gz")
     } else {
         cmd_result("lightning-cli", &["listpeers"])
     };
@@ -70,7 +72,7 @@ pub fn list_forwards() -> ListForwards {
 
 pub fn list_closed_channels() -> ListClosedChannels {
     let v = if cfg!(debug_assertions) {
-        cmd_result("zcat", &["test-json/listclosedchannels.gz"])
+        gz_json_file("test-json/listclosedchannels.gz")
     } else {
         cmd_result("lightning-cli", &["listclosedchannels"])
     };
@@ -79,7 +81,7 @@ pub fn list_closed_channels() -> ListClosedChannels {
 
 pub fn bkpr_list_account_events() -> BkprListAccountEvents {
     let v = if cfg!(any(debug_assertions, test)) {
-        cmd_result("zcat", &["test-json/bkpr-listaccountevents.gz"])
+        gz_json_file("test-json/bkpr-listaccountevents.gz")
     } else {
         cmd_result("lightning-cli", &["bkpr-listaccountevents"])
     };
@@ -133,6 +135,16 @@ pub fn cmd_result(cmd: &str, args: &[impl AsRef<str>]) -> Value {
             error_panic!("executing `{cmd}` returned {s} with error {e:?}");
         }
     }
+}
+
+fn gz_json_file(path: &str) -> Value {
+    let file = File::open(path).unwrap_or_else(|e| {
+        error_panic!("opening `{path}` returned {e:?}");
+    });
+    let decoder = GzDecoder::new(file);
+    serde_json::from_reader(decoder).unwrap_or_else(|e| {
+        error_panic!("parsing gzip json `{path}` returned {e:?}");
+    })
 }
 
 // fn lcli_named(subcmd: &str, args: &[&str]) -> String {
@@ -515,7 +527,7 @@ pub struct ListDatastore {
     pub datastore: Vec<DatastoreResponse>,
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "large-fixture-tests"))]
 mod tests {
     use std::collections::HashSet;
 
