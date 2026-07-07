@@ -484,7 +484,7 @@ fn create_node_pages(
                         }
                     }
                     div class="fee-chart-x-axis" {
-                        @for (_i, label) in fee_dist.labels.iter().enumerate() {
+                        @for label in fee_dist.labels.iter() {
                             div class="fee-chart-x-label" {
                                 (label)
                             }
@@ -539,7 +539,7 @@ fn create_node_pages(
                         }
                     }
                     div class="fee-chart-x-axis" {
-                        @for (_i, label) in fee_dist.labels.iter().enumerate() {
+                        @for label in fee_dist.labels.iter() {
                             div class="fee-chart-x-label" {
                                 (label)
                             }
@@ -850,7 +850,7 @@ fn create_forwards_html_content(
     forwards: &[crate::cmd::SettledForward],
     title: &str,
     store: &Store,
-    our_node_id: &String,
+    our_node_id: &str,
 ) -> Markup {
     // Helper function to get node alias and ID for a channel
     let get_channel_info = |channel_id: &str| -> (String, Option<String>) {
@@ -950,7 +950,7 @@ fn create_forwards_page(
     directory: &str,
     store: &Store,
     now: &chrono::DateTime<chrono::Utc>,
-    our_node_id: &String,
+    our_node_id: &str,
 ) {
     let settled_forwards = store.settled_forwards();
 
@@ -974,7 +974,7 @@ fn create_forwards_week_page(
     directory: &str,
     store: &Store,
     now: &chrono::DateTime<chrono::Utc>,
-    our_node_id: &String,
+    our_node_id: &str,
 ) {
     let settled_forwards = store.filter_settled_forwards_by_days(7);
 
@@ -1002,7 +1002,7 @@ fn create_forwards_year_page(
     directory: &str,
     store: &Store,
     now: &chrono::DateTime<chrono::Utc>,
-    our_node_id: &String,
+    our_node_id: &str,
 ) {
     let settled_forwards = store.filter_settled_forwards_by_days(365);
 
@@ -1030,7 +1030,7 @@ fn create_failures_page(
     directory: &str,
     store: &Store,
     now: &chrono::DateTime<chrono::Utc>,
-    our_node_id: &String,
+    our_node_id: &str,
 ) {
     // Helper function to get node alias and ID for a channel
     let get_channel_info = |channel_id: &str| -> (String, Option<String>) {
@@ -1218,17 +1218,31 @@ fn create_failures_page(
     }
 }
 
-fn create_channel_pages(
-    directory: &str,
-    channels: &[crate::cmd::Fund],
-    store: &Store,
-    now: &chrono::DateTime<chrono::Utc>,
-    our_node_id: &String,
-    per_channel_last_forward_in: &HashMap<String, DateTime<Utc>>,
-    per_channel_last_forward_out: &HashMap<String, DateTime<Utc>>,
-    avail_map: &HashMap<String, f64>,
-    funds_charts_url: Option<&str>,
-) {
+struct ChannelPagesInput<'a> {
+    directory: &'a str,
+    channels: &'a [crate::cmd::Fund],
+    store: &'a Store,
+    now: &'a chrono::DateTime<chrono::Utc>,
+    our_node_id: &'a str,
+    per_channel_last_forward_in: &'a HashMap<String, DateTime<Utc>>,
+    per_channel_last_forward_out: &'a HashMap<String, DateTime<Utc>>,
+    avail_map: &'a HashMap<String, f64>,
+    funds_charts_url: Option<&'a str>,
+}
+
+fn create_channel_pages(input: ChannelPagesInput<'_>) {
+    let ChannelPagesInput {
+        directory,
+        channels,
+        store,
+        now,
+        our_node_id,
+        per_channel_last_forward_in,
+        per_channel_last_forward_out,
+        avail_map,
+        funds_charts_url,
+    } = input;
+
     let channels_dir = format!("{}/channels", directory);
 
     // Create channels directory
@@ -1827,6 +1841,50 @@ fn create_channel_pages(
                         }
                     }
 
+                    div class="info-item" {
+                        span class="label" { "Total Rebalance Cost: " }
+                        span class="value" {
+                            (format!(
+                                "{} sats",
+                                store.get_channel_rebalance_target_cost_msat(scid) / 1000
+                            ))
+                        }
+                    }
+
+                    div class="info-item" {
+                        span class="label" { "Rebalance Parts: " }
+                        span class="value" {
+                            (store.get_channel_rebalance_target_part_count(scid))
+                        }
+                    }
+
+                    div class="info-item" {
+                        span class="label" { "Rebalance Payments: " }
+                        span class="value" {
+                            (store.get_channel_rebalance_target_payment_count(scid))
+                        }
+                    }
+
+                    div class="info-item" {
+                        span class="label" { "Source Rebalance Cost: " }
+                        span class="value" {
+                            (format!(
+                                "{} sats",
+                                store.get_channel_rebalance_source_cost_msat(scid) / 1000
+                            ))
+                        }
+                    }
+
+                    div class="info-item" {
+                        span class="label" { "Net Routing Revenue: " }
+                        span class="value" {
+                            (format!(
+                                "{} sats",
+                                store.get_channel_net_routing_revenue_msat(scid) / 1000
+                            ))
+                        }
+                    }
+
                     @if let Some(apy) = store.get_channel_apy(scid) {
                         div class="info-item" {
                             span class="label" { "APY%: " }
@@ -2234,6 +2292,38 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
                             td style="text-align: right;" { (apy_data.fees_12_months) }
                             td style="text-align: right;" { (format!("{:.3}", apy_data.apy_12_months)) }
                         }
+                    }
+                }
+            }
+
+            div class="section" {
+                h3 class="section-title" { "Net Routing Summary" }
+                p class="section-note" {
+                    "All-time forwarding fees minus all-time rebalance costs from Core Lightning bookkeeper events."
+                }
+
+                div class="info-item" {
+                    span class="label" { "Total Forwarding Fees: " }
+                    span class="value" {
+                        (format!("{} sats", store.total_forwarding_fees_sat()))
+                    }
+                }
+                div class="info-item" {
+                    span class="label" { "Total Rebalance Cost: " }
+                    span class="value" {
+                        (format!(
+                            "{} sats",
+                            store.total_rebalance_cost_msat() / 1000
+                        ))
+                    }
+                }
+                div class="info-item" {
+                    span class="label" { "Net After Rebalance Cost: " }
+                    span class="value" {
+                        (format!(
+                            "{} sats",
+                            store.net_routing_revenue_msat() / 1000
+                        ))
                     }
                 }
             }
@@ -3384,7 +3474,7 @@ pub fn run_dashboard(
             .get(&short_channel_id)
             .unwrap_or(&0i64);
 
-        let ever_forw_in_out = ever_forw_fee + ever_forw_fee_incom.abs() as u64;
+        let ever_forw_in_out = ever_forw_fee + ever_forw_fee_incom.unsigned_abs();
 
         // gain is millisat "gained" per block, a millisat is gained is it an effective fee from outgoing forward, but also if it's an ineffective fee as incoming forward.
         let blocks_alive = current_block.saturating_sub(channel.block_born).max(1); // Prevent division by zero and overflow
@@ -3491,44 +3581,44 @@ pub fn run_dashboard(
     log::info!("Index HTML file written");
 
     log::info!("Creating channels directory and individual channel pages");
-    create_channel_pages(
-        &directory,
-        &normal_channels,
-        &store,
-        &now,
-        &store.info.id,
-        &per_channel_last_forward_in,
-        &per_channel_last_forward_out,
-        &store.avail_map,
-        funds_charts_url.as_deref(),
-    );
+    create_channel_pages(ChannelPagesInput {
+        directory: &directory,
+        channels: &normal_channels,
+        store,
+        now: &now,
+        our_node_id: &store.info.id,
+        per_channel_last_forward_in: &per_channel_last_forward_in,
+        per_channel_last_forward_out: &per_channel_last_forward_out,
+        avail_map: &store.avail_map,
+        funds_charts_url: funds_charts_url.as_deref(),
+    });
 
     log::info!("Creating forwards page");
-    create_forwards_page(&directory, &store, &now, &store.info.id);
+    create_forwards_page(&directory, store, &now, &store.info.id);
 
     log::info!("Creating weekly forwards page");
-    create_forwards_week_page(&directory, &store, &now, &store.info.id);
+    create_forwards_week_page(&directory, store, &now, &store.info.id);
 
     log::info!("Creating yearly forwards page");
-    create_forwards_year_page(&directory, &store, &now, &store.info.id);
+    create_forwards_year_page(&directory, store, &now, &store.info.id);
 
     log::info!("Creating failures page");
-    create_failures_page(&directory, &store, &now, &store.info.id);
+    create_failures_page(&directory, store, &now, &store.info.id);
 
     log::info!("Creating weekday chart page");
-    create_weekday_chart_page(&directory, &store, &now);
+    create_weekday_chart_page(&directory, store, &now);
 
     log::info!("Creating APY page");
-    create_apy_page(&directory, &store, &now);
+    create_apy_page(&directory, store, &now);
 
     log::info!("Creating rebalance page");
     create_rebalance_page(&directory, &now, rebalances_path.as_deref());
 
     log::info!("Creating closed channels page");
-    create_closed_channels_page(&directory, &store, &now);
+    create_closed_channels_page(&directory, store, &now);
 
     log::info!("Creating node pages");
-    create_node_pages(&directory, &store, &now, min_channels);
+    create_node_pages(&directory, store, &now, min_channels);
 
     log::info!("Dashboard generated successfully");
 }
