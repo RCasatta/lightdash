@@ -1354,11 +1354,11 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                         th style="text-align: right;" { "Balance %" }
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
-                        th style="text-align: right;" { "Hist PPM" }
-                        th style="text-align: right;" { "Hist Reb PPM" }
+                        th style="text-align: right;" title="All-time outbound forwarding fees divided by all-time outbound routed amount." { "Hist PPM" }
+                        th style="text-align: right;" title="All-time target-attributed rebalance cost divided by all-time target credited rebalance liquidity." { "Hist Reb PPM" }
                         th style="text-align: right;" { "HTLC Max (sats)" }
                         th style="text-align: right;" { "Inbound PPM" }
-                        th style="text-align: right;" { "Net ROIC%" }
+                        th style="text-align: right;" title="Annualized channel return after subtracting target-attributed rebalance cost." { "Net ROIC%" }
                     }
                 }
                 tbody {
@@ -1407,7 +1407,10 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(effective_fee_ppm) = store.get_channel_effective_fee_ppm(scid) {
-                                        (format!("{effective_fee_ppm:.0}"))
+                                        @let (forward_fees, forwarded_amount) = store.get_channel_forwarding_fee_totals(scid);
+                                        span title={(format!("{forward_fees} sats / {forwarded_amount} sats"))} {
+                                            (format!("{effective_fee_ppm:.0}"))
+                                        }
                                     } @else {
                                         "-"
                                     }
@@ -1418,7 +1421,10 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(rebalance_fee_ppm) = store.get_channel_rebalance_effective_fee_ppm(scid) {
-                                        (format!("{rebalance_fee_ppm:.0}"))
+                                        @let (rebalance_fees_msat, credited_msat) = store.get_channel_rebalance_target_totals(scid);
+                                        span title={(format!("{} sats / {} sats", rebalance_fees_msat / 1000, credited_msat / 1000))} {
+                                            (format!("{rebalance_fee_ppm:.0}"))
+                                        }
                                     } @else {
                                         "-"
                                     }
@@ -1451,7 +1457,9 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(net_roic) = store.get_channel_net_roic(scid) {
-                                        (format!("{:.2}%", net_roic))
+                                        span title={(format!("{} sats net / {} sats capacity", store.get_channel_net_routing_revenue_msat(scid) / 1000, channel.amount_msat / 1000))} {
+                                            (format!("{:.2}%", net_roic))
+                                        }
                                     } @else {
                                         "-"
                                     }
@@ -1478,11 +1486,11 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                         th style="text-align: right;" { "Balance %" }
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
-                        th style="text-align: right;" { "Hist PPM" }
-                        th style="text-align: right;" { "Hist Reb PPM" }
+                        th style="text-align: right;" title="All-time outbound forwarding fees divided by all-time outbound routed amount." { "Hist PPM" }
+                        th style="text-align: right;" title="All-time target-attributed rebalance cost divided by all-time target credited rebalance liquidity." { "Hist Reb PPM" }
                         th style="text-align: right;" { "HTLC Max (sats)" }
                         th style="text-align: right;" { "Inbound PPM" }
-                        th style="text-align: right;" { "Net ROIC%" }
+                        th style="text-align: right;" title="Annualized channel return after subtracting target-attributed rebalance cost." { "Net ROIC%" }
                         th style="text-align: right;" { "Age (days)" }
                     }
                 }
@@ -1532,7 +1540,10 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(effective_fee_ppm) = store.get_channel_effective_fee_ppm(scid) {
-                                        (format!("{effective_fee_ppm:.0}"))
+                                        @let (forward_fees, forwarded_amount) = store.get_channel_forwarding_fee_totals(scid);
+                                        span title={(format!("{forward_fees} sats / {forwarded_amount} sats"))} {
+                                            (format!("{effective_fee_ppm:.0}"))
+                                        }
                                     } @else {
                                         "-"
                                     }
@@ -1543,7 +1554,10 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(rebalance_fee_ppm) = store.get_channel_rebalance_effective_fee_ppm(scid) {
-                                        (format!("{rebalance_fee_ppm:.0}"))
+                                        @let (rebalance_fees_msat, credited_msat) = store.get_channel_rebalance_target_totals(scid);
+                                        span title={(format!("{} sats / {} sats", rebalance_fees_msat / 1000, credited_msat / 1000))} {
+                                            (format!("{rebalance_fee_ppm:.0}"))
+                                        }
                                     } @else {
                                         "-"
                                     }
@@ -1576,7 +1590,9 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(net_roic) = store.get_channel_net_roic(scid) {
-                                        (format!("{:.2}%", net_roic))
+                                        span title={(format!("{} sats net / {} sats capacity", store.get_channel_net_routing_revenue_msat(scid) / 1000, channel.amount_msat / 1000))} {
+                                            (format!("{:.2}%", net_roic))
+                                        }
                                     } @else {
                                         "-"
                                     }

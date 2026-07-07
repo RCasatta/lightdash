@@ -767,19 +767,21 @@ impl Store {
             .sum()
     }
 
+    pub fn get_channel_forwarding_fee_totals(&self, short_channel_id: &str) -> (u64, u64) {
+        self.settled_forwards()
+            .iter()
+            .filter(|f| f.out_channel == short_channel_id)
+            .fold((0u64, 0u64), |(fees, routed), f| {
+                (fees + f.fee_sat, routed + f.out_sat)
+            })
+    }
+
     /// Get historical effective fee rate in ppm for outbound forwards on a channel.
     ///
     /// This is the per-channel version of the APY page effective fee rate:
     /// fees earned divided by total routed amount.
     pub fn get_channel_effective_fee_ppm(&self, short_channel_id: &str) -> Option<f64> {
-        let (total_fees, total_routed) = self
-            .settled_forwards()
-            .iter()
-            .filter(|f| f.out_channel == short_channel_id)
-            .fold((0u64, 0u64), |(fees, routed), f| {
-                (fees + f.fee_sat, routed + f.out_sat)
-            });
-
+        let (total_fees, total_routed) = self.get_channel_forwarding_fee_totals(short_channel_id);
         if total_routed == 0 {
             return None;
         }
@@ -796,19 +798,21 @@ impl Store {
     }
 
     pub fn get_channel_rebalance_effective_fee_ppm(&self, short_channel_id: &str) -> Option<f64> {
-        let (fees_msat, credited_msat) = self
-            .rebalance_parts
-            .iter()
-            .filter(|part| part.target_channel_id.as_deref() == Some(short_channel_id))
-            .fold((0u64, 0u64), |(fees, credited), part| {
-                (fees + part.fees_msat, credited + part.credit_msat)
-            });
-
+        let (fees_msat, credited_msat) = self.get_channel_rebalance_target_totals(short_channel_id);
         if credited_msat == 0 {
             return None;
         }
 
         Some(fees_msat as f64 * 1_000_000.0 / credited_msat as f64)
+    }
+
+    pub fn get_channel_rebalance_target_totals(&self, short_channel_id: &str) -> (u64, u64) {
+        self.rebalance_parts
+            .iter()
+            .filter(|part| part.target_channel_id.as_deref() == Some(short_channel_id))
+            .fold((0u64, 0u64), |(fees, credited), part| {
+                (fees + part.fees_msat, credited + part.credit_msat)
+            })
     }
 
     pub fn get_channel_rebalance_source_cost_msat(&self, short_channel_id: &str) -> u64 {
