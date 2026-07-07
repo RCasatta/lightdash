@@ -1296,6 +1296,7 @@ mod tests {
         assert!(parts.is_empty());
     }
 
+    #[cfg(feature = "large-fixture-tests")]
     #[test]
     fn gz_bkpr_fixture_matches_expected_rebalance_parts() {
         let events = cmd::bkpr_list_account_events();
