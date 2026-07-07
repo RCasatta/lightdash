@@ -2605,6 +2605,7 @@ fn create_closed_channels_page(
                             th { "Funding / Closing" }
                             th style="text-align: right;" { "Opening Block" }
                             th style="text-align: right;" { "Final Amount (sats)" }
+                            th style="text-align: right;" title="Annualized all-time channel return after subtracting target-attributed rebalance cost. Lifetime uses last stable connection when available." { "Net ROIC%" }
                             th style="text-align: right;" { "Total HTLCs Sent" }
                         }
                     }
@@ -2661,6 +2662,13 @@ fn create_closed_channels_page(
                                 }
                                 td style="text-align: right;" {
                                     (channel_info.channel.final_to_us_msat / 1000)
+                                }
+                                td style="text-align: right;" {
+                                    @if let Some(net_roic) = store.get_closed_channel_net_roic(&channel_info.channel) {
+                                        (format!("{net_roic:.2}%"))
+                                    } @else {
+                                        "-"
+                                    }
                                 }
                                 td style="text-align: right;" {
                                     @if let Some(htlcs_sent) = channel_info.channel.total_htlcs_sent {

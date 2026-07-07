@@ -39,8 +39,11 @@ pub struct Store {
     pub avail_map: HashMap<String, f64>,
 }
 
-fn account_to_channel_map(funds: &cmd::ListFunds) -> HashMap<String, String> {
-    funds
+fn account_to_channel_map(
+    funds: &cmd::ListFunds,
+    closed_channels: &cmd::ListClosedChannels,
+) -> HashMap<String, String> {
+    let mut map: HashMap<String, String> = funds
         .channels
         .iter()
         .map(|channel| {
@@ -52,7 +55,22 @@ fn account_to_channel_map(funds: &cmd::ListFunds) -> HashMap<String, String> {
                     .unwrap_or_else(|| channel.channel_id.clone()),
             )
         })
-        .collect()
+        .collect();
+
+    for channel in &closed_channels.closedchannels {
+        if channel.channel_id.is_empty() {
+            continue;
+        }
+
+        map.entry(channel.channel_id.clone()).or_insert_with(|| {
+            channel
+                .short_channel_id
+                .clone()
+                .unwrap_or_else(|| channel.channel_id.clone())
+        });
+    }
+
+    map
 }
 
 #[derive(Default)]
@@ -184,7 +202,7 @@ impl Store {
             .map(|e| ((e.short_channel_id.clone(), e.source.clone()), e.clone()))
             .collect();
 
-        let account_to_channel = account_to_channel_map(&funds);
+        let account_to_channel = account_to_channel_map(&funds, &closed_channels);
         let rebalance_parts = match_rebalance_parts(&account_events.events, &account_to_channel);
         log::info!(
             "Loaded {} matched rebalance parts from bookkeeper events",
@@ -889,6 +907,38 @@ impl Store {
                 * (365.0 / age_days as f64)
                 * 100.0,
         )
+    }
+
+    pub fn get_closed_channel_net_roic(&self, channel: &cmd::ClosedChannel) -> Option<f64> {
+        let short_channel_id = channel.short_channel_id.as_deref()?;
+        let age_days = self.get_closed_channel_age_days(channel)?;
+        if age_days <= 0 {
+            return Some(0.0);
+        }
+
+        if channel.total_msat == 0 {
+            return Some(0.0);
+        }
+
+        let net_revenue_msat = self.get_channel_net_routing_revenue_msat(short_channel_id);
+        Some(
+            (net_revenue_msat as f64 / channel.total_msat as f64)
+                * (365.0 / age_days as f64)
+                * 100.0,
+        )
+    }
+
+    pub fn get_closed_channel_age_days(&self, channel: &cmd::ClosedChannel) -> Option<i64> {
+        let short_channel_id = channel.short_channel_id.as_deref()?;
+        let age_days_to_now = self.get_channel_age_days(short_channel_id)?;
+
+        let Some(last_stable_connection) = channel.last_stable_connection else {
+            return Some(age_days_to_now);
+        };
+        let close_time = DateTime::from_timestamp(last_stable_connection as i64, 0)?;
+        let days_since_close = self.now.signed_duration_since(close_time).num_days().max(0);
+
+        Some((age_days_to_now - days_since_close).max(1))
     }
 
     /// Get channel age in days from block height (approximate)

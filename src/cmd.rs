@@ -307,6 +307,8 @@ pub struct BkprAccountEvent {
 #[derive(Deserialize, Debug, Clone)]
 pub struct ClosedChannel {
     #[serde(default)]
+    pub channel_id: String,
+    #[serde(default)]
     pub peer_id: Option<String>,
     #[serde(default)]
     pub short_channel_id: Option<String>,
@@ -315,10 +317,14 @@ pub struct ClosedChannel {
     pub closer: Option<String>,
     #[serde(default)]
     pub total_htlcs_sent: Option<u64>,
+    #[serde(default)]
+    pub total_msat: u64,
     pub funding_txid: String,
     pub final_to_us_msat: u64,
     #[serde(default)]
     pub last_commitment_txid: Option<String>,
+    #[serde(default)]
+    pub last_stable_connection: Option<u64>,
     pub close_cause: String,
 }
 
