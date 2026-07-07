@@ -78,7 +78,7 @@ pub fn list_closed_channels() -> ListClosedChannels {
 }
 
 pub fn bkpr_list_account_events() -> BkprListAccountEvents {
-    let v = if cfg!(debug_assertions) {
+    let v = if cfg!(any(debug_assertions, test)) {
         cmd_result("zcat", &["test-json/bkpr-listaccountevents.gz"])
     } else {
         cmd_result("lightning-cli", &["bkpr-listaccountevents"])
