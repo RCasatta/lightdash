@@ -3,4 +3,5 @@
 .cursor/
 .env
 .codex
+result
 node_analytics.json.xz
