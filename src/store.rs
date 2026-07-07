@@ -839,6 +839,33 @@ impl Store {
             .len()
     }
 
+    fn channel_rebalance_target_timestamps<'a>(
+        &'a self,
+        short_channel_id: &'a str,
+    ) -> impl Iterator<Item = DateTime<Utc>> + 'a {
+        self.rebalance_parts
+            .iter()
+            .filter(move |part| part.target_channel_id.as_deref() == Some(short_channel_id))
+            .filter_map(|part| part.timestamp)
+            .filter_map(|timestamp| DateTime::from_timestamp(timestamp as i64, 0))
+    }
+
+    pub fn get_channel_first_rebalance_target_timestamp(
+        &self,
+        short_channel_id: &str,
+    ) -> Option<DateTime<Utc>> {
+        self.channel_rebalance_target_timestamps(short_channel_id)
+            .min()
+    }
+
+    pub fn get_channel_last_rebalance_target_timestamp(
+        &self,
+        short_channel_id: &str,
+    ) -> Option<DateTime<Utc>> {
+        self.channel_rebalance_target_timestamps(short_channel_id)
+            .max()
+    }
+
     pub fn get_channel_net_routing_revenue_msat(&self, short_channel_id: &str) -> i64 {
         self.get_channel_total_fees(short_channel_id) as i64 * 1000
             - self.get_channel_rebalance_target_cost_msat(short_channel_id) as i64

@@ -1917,6 +1917,28 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                     }
 
                     div class="info-item" {
+                        span class="label" { "First Rebalance: " }
+                        span class="value" {
+                            @if let Some(first_rebalance) = store.get_channel_first_rebalance_target_timestamp(scid) {
+                                (first_rebalance.format("%Y-%m-%d UTC"))
+                            } @else {
+                                "-"
+                            }
+                        }
+                    }
+
+                    div class="info-item" {
+                        span class="label" { "Last Rebalance: " }
+                        span class="value" {
+                            @if let Some(last_rebalance) = store.get_channel_last_rebalance_target_timestamp(scid) {
+                                (last_rebalance.format("%Y-%m-%d UTC"))
+                            } @else {
+                                "-"
+                            }
+                        }
+                    }
+
+                    div class="info-item" {
                         span class="label" { "Source Rebalance Cost: " }
                         span class="value" {
                             (format!(
