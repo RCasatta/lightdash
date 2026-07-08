@@ -1345,8 +1345,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
                         th style="text-align: right;" title="All-time outbound forwarding fees divided by all-time outbound routed amount." { "Hist PPM" }
-                        th style="text-align: right;" title="Time-decayed effective fee rate for outbound forwards: sum(fee * decay) / sum(amount * decay) * 1,000,000, using a 1-week half-life." { "TPPM" }
-                        th style="text-align: right;" title="Time-decayed variable fee rate for outbound forwards, subtracting our fixed 1000 msat (1 sat) base fee from each forward before applying the same 1-week half-life amount-weighted average." { "TPPM2" }
+                        th style="text-align: right;" title="Time-decayed PPM for outbound forwards: subtract our fixed 1000 msat (1 sat) base fee from each forward, then compute an amount-weighted average with a 1-week half-life." { "TPPM" }
                         th style="text-align: right;" title="All-time target-attributed rebalance cost divided by all-time target credited rebalance liquidity." { "Hist Reb PPM" }
                         th style="text-align: right;" { "HTLC Max (sats)" }
                         th style="text-align: right;" { "Inbound PPM" }
@@ -1412,19 +1411,8 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             }
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
-                                    @if let Some(tppm) = store.get_channel_time_decayed_effective_fee_ppm(scid) {
+                                    @if let Some(tppm) = store.get_channel_time_decayed_variable_fee_ppm(scid) {
                                         (format!("{tppm:.0}"))
-                                    } @else {
-                                        "-"
-                                    }
-                                } @else {
-                                    "-"
-                                }
-                            }
-                            td style="text-align: right;" {
-                                @if let Some(scid) = &channel.short_channel_id {
-                                    @if let Some(tppm2) = store.get_channel_time_decayed_variable_fee_ppm(scid) {
-                                        (format!("{tppm2:.0}"))
                                     } @else {
                                         "-"
                                     }
@@ -1501,8 +1489,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
                         th style="text-align: right;" title="All-time outbound forwarding fees divided by all-time outbound routed amount." { "Hist PPM" }
-                        th style="text-align: right;" title="Time-decayed effective fee rate for outbound forwards: sum(fee * decay) / sum(amount * decay) * 1,000,000, using a 1-week half-life." { "TPPM" }
-                        th style="text-align: right;" title="Time-decayed variable fee rate for outbound forwards, subtracting our fixed 1000 msat (1 sat) base fee from each forward before applying the same 1-week half-life amount-weighted average." { "TPPM2" }
+                        th style="text-align: right;" title="Time-decayed PPM for outbound forwards: subtract our fixed 1000 msat (1 sat) base fee from each forward, then compute an amount-weighted average with a 1-week half-life." { "TPPM" }
                         th style="text-align: right;" title="All-time target-attributed rebalance cost divided by all-time target credited rebalance liquidity." { "Hist Reb PPM" }
                         th style="text-align: right;" { "HTLC Max (sats)" }
                         th style="text-align: right;" { "Inbound PPM" }
@@ -1569,19 +1556,8 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             }
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
-                                    @if let Some(tppm) = store.get_channel_time_decayed_effective_fee_ppm(scid) {
+                                    @if let Some(tppm) = store.get_channel_time_decayed_variable_fee_ppm(scid) {
                                         (format!("{tppm:.0}"))
-                                    } @else {
-                                        "-"
-                                    }
-                                } @else {
-                                    "-"
-                                }
-                            }
-                            td style="text-align: right;" {
-                                @if let Some(scid) = &channel.short_channel_id {
-                                    @if let Some(tppm2) = store.get_channel_time_decayed_variable_fee_ppm(scid) {
-                                        (format!("{tppm2:.0}"))
                                     } @else {
                                         "-"
                                     }
