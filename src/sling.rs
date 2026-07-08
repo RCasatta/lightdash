@@ -68,15 +68,33 @@ fn usable_ppm(ppm: Option<f64>) -> Option<f64> {
     ppm.filter(|ppm| ppm.is_finite() && *ppm > 0.0)
 }
 
-fn compute_budget_ppm(tppm: Option<f64>, historical_fee_ppm: Option<f64>) -> u64 {
-    let budget = match (usable_ppm(tppm), usable_ppm(historical_fee_ppm)) {
-        (Some(tppm), Some(historical_fee_ppm)) => (tppm + historical_fee_ppm) / 4.0,
-        (Some(tppm), None) => tppm / 2.0,
-        (None, Some(historical_fee_ppm)) => historical_fee_ppm / 2.0,
-        (None, None) => return BOOTSTRAP_MAX_PPM,
-    };
+fn compute_budget_ppm(
+    tppm: Option<f64>,
+    historical_fee_ppm: Option<f64>,
+    channel_ppm: Option<u64>,
+) -> u64 {
+    let usable_channel_ppm = usable_ppm(channel_ppm.map(|ppm| ppm as f64));
+    let metrics = [
+        usable_ppm(tppm),
+        usable_ppm(historical_fee_ppm),
+        usable_channel_ppm,
+    ];
+    let (sum, count) = metrics
+        .into_iter()
+        .flatten()
+        .fold((0.0, 0u64), |(sum, count), ppm| (sum + ppm, count + 1));
 
-    (budget as u64).clamp(BUDGET_PPM_MIN, BUDGET_PPM_MAX)
+    if count == 0 {
+        return BOOTSTRAP_MAX_PPM;
+    }
+
+    let budget = (sum / count as f64) / 2.0;
+    let budget = (budget as u64).clamp(BUDGET_PPM_MIN, BUDGET_PPM_MAX);
+
+    match channel_ppm {
+        Some(channel_ppm) => budget.min(channel_ppm),
+        None => budget,
+    }
 }
 
 fn compute_base_rebalance_amount(channel_capacity_sat: u64) -> Option<u64> {
@@ -258,7 +276,7 @@ pub fn run_sling(store: &Store) {
             .unwrap_or_else(|| "n/a".to_string());
         let tppm = store.get_channel_time_decayed_variable_fee_ppm(scid);
         let historical_fee_ppm = store.get_channel_effective_fee_ppm(scid);
-        let budget_ppm = compute_budget_ppm(tppm, historical_fee_ppm);
+        let budget_ppm = compute_budget_ppm(tppm, historical_fee_ppm, my_ppm);
         let tppm_log = tppm
             .map(|ppm| ppm.trunc().to_string())
             .unwrap_or_else(|| "n/a".to_string());
@@ -354,39 +372,52 @@ mod tests {
     }
 
     #[test]
-    fn compute_budget_ppm_uses_half_of_tppm_and_historical_average() {
-        assert_eq!(compute_budget_ppm(Some(2_947.0), Some(316.0)), 815);
-        assert_eq!(compute_budget_ppm(Some(400.0), Some(200.0)), 150);
+    fn compute_budget_ppm_uses_half_of_available_metric_average() {
+        assert_eq!(
+            compute_budget_ppm(Some(2_947.0), Some(316.0), Some(1_223)),
+            747
+        );
+        assert_eq!(compute_budget_ppm(Some(400.0), Some(200.0), Some(300)), 150);
     }
 
     #[test]
     fn compute_budget_ppm_falls_back_to_half_of_available_metric() {
-        assert_eq!(compute_budget_ppm(Some(400.0), None), 200);
-        assert_eq!(compute_budget_ppm(None, Some(200.0)), 100);
+        assert_eq!(compute_budget_ppm(Some(400.0), None, None), 200);
+        assert_eq!(compute_budget_ppm(None, Some(200.0), None), 100);
+        assert_eq!(compute_budget_ppm(None, None, Some(200)), 100);
     }
 
     #[test]
     fn compute_budget_ppm_falls_back_without_fee_history() {
-        assert_eq!(compute_budget_ppm(None, None), BOOTSTRAP_MAX_PPM);
+        assert_eq!(compute_budget_ppm(None, None, None), BOOTSTRAP_MAX_PPM);
     }
 
     #[test]
     fn compute_budget_ppm_ignores_unusable_metrics() {
-        assert_eq!(compute_budget_ppm(Some(f64::NAN), Some(300.0)), 150);
-        assert_eq!(compute_budget_ppm(Some(400.0), Some(0.0)), 200);
+        assert_eq!(compute_budget_ppm(Some(f64::NAN), Some(300.0), None), 150);
+        assert_eq!(compute_budget_ppm(Some(400.0), Some(0.0), None), 200);
         assert_eq!(
-            compute_budget_ppm(Some(0.0), Some(f64::INFINITY)),
+            compute_budget_ppm(Some(0.0), Some(f64::INFINITY), None),
             BOOTSTRAP_MAX_PPM
         );
     }
 
     #[test]
     fn compute_budget_ppm_is_clamped() {
-        assert_eq!(compute_budget_ppm(Some(1.0), Some(1.0)), BUDGET_PPM_MIN);
         assert_eq!(
-            compute_budget_ppm(Some(100_000.0), Some(100_000.0)),
+            compute_budget_ppm(Some(1.0), Some(1.0), None),
+            BUDGET_PPM_MIN
+        );
+        assert_eq!(
+            compute_budget_ppm(Some(100_000.0), Some(100_000.0), None),
             BUDGET_PPM_MAX
         );
+    }
+
+    #[test]
+    fn compute_budget_ppm_never_exceeds_channel_ppm() {
+        assert_eq!(compute_budget_ppm(Some(7.0), Some(174.0), Some(10)), 10);
+        assert_eq!(compute_budget_ppm(Some(40.0), Some(407.0), Some(78)), 78);
     }
 
     #[test]
