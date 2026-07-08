@@ -866,6 +866,40 @@ impl Store {
         Some(weighted_fees * 1_000_000.0 / weighted_routed)
     }
 
+    /// Get time-decayed variable fee rate in ppm after removing our fixed 1 sat base fee.
+    ///
+    /// This keeps the same 1-week half-life and amount weighting as TPPM, but reduces
+    /// each outbound forward fee by 1000 msat before averaging.
+    pub fn get_channel_time_decayed_variable_fee_ppm(&self, short_channel_id: &str) -> Option<f64> {
+        const HALF_LIFE_SECONDS: f64 = 7.0 * 24.0 * 60.0 * 60.0;
+        const OUR_BASE_FEE_SAT: u64 = 1;
+
+        let (weighted_fees, weighted_routed) = self
+            .settled_forwards()
+            .iter()
+            .filter(|forward| forward.out_channel == short_channel_id)
+            .fold((0.0, 0.0), |(fees, routed), forward| {
+                let age_seconds = self
+                    .now
+                    .signed_duration_since(forward.resolved_time)
+                    .num_seconds()
+                    .max(0) as f64;
+                let decay = 0.5_f64.powf(age_seconds / HALF_LIFE_SECONDS);
+                let variable_fee_sat = forward.fee_sat.saturating_sub(OUR_BASE_FEE_SAT);
+
+                (
+                    fees + variable_fee_sat as f64 * decay,
+                    routed + forward.out_sat as f64 * decay,
+                )
+            });
+
+        if weighted_routed == 0.0 {
+            return None;
+        }
+
+        Some(weighted_fees * 1_000_000.0 / weighted_routed)
+    }
+
     pub fn get_channel_rebalance_target_cost_msat(&self, short_channel_id: &str) -> u64 {
         self.rebalance_parts
             .iter()
