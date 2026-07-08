@@ -3006,8 +3006,8 @@ fn create_recent_rebalances_section(store: &Store) -> Markup {
                     thead {
                         tr {
                             th { "Time" }
-                            th { "Channel Out" }
                             th { "Channel In" }
+                            th { "Channel Out" }
                             th style="text-align: right;" { "Reb Amount" }
                             th style="text-align: right;" { "Reb PPM" }
                             th style="text-align: right;" title="All-time outbound forwarding fees divided by all-time outbound routed amount on the credited channel." {
@@ -3033,14 +3033,14 @@ fn create_recent_rebalances_section(store: &Store) -> Markup {
                                 }
                                 td {
                                     (rebalance_channel_cell(
-                                        part.source_channel_id.as_deref(),
-                                        &part.source_account,
+                                        part.target_channel_id.as_deref(),
+                                        &part.target_account,
                                     ))
                                 }
                                 td {
                                     (rebalance_channel_cell(
-                                        part.target_channel_id.as_deref(),
-                                        &part.target_account,
+                                        part.source_channel_id.as_deref(),
+                                        &part.source_account,
                                     ))
                                 }
                                 td style="text-align: right;" {
