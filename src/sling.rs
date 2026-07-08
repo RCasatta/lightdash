@@ -11,6 +11,8 @@ const LOOKBACK_HOURS: i64 = 24;
 const MIN_AMOUNT_SAT: u64 = 10_000;
 const BOOTSTRAP_MAX_BALANCE: f64 = 0.1;
 const BOOTSTRAP_MAX_PPM: u64 = crate::fees::PPM_MIN;
+const BUDGET_PPM_MIN: u64 = crate::fees::PPM_MIN;
+const BUDGET_PPM_MAX: u64 = 1000;
 const BOOTSTRAP_AMOUNT_CAP_SAT: u64 = 50_000;
 const BOOTSTRAP_CAPACITY_DIVISOR: u64 = 20;
 const REBALANCE_SPLIT_THRESHOLD_SAT: u64 = 400_000;
@@ -86,16 +88,19 @@ impl RecentOutboundStats {
     }
 }
 
-fn compute_max_ppm(avg_fee_ppm: u64) -> u64 {
-    avg_fee_ppm / 2
+fn usable_ppm(ppm: Option<f64>) -> Option<f64> {
+    ppm.filter(|ppm| ppm.is_finite() && *ppm > 0.0)
 }
 
-fn compute_bootstrap_max_ppm(historical_fee_ppm: Option<f64>) -> u64 {
-    historical_fee_ppm
-        .filter(|ppm| ppm.is_finite() && *ppm > 0.0)
-        .map(|ppm| (ppm / 3.0) as u64)
-        .filter(|ppm| *ppm > 0)
-        .unwrap_or(BOOTSTRAP_MAX_PPM)
+fn compute_budget_ppm(tppm: Option<f64>, historical_fee_ppm: Option<f64>) -> u64 {
+    let budget = match (usable_ppm(tppm), usable_ppm(historical_fee_ppm)) {
+        (Some(tppm), Some(historical_fee_ppm)) => (tppm + historical_fee_ppm) / 4.0,
+        (Some(tppm), None) => tppm / 2.0,
+        (None, Some(historical_fee_ppm)) => historical_fee_ppm / 2.0,
+        (None, None) => return BOOTSTRAP_MAX_PPM,
+    };
+
+    (budget as u64).clamp(BUDGET_PPM_MIN, BUDGET_PPM_MAX)
 }
 
 fn compute_rebalance_amounts(routed_sat: u64) -> (u64, u64) {
@@ -250,7 +255,6 @@ pub fn run_sling(store: &Store, directory: &str) {
     let mut skipped_missing_scid = 0u64;
     let mut targets_without_local_channel_info = 0u64;
     let mut skipped_no_recent_outbound = 0u64;
-    let mut skipped_zero_budget = 0u64;
     let mut skipped_small_amount = 0u64;
     let mut suggested = 0u64;
     let mut suggested_bootstrap = 0u64;
@@ -283,7 +287,15 @@ pub fn run_sling(store: &Store, directory: &str) {
         let recent = recent_outbound_stats(&recent_settled, scid);
         let average_fee_ppm = recent.average_fee_ppm();
         let (amount, onceamount) = compute_rebalance_amounts(recent.routed_sat);
-        let max_ppm = compute_max_ppm(average_fee_ppm);
+        let tppm = store.get_channel_time_decayed_variable_fee_ppm(scid);
+        let historical_fee_ppm = store.get_channel_effective_fee_ppm(scid);
+        let budget_ppm = compute_budget_ppm(tppm, historical_fee_ppm);
+        let tppm_log = tppm
+            .map(|ppm| ppm.trunc().to_string())
+            .unwrap_or_else(|| "n/a".to_string());
+        let historical_fee_ppm_log = historical_fee_ppm
+            .map(|ppm| ppm.trunc().to_string())
+            .unwrap_or_else(|| "n/a".to_string());
 
         if recent.count == 0 {
             if balance <= BOOTSTRAP_MAX_BALANCE {
@@ -294,11 +306,6 @@ pub fn run_sling(store: &Store, directory: &str) {
                 {
                     suggested += 1;
                     suggested_bootstrap += 1;
-                    let historical_fee_ppm = store.get_channel_effective_fee_ppm(scid);
-                    let bootstrap_max_ppm = compute_bootstrap_max_ppm(historical_fee_ppm);
-                    let historical_fee_ppm_log = historical_fee_ppm
-                        .map(|ppm| ppm.trunc().to_string())
-                        .unwrap_or_else(|| "n/a".to_string());
 
                     let candidates_arg = format!("candidates={candidates_json}");
                     let args = [
@@ -307,19 +314,20 @@ pub fn run_sling(store: &Store, directory: &str) {
                         &format!("scid={scid}"),
                         "direction=pull",
                         &candidates_arg,
-                        &format!("maxppm={bootstrap_max_ppm}"),
+                        &format!("maxppm={budget_ppm}"),
                         &format!("amount={amount}"),
                         &format!("onceamount={onceamount}"),
                     ];
                     log::info!(
-                        "{alias} balance:{:.1}% recent_out_{}h:0 amount:{}s onceamount:{}s avg_fee_ppm:0 historical_fee_ppm:{} channel_ppm:{} maxppm:{} bootstrap -> {CMD} {}",
+                        "{alias} balance:{:.1}% recent_out_{}h:0 amount:{}s onceamount:{}s avg_fee_ppm:0 tppm:{} historical_fee_ppm:{} channel_ppm:{} maxppm:{} bootstrap -> {CMD} {}",
                         balance * 100.0,
                         LOOKBACK_HOURS,
                         amount,
                         onceamount,
+                        tppm_log,
                         historical_fee_ppm_log,
                         my_ppm_log,
-                        bootstrap_max_ppm,
+                        budget_ppm,
                         args.join(" ")
                     );
                     if execute_sling {
@@ -355,28 +363,16 @@ pub fn run_sling(store: &Store, directory: &str) {
         if amount < MIN_AMOUNT_SAT {
             skipped_small_amount += 1;
             log::info!(
-                "{alias} balance:{:.1}% recent_out_{}h:{} amount:{}s avg_fee_ppm:{} channel_ppm:{} below_min_amount:{}s, skipping",
+                "{alias} balance:{:.1}% recent_out_{}h:{} amount:{}s avg_fee_ppm:{} tppm:{} historical_fee_ppm:{} channel_ppm:{} below_min_amount:{}s, skipping",
                 balance * 100.0,
                 LOOKBACK_HOURS,
                 recent.count,
                 amount,
                 average_fee_ppm,
+                tppm_log,
+                historical_fee_ppm_log,
                 my_ppm_log,
                 MIN_AMOUNT_SAT,
-            );
-            continue;
-        }
-
-        if max_ppm == 0 {
-            skipped_zero_budget += 1;
-            log::info!(
-                "{alias} balance:{:.1}% recent_out_{}h:{} amount:{}s avg_fee_ppm:{} channel_ppm:{} maxppm:0, skipping",
-                balance * 100.0,
-                LOOKBACK_HOURS,
-                recent.count,
-                amount,
-                average_fee_ppm,
-                my_ppm_log,
             );
             continue;
         }
@@ -393,20 +389,22 @@ pub fn run_sling(store: &Store, directory: &str) {
             &format!("scid={scid}"),
             "direction=pull",
             &candidates_arg,
-            &format!("maxppm={max_ppm}"),
+            &format!("maxppm={budget_ppm}"),
             &format!("amount={amount}"),
             &format!("onceamount={onceamount}"),
         ];
         log::info!(
-            "{alias} balance:{:.1}% recent_out_{}h:{} amount:{}s onceamount:{}s avg_fee_ppm:{} channel_ppm:{} maxppm:{} -> {CMD} {}",
+            "{alias} balance:{:.1}% recent_out_{}h:{} amount:{}s onceamount:{}s avg_fee_ppm:{} tppm:{} historical_fee_ppm:{} channel_ppm:{} maxppm:{} -> {CMD} {}",
             balance * 100.0,
             LOOKBACK_HOURS,
             recent.count,
             amount,
             onceamount,
             average_fee_ppm,
+            tppm_log,
+            historical_fee_ppm_log,
             my_ppm_log,
-            max_ppm,
+            budget_ppm,
             args.join(" ")
         );
         if execute_sling {
@@ -418,13 +416,12 @@ pub fn run_sling(store: &Store, directory: &str) {
     }
 
     log::info!(
-        "Sling summary: suggested:{} suggested_bootstrap:{} skipped_balance:{} skipped_no_recent_outbound:{} skipped_small_amount:{} skipped_zero_budget:{} skipped_missing_scid:{} targets_without_local_channel_info:{}",
+        "Sling summary: suggested:{} suggested_bootstrap:{} skipped_balance:{} skipped_no_recent_outbound:{} skipped_small_amount:{} skipped_missing_scid:{} targets_without_local_channel_info:{}",
         suggested,
         suggested_bootstrap,
         skipped_balance,
         skipped_no_recent_outbound,
         skipped_small_amount,
-        skipped_zero_budget,
         skipped_missing_scid,
         targets_without_local_channel_info
     );
@@ -433,9 +430,9 @@ pub fn run_sling(store: &Store, directory: &str) {
 #[cfg(test)]
 mod tests {
     use super::{
-        compute_bootstrap_max_ppm, compute_bootstrap_rebalance_amounts, compute_max_ppm,
-        compute_rebalance_amounts, enrich_sling_stats_with_last_channel_partner, BOOTSTRAP_MAX_PPM,
-        REBALANCE_SPLIT_THRESHOLD_SAT,
+        compute_bootstrap_rebalance_amounts, compute_budget_ppm, compute_rebalance_amounts,
+        enrich_sling_stats_with_last_channel_partner, BOOTSTRAP_MAX_PPM, BUDGET_PPM_MAX,
+        BUDGET_PPM_MIN, REBALANCE_SPLIT_THRESHOLD_SAT,
     };
     use serde_json::Value;
 
@@ -444,33 +441,39 @@ mod tests {
     }
 
     #[test]
-    fn compute_max_ppm_is_zero_without_recent_avg_ppm() {
-        assert_eq!(compute_max_ppm(0), 0);
+    fn compute_budget_ppm_uses_half_of_tppm_and_historical_average() {
+        assert_eq!(compute_budget_ppm(Some(2_947.0), Some(316.0)), 815);
+        assert_eq!(compute_budget_ppm(Some(400.0), Some(200.0)), 150);
     }
 
     #[test]
-    fn compute_max_ppm_uses_half_of_average_fee_ppm() {
-        assert_eq!(compute_max_ppm(446), 223);
-        assert_eq!(compute_max_ppm(2085), 1042);
-        assert_eq!(compute_max_ppm(90), 45);
+    fn compute_budget_ppm_falls_back_to_half_of_available_metric() {
+        assert_eq!(compute_budget_ppm(Some(400.0), None), 200);
+        assert_eq!(compute_budget_ppm(None, Some(200.0)), 100);
     }
 
     #[test]
-    fn compute_bootstrap_max_ppm_falls_back_without_historical_fee_ppm() {
-        assert_eq!(compute_bootstrap_max_ppm(None), BOOTSTRAP_MAX_PPM);
+    fn compute_budget_ppm_falls_back_without_fee_history() {
+        assert_eq!(compute_budget_ppm(None, None), BOOTSTRAP_MAX_PPM);
     }
 
     #[test]
-    fn compute_bootstrap_max_ppm_uses_third_of_historical_fee_ppm() {
-        assert_eq!(compute_bootstrap_max_ppm(Some(300.0)), 100);
-        assert_eq!(compute_bootstrap_max_ppm(Some(178.0)), 59);
-        assert_eq!(compute_bootstrap_max_ppm(Some(31.9)), 10);
+    fn compute_budget_ppm_ignores_unusable_metrics() {
+        assert_eq!(compute_budget_ppm(Some(f64::NAN), Some(300.0)), 150);
+        assert_eq!(compute_budget_ppm(Some(400.0), Some(0.0)), 200);
+        assert_eq!(
+            compute_budget_ppm(Some(0.0), Some(f64::INFINITY)),
+            BOOTSTRAP_MAX_PPM
+        );
     }
 
     #[test]
-    fn compute_bootstrap_max_ppm_falls_back_for_unusable_historical_fee_ppm() {
-        assert_eq!(compute_bootstrap_max_ppm(Some(0.0)), BOOTSTRAP_MAX_PPM);
-        assert_eq!(compute_bootstrap_max_ppm(Some(f64::NAN)), BOOTSTRAP_MAX_PPM);
+    fn compute_budget_ppm_is_clamped() {
+        assert_eq!(compute_budget_ppm(Some(1.0), Some(1.0)), BUDGET_PPM_MIN);
+        assert_eq!(
+            compute_budget_ppm(Some(100_000.0), Some(100_000.0)),
+            BUDGET_PPM_MAX
+        );
     }
 
     #[test]
