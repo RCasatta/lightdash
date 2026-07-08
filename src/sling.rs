@@ -79,9 +79,7 @@ fn compute_budget_ppm(
         return BOOTSTRAP_MAX_PPM;
     }
 
-    let usable_channel_ppm = usable_ppm(channel_ppm.map(|ppm| ppm as f64));
-    let metrics = [realized_metrics[0], realized_metrics[1], usable_channel_ppm];
-    let (sum, count) = metrics
+    let (sum, count) = realized_metrics
         .into_iter()
         .flatten()
         .fold((0.0, 0u64), |(sum, count), ppm| (sum + ppm, count + 1));
@@ -377,7 +375,7 @@ mod tests {
     fn compute_budget_ppm_uses_half_of_available_metric_average() {
         assert_eq!(
             compute_budget_ppm(Some(2_947.0), Some(316.0), Some(1_223)),
-            747
+            815
         );
         assert_eq!(compute_budget_ppm(Some(400.0), Some(200.0), Some(300)), 150);
     }
