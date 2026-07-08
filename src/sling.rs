@@ -9,16 +9,36 @@ const SOURCE_PPM_MAX: u64 = 300;
 const MAX_BALANCE: f64 = 0.5;
 const LOOKBACK_HOURS: i64 = 24;
 const MIN_AMOUNT_SAT: u64 = 10_000;
-const BOOTSTRAP_MAX_BALANCE: f64 = 0.1;
 const BOOTSTRAP_MAX_PPM: u64 = crate::fees::PPM_MIN;
 const BUDGET_PPM_MIN: u64 = crate::fees::PPM_MIN;
+// Rebalance budget cap. Keep this below the general channel fee cap because
+// this is what we are willing to pay, not what we are willing to charge.
 const BUDGET_PPM_MAX: u64 = 1000;
 const BOOTSTRAP_AMOUNT_CAP_SAT: u64 = 50_000;
 const BOOTSTRAP_CAPACITY_DIVISOR: u64 = 20;
 const REBALANCE_SPLIT_THRESHOLD_SAT: u64 = 400_000;
+const REBALANCE_JOB_AMOUNT_CAP_SAT: u64 = 100_000;
+const SLING_JOB_TARGET: &str = "0.5";
+const CANDIDATE_DEPLETE_UP_TO_PERCENT: &str = "0.5";
+const CANDIDATE_DEPLETE_UP_TO_AMOUNT_SAT: u64 = 1_000_000;
 const CMD: &str = "lightning-cli";
 /// Minimum balance percentage (our funds / total capacity) for a channel to be used as candidate.
 const MIN_CANDIDATE_BALANCE: f64 = 0.7;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RebalanceAmountSource {
+    Recent,
+    Capacity,
+}
+
+impl RebalanceAmountSource {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Recent => "recent",
+            Self::Capacity => "capacity",
+        }
+    }
+}
 
 /// Computes candidates with liquidity for sling rebalancing.
 ///
@@ -125,6 +145,41 @@ fn compute_bootstrap_rebalance_amounts(channel_capacity_sat: u64) -> Option<(u64
     } else {
         Some((amount, amount))
     }
+}
+
+fn compute_capacity_rebalance_amounts(
+    channel_capacity_sat: u64,
+    local_balance_sat: u64,
+) -> Option<(u64, u64)> {
+    let target_local_sat = (channel_capacity_sat as f64 * MAX_BALANCE) as u64;
+    let missing_to_target_sat = target_local_sat.saturating_sub(local_balance_sat);
+    let (bootstrap_amount, _) = compute_bootstrap_rebalance_amounts(channel_capacity_sat)?;
+    let amount = bootstrap_amount.min(missing_to_target_sat);
+    let amount = amount - (amount % 4);
+
+    if amount < MIN_AMOUNT_SAT {
+        None
+    } else {
+        Some((amount, amount))
+    }
+}
+
+fn compute_target_rebalance_amounts(
+    recent_routed_sat: u64,
+    channel_capacity_sat: u64,
+    local_balance_sat: u64,
+) -> Option<(u64, u64, RebalanceAmountSource)> {
+    let (amount, onceamount) = compute_rebalance_amounts(recent_routed_sat);
+    if amount >= MIN_AMOUNT_SAT {
+        return Some((amount, onceamount, RebalanceAmountSource::Recent));
+    }
+
+    compute_capacity_rebalance_amounts(channel_capacity_sat, local_balance_sat)
+        .map(|(amount, onceamount)| (amount, onceamount, RebalanceAmountSource::Capacity))
+}
+
+fn compute_job_amount(amount_sat: u64) -> u64 {
+    amount_sat.min(REBALANCE_JOB_AMOUNT_CAP_SAT)
 }
 
 fn delete_existing_sling_jobs() {
@@ -238,13 +293,17 @@ pub fn run_sling(store: &Store, directory: &str) {
     );
 
     let candidates = compute_candidates(store, &channels);
+    log::info!(
+        "{} candidates found (ppm < {SOURCE_PPM_MAX} and balance > {MIN_CANDIDATE_BALANCE})",
+        candidates.len()
+    );
+
     if candidates.is_empty() {
-        log::info!("No suitable candidates found (ppm < {SOURCE_PPM_MAX} and balance > {MIN_CANDIDATE_BALANCE})");
         return;
     }
 
     let candidates_json = candidates_to_json(&candidates);
-    log::info!("Using {} candidates: {candidates_json}", candidates.len());
+    log::info!("candidate json: {candidates_json}");
 
     let execute_sling = std::env::var("EXECUTE_SLING").is_ok();
     if execute_sling {
@@ -254,10 +313,9 @@ pub fn run_sling(store: &Store, directory: &str) {
     let mut skipped_balance = 0u64;
     let mut skipped_missing_scid = 0u64;
     let mut targets_without_local_channel_info = 0u64;
-    let mut skipped_no_recent_outbound = 0u64;
     let mut skipped_small_amount = 0u64;
     let mut suggested = 0u64;
-    let mut suggested_bootstrap = 0u64;
+    let mut suggested_capacity_sized = 0u64;
 
     for channel in channels {
         let balance = channel.perc_float();
@@ -286,7 +344,6 @@ pub fn run_sling(store: &Store, directory: &str) {
             .unwrap_or_else(|| "n/a".to_string());
         let recent = recent_outbound_stats(&recent_settled, scid);
         let average_fee_ppm = recent.average_fee_ppm();
-        let (amount, onceamount) = compute_rebalance_amounts(recent.routed_sat);
         let tppm = store.get_channel_time_decayed_variable_fee_ppm(scid);
         let historical_fee_ppm = store.get_channel_effective_fee_ppm(scid);
         let budget_ppm = compute_budget_ppm(tppm, historical_fee_ppm);
@@ -297,77 +354,19 @@ pub fn run_sling(store: &Store, directory: &str) {
             .map(|ppm| ppm.trunc().to_string())
             .unwrap_or_else(|| "n/a".to_string());
 
-        if recent.count == 0 {
-            if balance <= BOOTSTRAP_MAX_BALANCE {
-                // node that have no recent forwards and a very low amount attempt to be rebalanced anyway (with a very low fee)
-                let channel_capacity_sat = channel.amount_msat / 1000;
-                if let Some((amount, onceamount)) =
-                    compute_bootstrap_rebalance_amounts(channel_capacity_sat)
-                {
-                    suggested += 1;
-                    suggested_bootstrap += 1;
-
-                    let candidates_arg = format!("candidates={candidates_json}");
-                    let args = [
-                        "sling-once",
-                        "-k",
-                        &format!("scid={scid}"),
-                        "direction=pull",
-                        &candidates_arg,
-                        &format!("maxppm={budget_ppm}"),
-                        &format!("amount={amount}"),
-                        &format!("onceamount={onceamount}"),
-                    ];
-                    log::info!(
-                        "{alias} balance:{:.1}% recent_out_{}h:0 amount:{}s onceamount:{}s avg_fee_ppm:0 tppm:{} historical_fee_ppm:{} channel_ppm:{} maxppm:{} bootstrap -> {CMD} {}",
-                        balance * 100.0,
-                        LOOKBACK_HOURS,
-                        amount,
-                        onceamount,
-                        tppm_log,
-                        historical_fee_ppm_log,
-                        my_ppm_log,
-                        budget_ppm,
-                        args.join(" ")
-                    );
-                    if execute_sling {
-                        log::info!("executing `{CMD} {}` {alias}", args.join(" "));
-
-                        let result = crate::cmd::cmd_result(CMD, &args);
-                        log::debug!("cmd return: {result}");
-                    }
-                    continue;
-                }
-
-                skipped_small_amount += 1;
-                log::info!(
-                    "{alias} balance:{:.1}% recent_out_{}h:0 amount:0s avg_fee_ppm:0 channel_ppm:{} bootstrap_below_min_amount:{}s, skipping",
-                    balance * 100.0,
-                    LOOKBACK_HOURS,
-                    my_ppm_log,
-                    MIN_AMOUNT_SAT,
-                );
-                continue;
-            }
-
-            skipped_no_recent_outbound += 1;
-            log::info!(
-                "{alias} balance:{:.1}% recent_out_{}h:0 amount:0s avg_fee_ppm:0 channel_ppm:{} no_recent_outbound, skipping",
-                balance * 100.0,
-                LOOKBACK_HOURS,
-                my_ppm_log,
-            );
-            continue;
-        }
-
-        if amount < MIN_AMOUNT_SAT {
+        let channel_capacity_sat = channel.amount_msat / 1000;
+        let local_balance_sat = channel.our_amount_msat / 1000;
+        let Some((amount_hint, _onceamount, amount_source)) = compute_target_rebalance_amounts(
+            recent.routed_sat,
+            channel_capacity_sat,
+            local_balance_sat,
+        ) else {
             skipped_small_amount += 1;
             log::info!(
-                "{alias} balance:{:.1}% recent_out_{}h:{} amount:{}s avg_fee_ppm:{} tppm:{} historical_fee_ppm:{} channel_ppm:{} below_min_amount:{}s, skipping",
+                "{alias} balance:{:.1}% recent_out_{}h:{} amount:0s avg_fee_ppm:{} tppm:{} historical_fee_ppm:{} channel_ppm:{} below_min_amount:{}s, skipping",
                 balance * 100.0,
                 LOOKBACK_HOURS,
                 recent.count,
-                amount,
                 average_fee_ppm,
                 tppm_log,
                 historical_fee_ppm_log,
@@ -375,40 +374,55 @@ pub fn run_sling(store: &Store, directory: &str) {
                 MIN_AMOUNT_SAT,
             );
             continue;
-        }
+        };
 
         suggested += 1;
+        if amount_source == RebalanceAmountSource::Capacity {
+            suggested_capacity_sized += 1;
+        }
+        let job_amount = compute_job_amount(amount_hint);
 
         // Build arguments as a Vec to avoid shell quoting issues.
         // When calling a program directly (not via shell), we pass raw values
         // without shell-style quoting like single quotes around the JSON array.
         let candidates_arg = format!("candidates={candidates_json}");
+        let amount_arg = format!("amount={job_amount}");
+        let maxppm_arg = format!("maxppm={budget_ppm}");
+        let target_arg = format!("target={SLING_JOB_TARGET}");
+        let deplete_percent_arg = format!("depleteuptopercent={CANDIDATE_DEPLETE_UP_TO_PERCENT}");
+        let deplete_amount_arg = format!("depleteuptoamount={CANDIDATE_DEPLETE_UP_TO_AMOUNT_SAT}");
         let args = [
-            "sling-once",
+            "sling-job",
             "-k",
             &format!("scid={scid}"),
             "direction=pull",
+            &amount_arg,
+            &maxppm_arg,
+            &target_arg,
             &candidates_arg,
-            &format!("maxppm={budget_ppm}"),
-            &format!("amount={amount}"),
-            &format!("onceamount={onceamount}"),
+            &deplete_percent_arg,
+            &deplete_amount_arg,
         ];
         log::info!(
-            "{alias} balance:{:.1}% recent_out_{}h:{} amount:{}s onceamount:{}s avg_fee_ppm:{} tppm:{} historical_fee_ppm:{} channel_ppm:{} maxppm:{} -> {CMD} {}",
+            "{alias} balance:{:.1}% recent_out_{}h:{} amount_source:{} amount_hint:{}s job_amount:{}s avg_fee_ppm:{} tppm:{} historical_fee_ppm:{} channel_ppm:{} maxppm:{} target:{} depleteuptopercent:{} depleteuptoamount:{}",
             balance * 100.0,
             LOOKBACK_HOURS,
             recent.count,
-            amount,
-            onceamount,
+            amount_source.as_str(),
+            amount_hint,
+            job_amount,
             average_fee_ppm,
             tppm_log,
             historical_fee_ppm_log,
             my_ppm_log,
             budget_ppm,
-            args.join(" ")
+            SLING_JOB_TARGET,
+            CANDIDATE_DEPLETE_UP_TO_PERCENT,
+            CANDIDATE_DEPLETE_UP_TO_AMOUNT_SAT,
         );
+        log::debug!("{CMD} {}", args.join(" "));
         if execute_sling {
-            log::info!("executing `{CMD} {}` {alias}", args.join(" "));
+            log::info!("executing `{CMD} sling-job` {alias} scid:{scid}");
 
             let result = crate::cmd::cmd_result(CMD, &args);
             log::debug!("cmd return: {result}");
@@ -416,11 +430,10 @@ pub fn run_sling(store: &Store, directory: &str) {
     }
 
     log::info!(
-        "Sling summary: suggested:{} suggested_bootstrap:{} skipped_balance:{} skipped_no_recent_outbound:{} skipped_small_amount:{} skipped_missing_scid:{} targets_without_local_channel_info:{}",
+        "Sling summary: suggested:{} suggested_capacity_sized:{} skipped_balance:{} skipped_small_amount:{} skipped_missing_scid:{} targets_without_local_channel_info:{}",
         suggested,
-        suggested_bootstrap,
+        suggested_capacity_sized,
         skipped_balance,
-        skipped_no_recent_outbound,
         skipped_small_amount,
         skipped_missing_scid,
         targets_without_local_channel_info
@@ -430,9 +443,11 @@ pub fn run_sling(store: &Store, directory: &str) {
 #[cfg(test)]
 mod tests {
     use super::{
-        compute_bootstrap_rebalance_amounts, compute_budget_ppm, compute_rebalance_amounts,
-        enrich_sling_stats_with_last_channel_partner, BOOTSTRAP_MAX_PPM, BUDGET_PPM_MAX,
-        BUDGET_PPM_MIN, REBALANCE_SPLIT_THRESHOLD_SAT,
+        compute_bootstrap_rebalance_amounts, compute_budget_ppm,
+        compute_capacity_rebalance_amounts, compute_job_amount, compute_rebalance_amounts,
+        compute_target_rebalance_amounts, enrich_sling_stats_with_last_channel_partner,
+        RebalanceAmountSource, BOOTSTRAP_MAX_PPM, BUDGET_PPM_MAX, BUDGET_PPM_MIN,
+        REBALANCE_JOB_AMOUNT_CAP_SAT, REBALANCE_SPLIT_THRESHOLD_SAT,
     };
     use serde_json::Value;
 
@@ -517,6 +532,49 @@ mod tests {
     #[test]
     fn compute_bootstrap_rebalance_amounts_skips_below_minimum() {
         assert_eq!(compute_bootstrap_rebalance_amounts(199_999), None);
+    }
+
+    #[test]
+    fn compute_capacity_rebalance_amounts_caps_at_missing_target_balance() {
+        assert_eq!(
+            compute_capacity_rebalance_amounts(1_000_000, 490_000),
+            Some((10_000, 10_000))
+        );
+    }
+
+    #[test]
+    fn compute_capacity_rebalance_amounts_skips_when_missing_target_is_too_small() {
+        assert_eq!(compute_capacity_rebalance_amounts(1_000_000, 495_000), None);
+    }
+
+    #[test]
+    fn compute_target_rebalance_amounts_prefers_recent_amount_when_large_enough() {
+        assert_eq!(
+            compute_target_rebalance_amounts(100_000, 1_000_000, 100_000),
+            Some((100_000, 100_000, RebalanceAmountSource::Recent))
+        );
+    }
+
+    #[test]
+    fn compute_target_rebalance_amounts_uses_capacity_without_recent_outbound() {
+        assert_eq!(
+            compute_target_rebalance_amounts(0, 1_000_000, 100_000),
+            Some((50_000, 50_000, RebalanceAmountSource::Capacity))
+        );
+    }
+
+    #[test]
+    fn compute_target_rebalance_amounts_uses_capacity_when_recent_amount_is_too_small() {
+        assert_eq!(
+            compute_target_rebalance_amounts(5_000, 1_000_000, 100_000),
+            Some((50_000, 50_000, RebalanceAmountSource::Capacity))
+        );
+    }
+
+    #[test]
+    fn compute_job_amount_caps_per_operation_size() {
+        assert_eq!(compute_job_amount(50_000), 50_000);
+        assert_eq!(compute_job_amount(500_000), REBALANCE_JOB_AMOUNT_CAP_SAT);
     }
 
     #[test]
