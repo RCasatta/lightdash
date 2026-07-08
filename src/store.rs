@@ -353,6 +353,30 @@ impl Store {
             .sum()
     }
 
+    pub fn rebalance_parts_last_days(&self, days: i64) -> Vec<&RebalancePart> {
+        let mut parts: Vec<_> = self
+            .rebalance_parts
+            .iter()
+            .filter(|part| {
+                let Some(timestamp) = part.timestamp else {
+                    return false;
+                };
+                let Some(datetime) = DateTime::from_timestamp(timestamp as i64, 0) else {
+                    return false;
+                };
+                self.now.signed_duration_since(datetime).num_days() <= days
+            })
+            .collect();
+
+        parts.sort_by(|a, b| {
+            b.timestamp
+                .cmp(&a.timestamp)
+                .then_with(|| a.payment_id.cmp(&b.payment_id))
+                .then_with(|| a.part_id.cmp(&b.part_id))
+        });
+        parts
+    }
+
     pub fn total_forwarding_fees_sat(&self) -> u64 {
         self.settled_forwards()
             .iter()

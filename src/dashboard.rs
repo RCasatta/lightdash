@@ -2967,8 +2967,121 @@ fn create_rebalance_snapshot_pages(
     }
 }
 
+fn abbreviated_identifier(value: &str) -> String {
+    let char_count = value.chars().count();
+    if char_count <= 28 {
+        return value.to_string();
+    }
+
+    let prefix: String = value.chars().take(12).collect();
+    let suffix: String = value.chars().skip(char_count - 12).collect();
+    format!("{prefix}...{suffix}")
+}
+
+fn rebalance_channel_cell(short_channel_id: Option<&str>, account: &str) -> Markup {
+    match short_channel_id {
+        Some(scid) => html! {
+            a href={(format!("channels/{scid}.html"))} {
+                (scid)
+            }
+        },
+        None => html! {
+            span title=(account) {
+                (abbreviated_identifier(account))
+            }
+        },
+    }
+}
+
+fn create_recent_rebalances_section(store: &Store) -> Markup {
+    let recent_rebalances = store.rebalance_parts_last_days(30);
+
+    html! {
+        div class="info-card" {
+            h2 { "Successful Rebalances Last Month" }
+            @if recent_rebalances.is_empty() {
+                p { "No successful rebalances found in bookkeeper events for the last 30 days." }
+            } @else {
+                table class="sortable" {
+                    thead {
+                        tr {
+                            th { "Time" }
+                            th { "Channel Out" }
+                            th { "Channel In" }
+                            th style="text-align: right;" { "Reb Amount" }
+                            th style="text-align: right;" { "Reb PPM" }
+                            th style="text-align: right;" title="All-time outbound forwarding fees divided by all-time outbound routed amount on the credited channel." {
+                                "Channel In Historical PPM"
+                            }
+                        }
+                    }
+                    tbody {
+                        @for part in recent_rebalances {
+                            @let timestamp = part.timestamp.and_then(|timestamp| DateTime::from_timestamp(timestamp as i64, 0));
+                            @let rebalance_ppm = if part.credit_msat == 0 {
+                                None
+                            } else {
+                                Some(part.fees_msat as f64 * 1_000_000.0 / part.credit_msat as f64)
+                            };
+                            tr {
+                                td {
+                                    @if let Some(timestamp) = timestamp {
+                                        (timestamp.format("%Y-%m-%d %H:%M:%S"))
+                                    } @else {
+                                        "-"
+                                    }
+                                }
+                                td {
+                                    (rebalance_channel_cell(
+                                        part.source_channel_id.as_deref(),
+                                        &part.source_account,
+                                    ))
+                                }
+                                td {
+                                    (rebalance_channel_cell(
+                                        part.target_channel_id.as_deref(),
+                                        &part.target_account,
+                                    ))
+                                }
+                                td style="text-align: right;" {
+                                    (format_sats(part.credit_msat / 1000))
+                                }
+                                td style="text-align: right;" {
+                                    @if let Some(rebalance_ppm) = rebalance_ppm {
+                                        @let fee_sat = part.fees_msat / 1000;
+                                        span title={(format!("{} sats fee / {} sats amount", format_sats(fee_sat), format_sats(part.credit_msat / 1000)))} {
+                                            (format!("{rebalance_ppm:.0}"))
+                                        }
+                                    } @else {
+                                        "-"
+                                    }
+                                }
+                                td style="text-align: right;" {
+                                    @if let Some(target_scid) = part.target_channel_id.as_deref() {
+                                        @if let Some(historical_ppm) = store.get_channel_effective_fee_ppm(target_scid) {
+                                            @let (forward_fees, forwarded_amount) = store.get_channel_forwarding_fee_totals(target_scid);
+                                            span title={(format!("{} sats / {} sats", format_sats(forward_fees), format_sats(forwarded_amount)))} {
+                                                (format!("{historical_ppm:.0}"))
+                                            }
+                                        } @else {
+                                            "-"
+                                        }
+                                    } @else {
+                                        "-"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn create_rebalance_page(
     directory: &str,
+    store: &Store,
     now: &chrono::DateTime<chrono::Utc>,
     rebalances_path: Option<&str>,
 ) {
@@ -2979,6 +3092,8 @@ fn create_rebalance_page(
 
     let rebalance_content = html! {
         (create_page_header("Rebalance Recap", false))
+
+        (create_recent_rebalances_section(store))
 
         div class="info-card" {
             h2 { "Rebalance Snapshots" }
@@ -3712,7 +3827,7 @@ pub fn run_dashboard(
     create_apy_page(&directory, store, &now);
 
     log::info!("Creating rebalance page");
-    create_rebalance_page(&directory, &now, rebalances_path.as_deref());
+    create_rebalance_page(&directory, store, &now, rebalances_path.as_deref());
 
     log::info!("Creating closed channels page");
     create_closed_channels_page(&directory, store, &now);
