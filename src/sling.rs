@@ -2,8 +2,11 @@ use crate::cmd::{Fund, SettledForward};
 use crate::store::Store;
 use chrono::Utc;
 use serde_json::Value;
+use std::collections::hash_map::DefaultHasher;
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const SOURCE_PPM_MAX: u64 = 300;
 const MAX_BALANCE: f64 = 0.5;
@@ -18,6 +21,7 @@ const BOOTSTRAP_AMOUNT_CAP_SAT: u64 = 50_000;
 const BOOTSTRAP_CAPACITY_DIVISOR: u64 = 20;
 const REBALANCE_SPLIT_THRESHOLD_SAT: u64 = 400_000;
 const REBALANCE_JOB_AMOUNT_CAP_SAT: u64 = 100_000;
+const REBALANCE_JOB_AMOUNT_JITTER_PERCENT: u64 = 10;
 const SLING_JOB_TARGET: &str = "0.5";
 const CANDIDATE_DEPLETE_UP_TO_PERCENT: &str = "0.5";
 const CANDIDATE_DEPLETE_UP_TO_AMOUNT_SAT: u64 = 1_000_000;
@@ -178,8 +182,29 @@ fn compute_target_rebalance_amounts(
         .map(|(amount, onceamount)| (amount, onceamount, RebalanceAmountSource::Capacity))
 }
 
-fn compute_job_amount(amount_sat: u64) -> u64 {
-    amount_sat.min(REBALANCE_JOB_AMOUNT_CAP_SAT)
+fn rebalance_jitter_seed(scid: &str) -> u64 {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let mut hasher = DefaultHasher::new();
+    scid.hash(&mut hasher);
+    now.hash(&mut hasher);
+    std::process::id().hash(&mut hasher);
+    hasher.finish()
+}
+
+fn compute_job_amount(amount_sat: u64, jitter_seed: u64) -> u64 {
+    let capped_amount = amount_sat.min(REBALANCE_JOB_AMOUNT_CAP_SAT);
+    let jitter_span = capped_amount * REBALANCE_JOB_AMOUNT_JITTER_PERCENT / 100;
+    if jitter_span == 0 {
+        return capped_amount;
+    }
+
+    let jitter_range = 2 * jitter_span + 1;
+    let jitter = jitter_seed % jitter_range;
+    let jittered_amount = capped_amount as i64 + jitter as i64 - jitter_span as i64;
+    jittered_amount.clamp(MIN_AMOUNT_SAT as i64, REBALANCE_JOB_AMOUNT_CAP_SAT as i64) as u64
 }
 
 fn delete_existing_sling_jobs() {
@@ -380,7 +405,7 @@ pub fn run_sling(store: &Store, directory: &str) {
         if amount_source == RebalanceAmountSource::Capacity {
             suggested_capacity_sized += 1;
         }
-        let job_amount = compute_job_amount(amount_hint);
+        let job_amount = compute_job_amount(amount_hint, rebalance_jitter_seed(scid));
 
         // Build arguments as a Vec to avoid shell quoting issues.
         // When calling a program directly (not via shell), we pass raw values
@@ -447,7 +472,8 @@ mod tests {
         compute_capacity_rebalance_amounts, compute_job_amount, compute_rebalance_amounts,
         compute_target_rebalance_amounts, enrich_sling_stats_with_last_channel_partner,
         RebalanceAmountSource, BOOTSTRAP_MAX_PPM, BUDGET_PPM_MAX, BUDGET_PPM_MIN,
-        REBALANCE_JOB_AMOUNT_CAP_SAT, REBALANCE_SPLIT_THRESHOLD_SAT,
+        REBALANCE_JOB_AMOUNT_CAP_SAT, REBALANCE_JOB_AMOUNT_JITTER_PERCENT,
+        REBALANCE_SPLIT_THRESHOLD_SAT,
     };
     use serde_json::Value;
 
@@ -572,9 +598,31 @@ mod tests {
     }
 
     #[test]
-    fn compute_job_amount_caps_per_operation_size() {
-        assert_eq!(compute_job_amount(50_000), 50_000);
-        assert_eq!(compute_job_amount(500_000), REBALANCE_JOB_AMOUNT_CAP_SAT);
+    fn compute_job_amount_can_keep_the_base_amount_with_neutral_jitter() {
+        let jitter_span = 50_000 * REBALANCE_JOB_AMOUNT_JITTER_PERCENT / 100;
+        assert_eq!(compute_job_amount(50_000, jitter_span), 50_000);
+    }
+
+    #[test]
+    fn compute_job_amount_applies_bounded_jitter() {
+        let jitter_span = 50_000 * REBALANCE_JOB_AMOUNT_JITTER_PERCENT / 100;
+        assert_eq!(compute_job_amount(50_000, 0), 45_000);
+        assert_eq!(compute_job_amount(50_000, 2 * jitter_span), 55_000);
+    }
+
+    #[test]
+    fn compute_job_amount_caps_after_jitter() {
+        let jitter_span = REBALANCE_JOB_AMOUNT_CAP_SAT * REBALANCE_JOB_AMOUNT_JITTER_PERCENT / 100;
+        assert_eq!(
+            compute_job_amount(500_000, 2 * jitter_span),
+            REBALANCE_JOB_AMOUNT_CAP_SAT
+        );
+    }
+
+    #[test]
+    fn compute_job_amount_keeps_minimum_without_rounding_to_multiple_of_four() {
+        assert_eq!(compute_job_amount(10_001, 0), 10_000);
+        assert_eq!(compute_job_amount(50_003, 5_000), 50_003);
     }
 
     #[test]
