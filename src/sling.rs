@@ -33,7 +33,7 @@ const MIN_CANDIDATE_BALANCE: f64 = 0.7;
 ///
 /// Since sling doesn't support filtering by balance natively, we explicitly compute
 /// the candidates list ourselves and pass it via the `candidates` parameter.
-fn compute_candidates<'a>(store: &'a Store, channels: &'a [Fund]) -> Vec<&'a String> {
+fn compute_full_candidates<'a>(store: &'a Store, channels: &'a [Fund]) -> Vec<&'a String> {
     channels
         .iter()
         .filter_map(|ch| {
@@ -203,7 +203,7 @@ pub fn run_sling(store: &Store) {
         MIN_AMOUNT_SAT
     );
 
-    let candidates = compute_candidates(store, &channels);
+    let candidates = compute_full_candidates(store, &channels);
     log::info!(
         "{} candidates found (ppm < {SOURCE_PPM_MAX} and balance > {MIN_CANDIDATE_BALANCE})",
         candidates.len()
