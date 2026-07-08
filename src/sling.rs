@@ -15,7 +15,10 @@ const BUDGET_PPM_MIN: u64 = crate::fees::PPM_MIN;
 // this is what we are willing to pay, not what we are willing to charge.
 const BUDGET_PPM_MAX: u64 = 700;
 
+// a bootstrap rebalance make it greater than the depleted threshold, triggering dynamic fees search
 const ZERO_LOCAL_BOOTSTRAP_AMOUNT_SAT: u64 = crate::fees::DEPLETED_LOCAL_BALANCE_SAT * 2;
+
+// We are okay paying a lot for first bootrstrap (it happens once and it's limited in amount)
 const ZERO_LOCAL_BOOTSTRAP_MAX_PPM: u64 = BUDGET_PPM_MAX;
 
 const BOOTSTRAP_AMOUNT_CAP_SAT: u64 = 50_000;

@@ -6,8 +6,7 @@ use chrono::Utc;
 
 pub const PPM_MIN: u64 = 10;
 pub const PPM_MAX: u64 = 5000;
-pub const SLING_AMOUNT: u64 = 50000; // amount used for rebalancing
-pub const DEPLETED_LOCAL_BALANCE_SAT: u64 = SLING_AMOUNT; // this allows a succesfull bootstrap rebalance to make the channel graduate to normal operation
+pub const DEPLETED_LOCAL_BALANCE_SAT: u64 = 50000;
 pub const MIN_HTLC: u64 = 100000; // msat
 pub const INCREASE_STEP_PERC: f64 = 0.1;
 pub const DECREASE_STEP_PERC: f64 = 0.05;
