@@ -36,9 +36,6 @@ enum Commands {
         /// Path to JSON file with node uptime data (format: {node_id: {avail: float}})
         #[arg(long)]
         availdb: Option<String>,
-        /// Directory with timestamped sling-stats JSON snapshots
-        #[arg(long)]
-        rebalances: Option<String>,
         /// Base URL where funds charts are served, e.g. /auth/funds-charts
         #[arg(long)]
         funds_charts_url: Option<String>,
@@ -96,18 +93,11 @@ fn main() {
             directory,
             min_channels,
             availdb,
-            rebalances,
             funds_charts_url,
         } => {
             let store = Store::new(availdb);
             log::debug!("Dashboard directory: {}", directory);
-            dashboard::run_dashboard(
-                &store,
-                directory,
-                min_channels,
-                rebalances,
-                funds_charts_url,
-            );
+            dashboard::run_dashboard(&store, directory, min_channels, funds_charts_url);
         }
         Commands::Routes { directory } => {
             let store = Store::new(None);

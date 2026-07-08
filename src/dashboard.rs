@@ -39,16 +39,6 @@ fn has_balanced_status(entry: &RebalanceSnapshotEntry) -> bool {
     entry.status.iter().any(|s| s.contains("Balanced"))
 }
 
-impl RebalanceSnapshotFile {
-    fn detail_page_name(&self) -> String {
-        let slug = self
-            .file_name
-            .strip_suffix(".json")
-            .unwrap_or(&self.file_name);
-        format!("{slug}.html")
-    }
-}
-
 /// Create common HTML header with title
 fn create_html_header(title: &str) -> Markup {
     html! {
@@ -2764,51 +2754,6 @@ fn create_closed_channels_page(
     }
 }
 
-fn load_rebalance_snapshots(rebalances_path: Option<&str>) -> Vec<RebalanceSnapshotFile> {
-    let Some(path) = rebalances_path else {
-        return Vec::new();
-    };
-
-    let Ok(entries) = fs::read_dir(path) else {
-        log::error!("Failed to read rebalance snapshots directory: {}", path);
-        return Vec::new();
-    };
-
-    let mut snapshots = Vec::new();
-    for entry in entries.flatten() {
-        let file_path = entry.path();
-        if file_path.extension().and_then(|e| e.to_str()) != Some("json") {
-            continue;
-        }
-
-        let Some(file_name) = file_path.file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
-
-        match fs::read_to_string(&file_path) {
-            Ok(content) => match serde_json::from_str::<Vec<RebalanceSnapshotEntry>>(&content) {
-                Ok(entries) => snapshots.push(RebalanceSnapshotFile {
-                    file_name: file_name.to_string(),
-                    entries,
-                }),
-                Err(e) => log::error!(
-                    "Failed to parse rebalance snapshot {}: {}",
-                    file_path.display(),
-                    e
-                ),
-            },
-            Err(e) => log::error!(
-                "Failed to read rebalance snapshot {}: {}",
-                file_path.display(),
-                e
-            ),
-        }
-    }
-
-    snapshots.sort_by(|a, b| a.file_name.cmp(&b.file_name));
-    snapshots
-}
-
 fn load_current_rebalance_snapshot() -> Option<RebalanceSnapshotFile> {
     match serde_json::from_value::<Vec<RebalanceSnapshotEntry>>(crate::sling::current_sling_stats())
     {
@@ -2826,7 +2771,6 @@ fn load_current_rebalance_snapshot() -> Option<RebalanceSnapshotFile> {
 fn create_rebalance_snapshot_detail_section(
     section_title: &str,
     snapshot: &RebalanceSnapshotFile,
-    is_subdir: bool,
 ) -> Markup {
     let balanced = snapshot
         .entries
@@ -2838,7 +2782,6 @@ fn create_rebalance_snapshot_detail_section(
         .iter()
         .filter(|e| e.status.iter().any(|s| s.contains("NoCheapRoute")))
         .count();
-    let channel_prefix = if is_subdir { "../channels" } else { "channels" };
 
     html! {
         div class="info-card" {
@@ -2885,13 +2828,13 @@ fn create_rebalance_snapshot_detail_section(
                         tr {
                             td { (&entry.alias) }
                             td {
-                                a href={(format!("{channel_prefix}/{}.html", entry.scid))} {
+                                a href={(format!("channels/{}.html", entry.scid))} {
                                     (&entry.scid)
                                 }
                             }
                             td {
                                 @if let Some(last_channel_partner) = &entry.last_channel_partner {
-                                    a href={(format!("{channel_prefix}/{}.html", last_channel_partner))} {
+                                    a href={(format!("channels/{}.html", last_channel_partner))} {
                                         (last_channel_partner)
                                     }
                                 }
@@ -2930,39 +2873,6 @@ fn create_rebalance_snapshot_detail_section(
                 color: #f8f8f2;
             }
             "#
-        }
-    }
-}
-
-fn create_rebalance_snapshot_pages(
-    directory: &str,
-    now: &chrono::DateTime<chrono::Utc>,
-    snapshots: &[RebalanceSnapshotFile],
-) {
-    let snapshot_directory = format!("{directory}/rebalance");
-    if let Err(e) = fs::create_dir_all(&snapshot_directory) {
-        log::error!(
-            "Error creating rebalance snapshot directory {}: {}",
-            snapshot_directory,
-            e
-        );
-        return;
-    }
-
-    for snapshot in snapshots {
-        let title = format!("Rebalance Snapshot {}", snapshot.file_name);
-        let html = wrap_in_html_page(
-            &title,
-            html! {
-                (create_page_header(&title, true))
-                (create_rebalance_snapshot_detail_section("Snapshot Summary", snapshot, true))
-            },
-            &now.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
-        );
-        let file_path = format!("{snapshot_directory}/{}", snapshot.detail_page_name());
-        match fs::write(&file_path, html.into_string()) {
-            Ok(_) => log::debug!("Rebalance snapshot page generated: {}", file_path),
-            Err(e) => log::error!("Error writing rebalance snapshot page {}: {}", file_path, e),
         }
     }
 }
@@ -3079,100 +2989,16 @@ fn create_recent_rebalances_section(store: &Store) -> Markup {
     }
 }
 
-fn create_rebalance_page(
-    directory: &str,
-    store: &Store,
-    now: &chrono::DateTime<chrono::Utc>,
-    rebalances_path: Option<&str>,
-) {
-    let snapshots = load_rebalance_snapshots(rebalances_path);
-    let latest_snapshot = snapshots.last();
+fn create_rebalance_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono::Utc>) {
     let current_snapshot = load_current_rebalance_snapshot();
-    create_rebalance_snapshot_pages(directory, now, &snapshots);
 
     let rebalance_content = html! {
         (create_page_header("Rebalance Recap", false))
 
         (create_recent_rebalances_section(store))
 
-        div class="info-card" {
-            h2 { "Rebalance Snapshots" }
-            @if let Some(path) = rebalances_path {
-                div class="info-item" {
-                    span class="label" { "Snapshot Directory: " }
-                    span class="value" { (path) }
-                }
-            } @else {
-                div class="info-item" {
-                    span class="label" { "Snapshot Directory: " }
-                    span class="value" { "Not configured" }
-                }
-            }
-            div class="info-item" {
-                span class="label" { "Snapshots Loaded: " }
-                span class="value" { (snapshots.len()) }
-            }
-            @if let Some(snapshot) = latest_snapshot {
-                @let successful_rebalances = snapshot.entries.iter().filter(|e| has_balanced_status(e)).count();
-                div class="info-item" {
-                    span class="label" { "Latest Snapshot: " }
-                    span class="value" {
-                        a href={(format!("rebalance/{}", snapshot.detail_page_name()))} {
-                            (&snapshot.file_name)
-                        }
-                    }
-                }
-                div class="info-item" {
-                    span class="label" { "Channels In Latest Snapshot: " }
-                    span class="value" { (snapshot.entries.len()) }
-                }
-                div class="info-item" {
-                    span class="label" { "Successful Rebalances In Latest Snapshot: " }
-                    span class="value" { (successful_rebalances) }
-                }
-            }
-        }
-
-        div class="info-card" {
-            h2 { "Snapshot History" }
-            @if snapshots.is_empty() {
-                p { "No rebalance snapshots found." }
-            } @else {
-                table class="sortable" {
-                    thead {
-                        tr {
-                            th { "Snapshot File" }
-                            th style="text-align: right;" { "Entries" }
-                            th style="text-align: right;" { "Balanced" }
-                            th style="text-align: right;" { "No Cheap Route" }
-                            th style="text-align: right;" { "Successful Rebalances" }
-                        }
-                    }
-                    tbody {
-                        @for snapshot in snapshots.iter().rev() {
-                            @let balanced = snapshot.entries.iter().filter(|e| has_balanced_status(e)).count();
-                            @let no_cheap_route = snapshot.entries.iter().filter(|e| e.status.iter().any(|s| s.contains("NoCheapRoute"))).count();
-                            tr {
-                                td {
-                                    a href={(format!("rebalance/{}", snapshot.detail_page_name()))} {
-                                        (&snapshot.file_name)
-                                    }
-                                }
-                                td style="text-align: right;" { (snapshot.entries.len()) }
-                                td style="text-align: right;" { (balanced) }
-                                td style="text-align: right;" { (no_cheap_route) }
-                                td style="text-align: right;" { (balanced) }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         @if let Some(snapshot) = current_snapshot.as_ref() {
-            (create_rebalance_snapshot_detail_section("Latest Rebalance Status", snapshot, false))
-        } @else if let Some(snapshot) = latest_snapshot {
-            (create_rebalance_snapshot_detail_section("Latest Rebalance Status", snapshot, false))
+            (create_rebalance_snapshot_detail_section("Latest Rebalance Status", snapshot))
         } @else {
             div class="info-card" {
                 h2 { "Latest Rebalance Status" }
@@ -3253,7 +3079,6 @@ pub fn run_dashboard(
     store: &Store,
     directory: String,
     min_channels: usize,
-    rebalances_path: Option<String>,
     funds_charts_url: Option<String>,
 ) {
     let now = Utc::now();
@@ -3827,7 +3652,7 @@ pub fn run_dashboard(
     create_apy_page(&directory, store, &now);
 
     log::info!("Creating rebalance page");
-    create_rebalance_page(&directory, store, &now, rebalances_path.as_deref());
+    create_rebalance_page(&directory, store, &now);
 
     log::info!("Creating closed channels page");
     create_closed_channels_page(&directory, store, &now);
