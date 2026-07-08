@@ -15,11 +15,13 @@ const BUDGET_PPM_MIN: u64 = crate::fees::PPM_MIN;
 // this is what we are willing to pay, not what we are willing to charge.
 const BUDGET_PPM_MAX: u64 = 700;
 
-// a bootstrap rebalance make it greater than the depleted threshold, triggering dynamic fees search
-const ZERO_LOCAL_BOOTSTRAP_AMOUNT_SAT: u64 = crate::fees::DEPLETED_LOCAL_BALANCE_SAT * 2;
+// Bootstrap rebalances make the channel greater than the depleted threshold,
+// triggering dynamic fee search.
+const LOW_LOCAL_BOOTSTRAP_THRESHOLD_SAT: u64 = 10;
+const LOW_LOCAL_BOOTSTRAP_AMOUNT_SAT: u64 = crate::fees::DEPLETED_LOCAL_BALANCE_SAT * 2;
 
-// We are okay paying a lot for first bootrstrap (it happens once and it's limited in amount)
-const ZERO_LOCAL_BOOTSTRAP_MAX_PPM: u64 = BUDGET_PPM_MAX;
+// We are okay paying a lot for first bootstrap, because it is one-shot and amount-limited.
+const LOW_LOCAL_BOOTSTRAP_MAX_PPM: u64 = BUDGET_PPM_MAX;
 
 const BOOTSTRAP_AMOUNT_CAP_SAT: u64 = 50_000;
 const BOOTSTRAP_CAPACITY_DIVISOR: u64 = 20;
@@ -133,6 +135,10 @@ fn compute_capacity_rebalance_amounts(
     }
 }
 
+fn should_bootstrap_low_local(local_balance_sat: u64) -> bool {
+    local_balance_sat < LOW_LOCAL_BOOTSTRAP_THRESHOLD_SAT
+}
+
 fn rebalance_jitter_seed(scid: &str) -> u64 {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -158,7 +164,7 @@ fn compute_job_amount(amount_sat: u64, jitter_seed: u64) -> u64 {
     jittered_amount.clamp(MIN_AMOUNT_SAT as i64, REBALANCE_JOB_AMOUNT_CAP_SAT as i64) as u64
 }
 
-fn zero_local_bootstrap_args<'a>(
+fn low_local_bootstrap_args<'a>(
     scid: &'a str,
     candidates_arg: &'a str,
     amount_arg: &'a str,
@@ -317,13 +323,13 @@ pub fn run_sling(store: &Store) {
         let local_balance_sat = channel.our_amount_msat / 1000;
         let candidates_arg = format!("candidates={candidates_json}");
 
-        if local_balance_sat == 0 {
+        if should_bootstrap_low_local(local_balance_sat) {
             bootstrap += 1;
             let scid_arg = format!("scid={scid}");
-            let amount_arg = format!("amount={ZERO_LOCAL_BOOTSTRAP_AMOUNT_SAT}");
-            let onceamount_arg = format!("onceamount={ZERO_LOCAL_BOOTSTRAP_AMOUNT_SAT}");
-            let maxppm_arg = format!("maxppm={ZERO_LOCAL_BOOTSTRAP_MAX_PPM}");
-            let args = zero_local_bootstrap_args(
+            let amount_arg = format!("amount={LOW_LOCAL_BOOTSTRAP_AMOUNT_SAT}");
+            let onceamount_arg = format!("onceamount={LOW_LOCAL_BOOTSTRAP_AMOUNT_SAT}");
+            let maxppm_arg = format!("maxppm={LOW_LOCAL_BOOTSTRAP_MAX_PPM}");
+            let args = low_local_bootstrap_args(
                 &scid_arg,
                 &candidates_arg,
                 &amount_arg,
@@ -331,13 +337,15 @@ pub fn run_sling(store: &Store) {
                 &maxppm_arg,
             );
             log::info!(
-                "{alias} balance:{:.1}% zero_local_bootstrap amount:{}s tppm:{} historical_fee_ppm:{} channel_ppm:{} maxppm:{}",
+                "{alias} balance:{:.1}% low_local_bootstrap local_balance:{}s threshold:<{}s amount:{}s tppm:{} historical_fee_ppm:{} channel_ppm:{} maxppm:{}",
                 balance * 100.0,
-                ZERO_LOCAL_BOOTSTRAP_AMOUNT_SAT,
+                local_balance_sat,
+                LOW_LOCAL_BOOTSTRAP_THRESHOLD_SAT,
+                LOW_LOCAL_BOOTSTRAP_AMOUNT_SAT,
                 tppm_log,
                 historical_fee_ppm_log,
                 my_ppm_log,
-                ZERO_LOCAL_BOOTSTRAP_MAX_PPM,
+                LOW_LOCAL_BOOTSTRAP_MAX_PPM,
             );
             log::debug!("{CMD} {}", args.join(" "));
             if execute_sling {
@@ -421,8 +429,8 @@ mod tests {
     use super::{
         compute_base_rebalance_amount, compute_budget_ppm, compute_capacity_rebalance_amounts,
         compute_job_amount, enrich_sling_stats_with_last_channel_partner, is_target_eligible,
-        zero_local_bootstrap_args, BOOTSTRAP_MAX_PPM, BUDGET_PPM_MAX, BUDGET_PPM_MIN,
-        REBALANCE_JOB_AMOUNT_CAP_SAT, REBALANCE_JOB_AMOUNT_JITTER_PERCENT,
+        low_local_bootstrap_args, should_bootstrap_low_local, BOOTSTRAP_MAX_PPM, BUDGET_PPM_MAX,
+        BUDGET_PPM_MIN, REBALANCE_JOB_AMOUNT_CAP_SAT, REBALANCE_JOB_AMOUNT_JITTER_PERCENT,
     };
     use serde_json::Value;
 
@@ -517,9 +525,9 @@ mod tests {
     }
 
     #[test]
-    fn zero_local_bootstrap_uses_sling_once_arguments() {
+    fn low_local_bootstrap_uses_sling_once_arguments() {
         assert_eq!(
-            zero_local_bootstrap_args(
+            low_local_bootstrap_args(
                 "scid=1x2x3",
                 "candidates=[]",
                 "amount=60000",
@@ -537,6 +545,14 @@ mod tests {
                 "onceamount=60000",
             ]
         );
+    }
+
+    #[test]
+    fn low_local_bootstrap_includes_dust_balances_below_ten_sats() {
+        assert!(should_bootstrap_low_local(0));
+        assert!(should_bootstrap_low_local(2));
+        assert!(should_bootstrap_low_local(9));
+        assert!(!should_bootstrap_low_local(10));
     }
 
     #[test]
