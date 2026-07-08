@@ -183,10 +183,22 @@ fn low_local_bootstrap_args<'a>(
     ]
 }
 
-fn delete_existing_sling_jobs() {
-    log::info!("EXECUTE_SLING is set, deleting existing sling jobs before creating new ones");
+fn reset_existing_sling_jobs() {
+    log::info!(
+        "EXECUTE_SLING is set, stopping and deleting existing sling jobs before creating new ones"
+    );
+
+    let result = crate::cmd::cmd_result(CMD, &["sling-stop"]);
+    log::debug!("sling-stop return: {result}");
+
     let result = crate::cmd::cmd_result(CMD, &["sling-deletejob", "all"]);
     log::debug!("sling-deletejob all return: {result}");
+}
+
+fn start_sling_jobs() {
+    log::info!("EXECUTE_SLING is set, starting created sling jobs with sling-go");
+    let result = crate::cmd::cmd_result(CMD, &["sling-go"]);
+    log::debug!("sling-go return: {result}");
 }
 
 fn get_sling_stats(scid: Option<&str>) -> Value {
@@ -266,16 +278,17 @@ pub fn run_sling(store: &Store) {
         candidates.len()
     );
     log::info!("candidates: {:?}", candidates);
+
+    let execute_sling = std::env::var("EXECUTE_SLING").is_ok();
+    if execute_sling {
+        reset_existing_sling_jobs();
+    }
+
     if candidates.is_empty() {
         return;
     }
 
     let candidates_json = candidates_to_json(&candidates);
-
-    let execute_sling = std::env::var("EXECUTE_SLING").is_ok();
-    if execute_sling {
-        delete_existing_sling_jobs();
-    }
 
     let mut skipped_balance = 0u64;
     let mut skipped_missing_scid = 0u64;
@@ -422,6 +435,10 @@ pub fn run_sling(store: &Store) {
         skipped_missing_scid,
         targets_without_local_channel_info
     );
+
+    if execute_sling && suggested > 0 {
+        start_sling_jobs();
+    }
 }
 
 #[cfg(test)]
