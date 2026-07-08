@@ -913,10 +913,10 @@ fn create_forwards_html_content(
                                     a href={(format!("channels/{}.html", forward.out_channel))} { "(C)" }
                                 }
                                 td class="align-right" {
-                                    (forward.fee_sat)
+                                    (format_sats(forward.fee_sat))
                                 }
                                 td class="align-right" {
-                                    (forward.out_sat)
+                                    (format_sats(forward.out_sat))
                                 }
                                 td class="align-right" {
                                     (forward.fee_ppm)
@@ -1298,11 +1298,11 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
             h2 { "Channel Liquidity Summary" }
             div class="info-item" {
                 span class="label" { "Total Outbound Liquidity: " }
-                span class="value" { (format!("{} sats", total_outbound_liquidity)) }
+                span class="value" { (format!("{} sats", format_sats(total_outbound_liquidity))) }
             }
             div class="info-item" {
                 span class="label" { "Total Inbound Liquidity: " }
-                span class="value" { (format!("{} sats", total_inbound_liquidity)) }
+                span class="value" { (format!("{} sats", format_sats(total_inbound_liquidity))) }
             }
             div class="info-item" {
                 span class="label" { "Global Balance: " }
@@ -1391,7 +1391,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                                 (format!("{:.1}", channel.perc_float() * 100.0))
                             }
                             td style="text-align: right;" {
-                                (channel.amount_msat / 1000)
+                                (format_sats(channel.amount_msat / 1000))
                             }
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
@@ -1408,7 +1408,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(effective_fee_ppm) = store.get_channel_effective_fee_ppm(scid) {
                                         @let (forward_fees, forwarded_amount) = store.get_channel_forwarding_fee_totals(scid);
-                                        span title={(format!("{forward_fees} sats / {forwarded_amount} sats"))} {
+                                        span title={(format!("{} sats / {} sats", format_sats(forward_fees), format_sats(forwarded_amount)))} {
                                             (format!("{effective_fee_ppm:.0}"))
                                         }
                                     } @else {
@@ -1422,7 +1422,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(rebalance_fee_ppm) = store.get_channel_rebalance_effective_fee_ppm(scid) {
                                         @let (rebalance_fees_msat, credited_msat) = store.get_channel_rebalance_target_totals(scid);
-                                        span title={(format!("{} sats / {} sats", rebalance_fees_msat / 1000, credited_msat / 1000))} {
+                                        span title={(format!("{} sats / {} sats", format_sats(rebalance_fees_msat / 1000), format_sats(credited_msat / 1000)))} {
                                             (format!("{rebalance_fee_ppm:.0}"))
                                         }
                                     } @else {
@@ -1435,7 +1435,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(channel_info) = store.get_channel(scid, &store.info.id) {
-                                        (channel_info.htlc_maximum_msat / 1000)
+                                        (format_sats(channel_info.htlc_maximum_msat / 1000))
                                     } @else {
                                         "-"
                                     }
@@ -1457,7 +1457,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(net_roic) = store.get_channel_net_roic(scid) {
-                                        span title={(format!("{} sats net / {} sats capacity", store.get_channel_net_routing_revenue_msat(scid) / 1000, channel.amount_msat / 1000))} {
+                                        span title={(format!("{} sats net / {} sats capacity", format_signed_sats(store.get_channel_net_routing_revenue_msat(scid) / 1000), format_sats(channel.amount_msat / 1000)))} {
                                             (format!("{:.2}%", net_roic))
                                         }
                                     } @else {
@@ -1524,7 +1524,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                                 (format!("{:.1}", channel.perc_float() * 100.0))
                             }
                             td style="text-align: right;" {
-                                (channel.amount_msat / 1000)
+                                (format_sats(channel.amount_msat / 1000))
                             }
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
@@ -1541,7 +1541,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(effective_fee_ppm) = store.get_channel_effective_fee_ppm(scid) {
                                         @let (forward_fees, forwarded_amount) = store.get_channel_forwarding_fee_totals(scid);
-                                        span title={(format!("{forward_fees} sats / {forwarded_amount} sats"))} {
+                                        span title={(format!("{} sats / {} sats", format_sats(forward_fees), format_sats(forwarded_amount)))} {
                                             (format!("{effective_fee_ppm:.0}"))
                                         }
                                     } @else {
@@ -1555,7 +1555,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(rebalance_fee_ppm) = store.get_channel_rebalance_effective_fee_ppm(scid) {
                                         @let (rebalance_fees_msat, credited_msat) = store.get_channel_rebalance_target_totals(scid);
-                                        span title={(format!("{} sats / {} sats", rebalance_fees_msat / 1000, credited_msat / 1000))} {
+                                        span title={(format!("{} sats / {} sats", format_sats(rebalance_fees_msat / 1000), format_sats(credited_msat / 1000)))} {
                                             (format!("{rebalance_fee_ppm:.0}"))
                                         }
                                     } @else {
@@ -1568,7 +1568,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(channel_info) = store.get_channel(scid, &store.info.id) {
-                                        (channel_info.htlc_maximum_msat / 1000)
+                                        (format_sats(channel_info.htlc_maximum_msat / 1000))
                                     } @else {
                                         "-"
                                     }
@@ -1590,7 +1590,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
                                     @if let Some(net_roic) = store.get_channel_net_roic(scid) {
-                                        span title={(format!("{} sats net / {} sats capacity", store.get_channel_net_routing_revenue_msat(scid) / 1000, channel.amount_msat / 1000))} {
+                                        span title={(format!("{} sats net / {} sats capacity", format_signed_sats(store.get_channel_net_routing_revenue_msat(scid) / 1000), format_sats(channel.amount_msat / 1000)))} {
                                             (format!("{:.2}%", net_roic))
                                         }
                                     } @else {
@@ -1730,18 +1730,18 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
 
                 div class="info-item" {
                     span class="label" { "Total Amount: " }
-                    span class="value" { (format!("{} sats", channel.amount_msat / 1000)) }
+                    span class="value" { (format!("{} sats", format_sats(channel.amount_msat / 1000))) }
                 }
 
                 div class="info-item" {
                     span class="label" { "Our Amount: " }
-                    span class="value" { (format!("{} sats", channel.our_amount_msat / 1000)) }
+                    span class="value" { (format!("{} sats", format_sats(channel.our_amount_msat / 1000))) }
                 }
 
                 div class="info-item" {
                     span class="label" { "Peer Amount: " }
                     span class="value" {
-                        (format!("{} sats", (channel.amount_msat - channel.our_amount_msat) / 1000))
+                        (format!("{} sats", format_sats((channel.amount_msat - channel.our_amount_msat) / 1000)))
                     }
                 }
 
@@ -1801,17 +1801,17 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
 
                         div class="info-item" {
                             span class="label" { "Base Fee: " }
-                            span class="value" { (format!("{} sat", channel_info.base_fee_millisatoshi/1000)) }
+                            span class="value" { (format!("{} sat", format_sats(channel_info.base_fee_millisatoshi / 1000))) }
                         }
 
                         div class="info-item" {
                             span class="label" { "Min HTLC: " }
-                            span class="value" { (format!("{} sat", channel_info.htlc_minimum_msat/1000)) }
+                            span class="value" { (format!("{} sat", format_sats(channel_info.htlc_minimum_msat / 1000))) }
                         }
 
                         div class="info-item" {
                             span class="label" { "Max HTLC: " }
-                            span class="value" { (format!("{} sat", channel_info.htlc_maximum_msat/1000)) }
+                            span class="value" { (format!("{} sat", format_sats(channel_info.htlc_maximum_msat / 1000))) }
                         }
 
                         div class="info-item" {
@@ -1867,7 +1867,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
 
                     div class="info-item" {
                         span class="label" { "Total Fees Earned: " }
-                        span class="value" { (format!("{} sats", store.get_channel_total_fees(scid))) }
+                        span class="value" { (format!("{} sats", format_sats(store.get_channel_total_fees(scid)))) }
                     }
 
                     div class="info-item" {
@@ -1886,7 +1886,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                         span class="value" {
                             (format!(
                                 "{} sats",
-                                store.get_channel_rebalance_target_cost_msat(scid) / 1000
+                                format_sats(store.get_channel_rebalance_target_cost_msat(scid) / 1000)
                             ))
                         }
                     }
@@ -1943,7 +1943,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                         span class="value" {
                             (format!(
                                 "{} sats",
-                                store.get_channel_rebalance_source_cost_msat(scid) / 1000
+                                format_sats(store.get_channel_rebalance_source_cost_msat(scid) / 1000)
                             ))
                         }
                     }
@@ -1953,7 +1953,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                         span class="value" {
                             (format!(
                                 "{} sats",
-                                store.get_channel_net_routing_revenue_msat(scid) / 1000
+                                format_signed_sats(store.get_channel_net_routing_revenue_msat(scid) / 1000)
                             ))
                         }
                     }
@@ -2039,13 +2039,13 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                                             }
                                         }
                                         td style="text-align: right;" {
-                                            (forward.out_sat)
+                                            (format_sats(forward.out_sat))
                                         }
                                         td style="text-align: right;" {
                                             @if forward.out_channel == *scid {
-                                                (forward.fee_sat)
+                                                (format_sats(forward.fee_sat))
                                             } @else {
-                                                (format!("({})", forward.fee_sat))
+                                                (format!("({})", format_sats(forward.fee_sat)))
                                             }
                                         }
                                         td style="text-align: right;" {
@@ -2121,7 +2121,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                                             }
                                         }
                                         td style="text-align: right;" {
-                                            (forward.in_msat / 1000)
+                                            (format_sats(forward.in_msat / 1000))
                                         }
                                         td {
                                             @if let Some(dt) = chrono::DateTime::from_timestamp(forward.received_time as i64, 0) {
@@ -2202,7 +2202,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                                             }
                                         }
                                         td style="text-align: right;" {
-                                            (forward.in_msat / 1000)
+                                            (format_sats(forward.in_msat / 1000))
                                         }
                                         td {
                                             @if let Some(dt) = chrono::DateTime::from_timestamp(forward.received_time as i64, 0) {
@@ -2329,21 +2329,21 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
                 div class="metric-context" {
                     div class="info-item" {
                         span class="label" { "Routed Last 12 Months: " }
-                        span class="value" { (format!("{} sats", apy_data.routed_12_months)) }
+                        span class="value" { (format!("{} sats", format_sats(apy_data.routed_12_months))) }
                     }
                     div class="info-item" {
                         span class="label" { "Fees Last 12 Months: " }
-                        span class="value" { (format!("{} sats", apy_data.fees_12_months)) }
+                        span class="value" { (format!("{} sats", format_sats(apy_data.fees_12_months))) }
                     }
                     div class="info-item" {
                         span class="label" { "Rebalance Cost Last 12 Months: " }
                         span class="value" {
-                            (format!("{} sats", apy_data.rebalance_cost_12_months_msat / 1000))
+                            (format!("{} sats", format_sats(apy_data.rebalance_cost_12_months_msat / 1000)))
                         }
                     }
                     div class="info-item" {
                         span class="label" { "Channel Funds: " }
-                        span class="value" { (format!("{} sats", apy_data.total_funds)) }
+                        span class="value" { (format!("{} sats", format_sats(apy_data.total_funds))) }
                     }
                 }
             }
@@ -2362,22 +2362,22 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
                     tbody {
                         tr {
                             td { "Last 1 Month" }
-                            td style="text-align: right;" { (apy_data.fees_1_month) }
+                            td style="text-align: right;" { (format_sats(apy_data.fees_1_month)) }
                             td style="text-align: right;" { (format!("{:.3}", apy_data.apy_1_month)) }
                         }
                         tr {
                             td { "Last 3 Months" }
-                            td style="text-align: right;" { (apy_data.fees_3_months) }
+                            td style="text-align: right;" { (format_sats(apy_data.fees_3_months)) }
                             td style="text-align: right;" { (format!("{:.3}", apy_data.apy_3_months)) }
                         }
                         tr {
                             td { "Last 6 Months" }
-                            td style="text-align: right;" { (apy_data.fees_6_months) }
+                            td style="text-align: right;" { (format_sats(apy_data.fees_6_months)) }
                             td style="text-align: right;" { (format!("{:.3}", apy_data.apy_6_months)) }
                         }
                         tr {
                             td { "Last 12 Months" }
-                            td style="text-align: right;" { (apy_data.fees_12_months) }
+                            td style="text-align: right;" { (format_sats(apy_data.fees_12_months)) }
                             td style="text-align: right;" { (format!("{:.3}", apy_data.apy_12_months)) }
                         }
                     }
@@ -2393,7 +2393,7 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
                 div class="info-item" {
                     span class="label" { "Total Forwarding Fees: " }
                     span class="value" {
-                        (format!("{} sats", store.total_forwarding_fees_sat()))
+                        (format!("{} sats", format_sats(store.total_forwarding_fees_sat())))
                     }
                 }
                 div class="info-item" {
@@ -2401,7 +2401,7 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
                     span class="value" {
                         (format!(
                             "{} sats",
-                            store.total_rebalance_cost_msat() / 1000
+                            format_sats(store.total_rebalance_cost_msat() / 1000)
                         ))
                     }
                 }
@@ -2410,7 +2410,7 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
                     span class="value" {
                         (format!(
                             "{} sats",
-                            store.net_routing_revenue_msat() / 1000
+                            format_signed_sats(store.net_routing_revenue_msat() / 1000)
                         ))
                     }
                 }
@@ -2421,12 +2421,12 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
 
                 div class="info-item" {
                     span class="label" { "Total Channel Funds: " }
-                    span class="value" { (format!("{} sats", apy_data.total_funds)) }
+                    span class="value" { (format!("{} sats", format_sats(apy_data.total_funds))) }
                 }
 
                 div class="info-item" {
                     span class="label" { "Transacted Last Month: " }
-                    span class="value" { (format!("{} sats", apy_data.transacted_last_month)) }
+                    span class="value" { (format!("{} sats", format_sats(apy_data.transacted_last_month))) }
                 }
             }
 
@@ -2661,7 +2661,7 @@ fn create_closed_channels_page(
                                     }
                                 }
                                 td style="text-align: right;" {
-                                    (channel_info.channel.final_to_us_msat / 1000)
+                                    (format_sats(channel_info.channel.final_to_us_msat / 1000))
                                 }
                                 td style="text-align: right;" {
                                     @if let Some(net_roic) = store.get_closed_channel_net_roic(&channel_info.channel) {
@@ -2897,7 +2897,7 @@ fn create_rebalance_snapshot_detail_section(
                                 }
                             }
                             td { (entry.status.join(", ")) }
-                            td style="text-align: right;" { (&entry.rebamount) }
+                            td style="text-align: right;" { (format_sats_str(&entry.rebamount)) }
                             td style="text-align: right;" { (entry.w_feeppm) }
                             td { (&entry.last_route_taken) }
                             td { (&entry.last_success_reb) }

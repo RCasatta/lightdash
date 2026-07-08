@@ -2,6 +2,38 @@ use crate::fees::PPM_MIN;
 use chrono::Duration;
 use std::collections::HashSet;
 
+const SATS_GROUP_SEPARATOR: char = '\u{2009}';
+
+pub fn format_sats(amount: u64) -> String {
+    let digits = amount.to_string();
+    let mut formatted = String::with_capacity(digits.len() + digits.len() / 3);
+
+    for (i, ch) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            formatted.push(SATS_GROUP_SEPARATOR);
+        }
+        formatted.push(ch);
+    }
+
+    formatted
+}
+
+pub fn format_signed_sats(amount: i64) -> String {
+    if amount < 0 {
+        format!("-{}", format_sats(amount.unsigned_abs()))
+    } else {
+        format_sats(amount as u64)
+    }
+}
+
+pub fn format_sats_str(amount: &str) -> String {
+    let normalized = amount.replace([',', '_'], "");
+    normalized
+        .parse::<u64>()
+        .map(format_sats)
+        .unwrap_or_else(|_| amount.replace(',', &SATS_GROUP_SEPARATOR.to_string()))
+}
+
 /// Helper struct to compute the average fee of the channels of a node
 #[derive(Default)]
 pub struct ChannelFee {
@@ -105,5 +137,33 @@ pub fn format_duration(duration: Duration) -> String {
         format!("{}m {}s", minutes, seconds)
     } else {
         format!("{}s", seconds)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{format_sats, format_sats_str, format_signed_sats};
+
+    #[test]
+    fn formats_sats_with_thin_space_groups() {
+        assert_eq!(format_sats(0), "0");
+        assert_eq!(format_sats(999), "999");
+        assert_eq!(format_sats(1_000), "1\u{2009}000");
+        assert_eq!(
+            format_sats(1_234_567_890),
+            "1\u{2009}234\u{2009}567\u{2009}890"
+        );
+    }
+
+    #[test]
+    fn formats_signed_sats_with_thin_space_groups() {
+        assert_eq!(format_signed_sats(-1_234_567), "-1\u{2009}234\u{2009}567");
+        assert_eq!(format_signed_sats(1_234_567), "1\u{2009}234\u{2009}567");
+    }
+
+    #[test]
+    fn formats_sats_strings_with_thin_space_groups() {
+        assert_eq!(format_sats_str("25,799"), "25\u{2009}799");
+        assert_eq!(format_sats_str("25799"), "25\u{2009}799");
     }
 }

@@ -1,4 +1,5 @@
 use crate::cmd;
+use crate::common::format_sats;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use maud::{html, Markup, DOCTYPE};
@@ -597,10 +598,15 @@ fn generate_svg_chart(
         ));
         svg.push('\n');
 
+        let tick_label = match chart_type {
+            ChartType::Fee => value.to_string(),
+            ChartType::HtlcMax => format_sats(value as u64),
+        };
+
         // Tick label
         svg.push_str(&format!(
             r##"  <text x="{}" y="{}" font-family="Arial, sans-serif" font-size="12" text-anchor="end" alignment-baseline="middle">{}</text>"##,
-            margin_left - 10, y, value
+            margin_left - 10, y, tick_label
         ));
         svg.push('\n');
     }
@@ -661,7 +667,7 @@ fn generate_svg_chart(
             let date_str = format_timestamp(timestamp);
             let value_label = match chart_type {
                 ChartType::Fee => format!("Fee: {}", value),
-                ChartType::HtlcMax => format!("HTLC Max: {} sats", value),
+                ChartType::HtlcMax => format!("HTLC Max: {} sats", format_sats(value as u64)),
             };
             svg.push_str(&format!(
                 r##"  <circle cx="{}" cy="{}" r="4" fill="#2563eb" opacity="0.7"><title>{} ({})</title></circle>"##,
@@ -711,7 +717,7 @@ fn generate_svg_chart(
             let date_str = format_timestamp(timestamp);
             let value_label = match chart_type {
                 ChartType::Fee => format!("Fee: {}", value),
-                ChartType::HtlcMax => format!("HTLC Max: {} sats", value),
+                ChartType::HtlcMax => format!("HTLC Max: {} sats", format_sats(value as u64)),
             };
             svg.push_str(&format!(
                 r##"  <circle cx="{}" cy="{}" r="4" fill="#dc2626" opacity="0.7"><title>{} ({})</title></circle>"##,

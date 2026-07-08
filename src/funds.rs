@@ -1,4 +1,5 @@
 use crate::cmd;
+use crate::common::format_sats;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use std::collections::HashMap;
@@ -349,7 +350,7 @@ fn generate_svg_chart(series: &ChannelSeries, chart_type: ChartType) -> Result<S
         r##"  <text x="{}" y="{}" font-family="Arial, monospace" font-size="10">Cap: {} sats</text>"##,
         legend_x,
         legend_y + 67,
-        total_capacity
+        format_sats(total_capacity)
     ));
     svg.push('\n');
 

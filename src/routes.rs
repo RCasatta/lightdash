@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::fs;
 
 use crate::cmd::*;
+use crate::common::format_sats;
 use crate::store::Store;
 
 pub fn run_routes(store: &Store, directory: &str, amount_sat: u64) {
@@ -207,7 +208,7 @@ fn render_routes_page(
                     div class="header" {
                         h1 {
                             "Routing Insights - "
-                            (format!("{} sats", amount_msat / 1000))
+                            (format!("{} sats", format_sats(amount_msat / 1000)))
                         }
                         div class="back-link" {
                             a href="index.html" { "Home" } " | "
@@ -227,11 +228,11 @@ fn render_routes_page(
                             "Analysis performed for different payment amounts:"
                         }
                         ul {
-                            li { a href="routes-1000.html" { "1,000 sats (0.00001 BTC)" } }
-                            li { a href="routes-10000.html" { "10,000 sats (0.0001 BTC)" } }
-                            li { a href="routes-100000.html" { "100,000 sats (0.001 BTC)" } }
-                            li { a href="routes-1000000.html" { "1,000,000 sats (0.01 BTC)" } }
-                            li { a href="routes-10000000.html" { "10,000,000 sats (0.1 BTC)" } }
+                            li { a href="routes-1000.html" { (format!("{} sats (0.00001 BTC)", format_sats(1_000))) } }
+                            li { a href="routes-10000.html" { (format!("{} sats (0.0001 BTC)", format_sats(10_000))) } }
+                            li { a href="routes-100000.html" { (format!("{} sats (0.001 BTC)", format_sats(100_000))) } }
+                            li { a href="routes-1000000.html" { (format!("{} sats (0.01 BTC)", format_sats(1_000_000))) } }
+                            li { a href="routes-10000000.html" { (format!("{} sats (0.1 BTC)", format_sats(10_000_000))) } }
                         }
                     }
 
