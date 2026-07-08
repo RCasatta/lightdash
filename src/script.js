@@ -2,6 +2,25 @@
 document.addEventListener('DOMContentLoaded', function () {
     const tables = document.querySelectorAll('table.sortable');
 
+    function getSortValue(cell) {
+        return cell.dataset.sortValue || cell.textContent.trim();
+    }
+
+    function parseSortableNumber(value) {
+        let normalized = value.trim();
+        const parenthesized = normalized.match(/^\((.*)\)$/);
+        if (parenthesized) {
+            normalized = `-${parenthesized[1]}`;
+        }
+
+        normalized = normalized.replace(/[\s\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000,%]/g, '');
+        if (!/^[+-]?\d+(\.\d+)?$/.test(normalized)) {
+            return null;
+        }
+
+        return Number(normalized);
+    }
+
     tables.forEach(table => {
         const headers = table.querySelectorAll('th');
         const tbody = table.querySelector('tbody');
@@ -47,8 +66,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     if (!aCell || !bCell) return 0;
 
-                    let aValue = aCell.textContent.trim();
-                    let bValue = bCell.textContent.trim();
+                    let aValue = getSortValue(aCell);
+                    let bValue = getSortValue(bCell);
 
                     // Handle N/A and - values
                     if (aValue === 'N/A' || aValue === '-') aValue = sortOrder === 'asc' ? 'zzz' : '';
@@ -63,10 +82,10 @@ document.addEventListener('DOMContentLoaded', function () {
                     }
 
                     // Try to parse as number (including percentages)
-                    const aNum = parseFloat(aValue.replace(/[,%]/g, ''));
-                    const bNum = parseFloat(bValue.replace(/[,%]/g, ''));
+                    const aNum = parseSortableNumber(aValue);
+                    const bNum = parseSortableNumber(bValue);
 
-                    if (!isNaN(aNum) && !isNaN(bNum)) {
+                    if (aNum !== null && bNum !== null) {
                         // Numeric comparison
                         return sortOrder === 'asc' ? aNum - bNum : bNum - aNum;
                     } else {
@@ -85,4 +104,3 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 });
-
