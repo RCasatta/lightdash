@@ -1,4 +1,3 @@
-use crate::fees::PPM_MIN;
 use chrono::Duration;
 use std::collections::HashSet;
 
@@ -82,35 +81,6 @@ impl ChannelMeta {
     pub fn alias_or_id(&self) -> String {
         self.alias_or_id.clone()
     }
-}
-
-// lightning-cli sling-job -k scid=848864x399x0 direction=push amount=1000 maxppm=500 outppm=200 depleteuptoamount=100000
-pub fn calc_slingjobs(
-    scid: String,
-    perc_us: f64,
-    ever_forward_in_out: u64,
-    alias: &str,
-    channel: &ChannelMeta,
-    pull_in: &[String],
-    push_out: &[String],
-) -> Option<(String, String)> {
-    let amount = crate::fees::SLING_AMOUNT;
-    let maxppm = PPM_MIN;
-    let is_sink_perc = channel.is_sink_perc();
-
-    let (dir, candidates, target) = match channel.rebalance {
-        Rebalance::PullIn => ("pull", push_out, 0.3),
-        Rebalance::PushOut => ("push", pull_in, 0.7),
-        Rebalance::Nothing => return None,
-    };
-
-    let candidates = format!("{candidates:?}").replace(" ", "");
-    // let candidates = format!("[\"{}\"]", candidates.join("\",\""));
-
-    let cmd = format!("lightning-cli sling-job -k scid={scid} amount={amount} maxppm={maxppm} direction={dir} candidates={candidates} target={target:.2}");
-    let details =
-        format!("perc_us:{perc_us:.2} is_sink:{is_sink_perc} {ever_forward_in_out} {alias}");
-    Some((cmd, details))
 }
 
 pub fn cut_days(d: i64) -> String {

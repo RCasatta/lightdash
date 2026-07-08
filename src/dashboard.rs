@@ -3440,7 +3440,6 @@ pub fn run_dashboard(
     );
 
     let mut lines = vec![];
-    let mut sling_lines = vec![];
 
     let mut perces = vec![];
 
@@ -3595,31 +3594,9 @@ pub fn run_dashboard(
         let blocks_alive = current_block.saturating_sub(channel.block_born).max(1); // Prevent division by zero and overflow
         let gain = ((ever_forw_in_out as f64 / blocks_alive as f64) * 1000.0) as u64;
 
-        let ever_forw_in = *per_channel_forwards_in
-            .get(&short_channel_id)
-            .unwrap_or(&0u64);
-
-        let ever_forw_out = *per_channel_forwards_out
-            .get(&short_channel_id)
-            .unwrap_or(&0u64);
-
-        let ever_forward_in_out = ever_forw_out + ever_forw_in;
-
         let is_sink_perc = channel.is_sink_perc();
         let is_sink_last_month_perc = channel.is_sink_last_month_perc();
         let alias_or_id = channel.alias_or_id();
-
-        if let Some(l) = calc_slingjobs(
-            short_channel_id.clone(),
-            fund.perc_float(),
-            ever_forward_in_out,
-            &alias_or_id,
-            &channel,
-            &pull_in,
-            &push_out,
-        ) {
-            sling_lines.push(l);
-        }
 
         let push_pull = if push_out.contains(&short_channel_id) {
             "push"
@@ -3666,11 +3643,6 @@ pub fn run_dashboard(
         log::debug!("{l1}");
     }
 
-    // Display sling jobs without executing
-    for (cmd, details) in sling_lines.iter() {
-        output_content.push_str(&format!("`{cmd}` {details}\n"));
-        log::debug!("`{cmd}` {details}");
-    }
     log::info!("Finished writing debug output");
 
     // Generate HTML files after all output is collected
