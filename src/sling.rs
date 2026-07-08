@@ -73,12 +73,14 @@ fn compute_budget_ppm(
     historical_fee_ppm: Option<f64>,
     channel_ppm: Option<u64>,
 ) -> u64 {
+    let realized_metrics = [usable_ppm(tppm), usable_ppm(historical_fee_ppm)];
+    let has_realized_fee_history = realized_metrics.iter().any(Option::is_some);
+    if !has_realized_fee_history {
+        return BOOTSTRAP_MAX_PPM;
+    }
+
     let usable_channel_ppm = usable_ppm(channel_ppm.map(|ppm| ppm as f64));
-    let metrics = [
-        usable_ppm(tppm),
-        usable_ppm(historical_fee_ppm),
-        usable_channel_ppm,
-    ];
+    let metrics = [realized_metrics[0], realized_metrics[1], usable_channel_ppm];
     let (sum, count) = metrics
         .into_iter()
         .flatten()
@@ -384,12 +386,15 @@ mod tests {
     fn compute_budget_ppm_falls_back_to_half_of_available_metric() {
         assert_eq!(compute_budget_ppm(Some(400.0), None, None), 200);
         assert_eq!(compute_budget_ppm(None, Some(200.0), None), 100);
-        assert_eq!(compute_budget_ppm(None, None, Some(200)), 100);
     }
 
     #[test]
-    fn compute_budget_ppm_falls_back_without_fee_history() {
+    fn compute_budget_ppm_falls_back_without_realized_fee_history() {
         assert_eq!(compute_budget_ppm(None, None, None), BOOTSTRAP_MAX_PPM);
+        assert_eq!(
+            compute_budget_ppm(None, None, Some(2_500)),
+            BOOTSTRAP_MAX_PPM
+        );
     }
 
     #[test]
