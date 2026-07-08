@@ -326,9 +326,8 @@ pub fn run_sling(store: &Store) {
             &deplete_amount_arg,
         ];
         log::info!(
-            "{alias} balance:{:.1}% amount_hint:{}s job_amount:{}s tppm:{} historical_fee_ppm:{} channel_ppm:{} maxppm:{} target:{} depleteuptopercent:{} depleteuptoamount:{}",
+            "{alias} balance:{:.1}% amount:{}s tppm:{} historical_fee_ppm:{} channel_ppm:{} maxppm:{} target:{} depleteuptopercent:{} depleteuptoamount:{}",
             balance * 100.0,
-            amount_hint,
             job_amount,
             tppm_log,
             historical_fee_ppm_log,
