@@ -13,7 +13,7 @@ const BOOTSTRAP_MAX_PPM: u64 = crate::fees::PPM_MIN;
 const BUDGET_PPM_MIN: u64 = crate::fees::PPM_MIN;
 // Rebalance budget cap. Keep this below the general channel fee cap because
 // this is what we are willing to pay, not what we are willing to charge.
-const BUDGET_PPM_MAX: u64 = 1000;
+const BUDGET_PPM_MAX: u64 = 700;
 const BOOTSTRAP_AMOUNT_CAP_SAT: u64 = 50_000;
 const BOOTSTRAP_CAPACITY_DIVISOR: u64 = 20;
 const REBALANCE_JOB_AMOUNT_CAP_SAT: u64 = 100_000;
