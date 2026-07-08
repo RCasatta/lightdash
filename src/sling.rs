@@ -218,12 +218,14 @@ fn enrich_sling_stats_with_last_channel_partner(
 pub fn run_sling(store: &Store) {
     let channels = store.normal_channels();
     log::info!(
-        "Sling inputs: channels:{} target_eligible_balance<={:.0}% rebalance_target:{:.0}% candidate_balance>=:{:.0}% min_amount:{}sat",
+        "Sling inputs: channels:{} target_eligible_balance<={:.0}% rebalance_target:{:.0}% candidate_balance>=:{:.0}% min_amount:{}sat depleteuptopercent:{} depleteuptoamount:{}",
         channels.len(),
         TARGET_ELIGIBLE_MAX_BALANCE * 100.0,
         TARGET_REBALANCE_BALANCE * 100.0,
         MIN_CANDIDATE_BALANCE * 100.0,
-        MIN_AMOUNT_SAT
+        MIN_AMOUNT_SAT,
+        CANDIDATE_DEPLETE_UP_TO_PERCENT,
+        CANDIDATE_DEPLETE_UP_TO_AMOUNT_SAT
     );
 
     let candidates = compute_full_candidates(store, &channels);
@@ -326,16 +328,13 @@ pub fn run_sling(store: &Store) {
             &deplete_amount_arg,
         ];
         log::info!(
-            "{alias} balance:{:.1}% amount:{}s tppm:{} historical_fee_ppm:{} channel_ppm:{} maxppm:{} target:{} depleteuptopercent:{} depleteuptoamount:{}",
+            "{alias} balance:{:.1}% amount:{}s tppm:{} historical_fee_ppm:{} channel_ppm:{} maxppm:{}",
             balance * 100.0,
             job_amount,
             tppm_log,
             historical_fee_ppm_log,
             my_ppm_log,
             budget_ppm,
-            TARGET_REBALANCE_BALANCE,
-            CANDIDATE_DEPLETE_UP_TO_PERCENT,
-            CANDIDATE_DEPLETE_UP_TO_AMOUNT_SAT,
         );
         log::debug!("{CMD} {}", args.join(" "));
         if execute_sling {
