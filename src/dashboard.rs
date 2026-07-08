@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use std::fs;
 
 use crate::cmd;
-use crate::{common::*, store::Store};
+use crate::{
+    common::*,
+    store::{RebalancePart, Store},
+};
 use maud::{html, Markup, PreEscaped, DOCTYPE};
 use serde::Deserialize;
 
@@ -2106,6 +2109,19 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                     }
                 }
 
+                @let recent_rebalances = store.rebalance_parts_last_days(30);
+                @let channel_rebalances: Vec<_> = recent_rebalances
+                    .into_iter()
+                    .filter(|part| part.target_channel_id.as_deref() == Some(scid.as_str()))
+                    .collect();
+                (create_rebalances_table_section(
+                    store,
+                    "Successful Rebalances Into This Channel Last Month",
+                    "No successful rebalances into this channel found in bookkeeper events for the last 30 days.",
+                    &channel_rebalances,
+                    "../channels/",
+                ))
+
                 // Channel Local Failed Forwards Section
                 @let channel_local_failed = store.get_channel_local_failed_forwards(scid);
                 @if !channel_local_failed.is_empty() {
@@ -2925,10 +2941,14 @@ fn abbreviated_identifier(value: &str) -> String {
     format!("{prefix}...{suffix}")
 }
 
-fn rebalance_channel_cell(short_channel_id: Option<&str>, account: &str) -> Markup {
+fn rebalance_channel_cell(
+    short_channel_id: Option<&str>,
+    account: &str,
+    channels_href_prefix: &str,
+) -> Markup {
     match short_channel_id {
         Some(scid) => html! {
-            a href={(format!("channels/{scid}.html"))} {
+            a href={(format!("{channels_href_prefix}{scid}.html"))} {
                 (scid)
             }
         },
@@ -2940,14 +2960,18 @@ fn rebalance_channel_cell(short_channel_id: Option<&str>, account: &str) -> Mark
     }
 }
 
-fn create_recent_rebalances_section(store: &Store) -> Markup {
-    let recent_rebalances = store.rebalance_parts_last_days(30);
-
+fn create_rebalances_table_section(
+    store: &Store,
+    title: &str,
+    empty_message: &str,
+    rebalances: &[&RebalancePart],
+    channels_href_prefix: &str,
+) -> Markup {
     html! {
         div class="info-card" {
-            h2 { "Successful Rebalances Last Month" }
-            @if recent_rebalances.is_empty() {
-                p { "No successful rebalances found in bookkeeper events for the last 30 days." }
+            h2 { (title) }
+            @if rebalances.is_empty() {
+                p { (empty_message) }
             } @else {
                 table class="sortable" {
                     thead {
@@ -2963,7 +2987,7 @@ fn create_recent_rebalances_section(store: &Store) -> Markup {
                         }
                     }
                     tbody {
-                        @for part in recent_rebalances {
+                        @for part in rebalances {
                             @let timestamp = part.timestamp.and_then(|timestamp| DateTime::from_timestamp(timestamp as i64, 0));
                             @let rebalance_ppm = if part.credit_msat == 0 {
                                 None
@@ -2982,12 +3006,14 @@ fn create_recent_rebalances_section(store: &Store) -> Markup {
                                     (rebalance_channel_cell(
                                         part.target_channel_id.as_deref(),
                                         &part.target_account,
+                                        channels_href_prefix,
                                     ))
                                 }
                                 td {
                                     (rebalance_channel_cell(
                                         part.source_channel_id.as_deref(),
                                         &part.source_account,
+                                        channels_href_prefix,
                                     ))
                                 }
                                 td style="text-align: right;" {
@@ -3024,6 +3050,18 @@ fn create_recent_rebalances_section(store: &Store) -> Markup {
             }
         }
     }
+}
+
+fn create_recent_rebalances_section(store: &Store) -> Markup {
+    let recent_rebalances = store.rebalance_parts_last_days(30);
+
+    create_rebalances_table_section(
+        store,
+        "Successful Rebalances Last Month",
+        "No successful rebalances found in bookkeeper events for the last 30 days.",
+        &recent_rebalances,
+        "channels/",
+    )
 }
 
 fn create_rebalance_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono::Utc>) {
