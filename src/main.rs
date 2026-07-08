@@ -46,10 +46,7 @@ enum Commands {
         directory: String,
     },
     /// Execute sling jobs for rebalancing
-    Sling {
-        /// Directory where sling stats snapshots are stored
-        directory: String,
-    },
+    Sling,
     /// Execute fee adjustments
     Fees {
         /// Path to JSON file with node uptime data (format: {node_id: {avail: float}})
@@ -106,10 +103,10 @@ fn main() {
                 routes::run_routes(&store, &directory, i);
             }
         }
-        Commands::Sling { directory } => {
+        Commands::Sling => {
             let store = Store::new(None);
 
-            sling::run_sling(&store, &directory);
+            sling::run_sling(&store);
         }
         Commands::Fees { availdb } => {
             let store = Store::new(availdb);
