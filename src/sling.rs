@@ -6,7 +6,8 @@ use std::hash::{Hash, Hasher};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const SOURCE_PPM_MAX: u64 = 300;
-const MAX_BALANCE: f64 = 0.5;
+const TARGET_ELIGIBLE_MAX_BALANCE: f64 = 0.3;
+const TARGET_REBALANCE_BALANCE: f64 = 0.5;
 const MIN_AMOUNT_SAT: u64 = 10_000;
 const BOOTSTRAP_MAX_PPM: u64 = crate::fees::PPM_MIN;
 const BUDGET_PPM_MIN: u64 = crate::fees::PPM_MIN;
@@ -17,7 +18,6 @@ const BOOTSTRAP_AMOUNT_CAP_SAT: u64 = 50_000;
 const BOOTSTRAP_CAPACITY_DIVISOR: u64 = 20;
 const REBALANCE_JOB_AMOUNT_CAP_SAT: u64 = 100_000;
 const REBALANCE_JOB_AMOUNT_JITTER_PERCENT: u64 = 10;
-const SLING_JOB_TARGET: &str = "0.5";
 const CANDIDATE_DEPLETE_UP_TO_PERCENT: &str = "0.5";
 const CANDIDATE_DEPLETE_UP_TO_AMOUNT_SAT: u64 = 1_000_000;
 const CMD: &str = "lightning-cli";
@@ -60,6 +60,10 @@ fn candidates_to_json(candidates: &[&String]) -> String {
     )
 }
 
+fn is_target_eligible(balance: f64) -> bool {
+    balance <= TARGET_ELIGIBLE_MAX_BALANCE
+}
+
 fn usable_ppm(ppm: Option<f64>) -> Option<f64> {
     ppm.filter(|ppm| ppm.is_finite() && *ppm > 0.0)
 }
@@ -91,7 +95,7 @@ fn compute_capacity_rebalance_amounts(
     channel_capacity_sat: u64,
     local_balance_sat: u64,
 ) -> Option<u64> {
-    let target_local_sat = (channel_capacity_sat as f64 * MAX_BALANCE) as u64;
+    let target_local_sat = (channel_capacity_sat as f64 * TARGET_REBALANCE_BALANCE) as u64;
     let missing_to_target_sat = target_local_sat.saturating_sub(local_balance_sat);
     let bootstrap_amount = compute_base_rebalance_amount(channel_capacity_sat)?;
     let amount = bootstrap_amount.min(missing_to_target_sat);
@@ -196,9 +200,10 @@ fn enrich_sling_stats_with_last_channel_partner(
 pub fn run_sling(store: &Store) {
     let channels = store.normal_channels();
     log::info!(
-        "Sling inputs: channels:{} target_balance<=:{:.0}% candidate_balance>=:{:.0}% min_amount:{}sat",
+        "Sling inputs: channels:{} target_eligible_balance<={:.0}% rebalance_target:{:.0}% candidate_balance>=:{:.0}% min_amount:{}sat",
         channels.len(),
-        MAX_BALANCE * 100.0,
+        TARGET_ELIGIBLE_MAX_BALANCE * 100.0,
+        TARGET_REBALANCE_BALANCE * 100.0,
         MIN_CANDIDATE_BALANCE * 100.0,
         MIN_AMOUNT_SAT
     );
@@ -208,7 +213,7 @@ pub fn run_sling(store: &Store) {
         "{} candidates found (ppm < {SOURCE_PPM_MAX} and balance > {MIN_CANDIDATE_BALANCE})",
         candidates.len()
     );
-
+    log::info!("candidates: {:?}", candidates);
     if candidates.is_empty() {
         return;
     }
@@ -228,7 +233,7 @@ pub fn run_sling(store: &Store) {
 
     for channel in channels {
         let balance = channel.perc_float();
-        if balance > MAX_BALANCE {
+        if !is_target_eligible(balance) {
             skipped_balance += 1;
             continue;
         }
@@ -287,7 +292,7 @@ pub fn run_sling(store: &Store) {
         let candidates_arg = format!("candidates={candidates_json}");
         let amount_arg = format!("amount={job_amount}");
         let maxppm_arg = format!("maxppm={budget_ppm}");
-        let target_arg = format!("target={SLING_JOB_TARGET}");
+        let target_arg = format!("target={TARGET_REBALANCE_BALANCE}");
         let deplete_percent_arg = format!("depleteuptopercent={CANDIDATE_DEPLETE_UP_TO_PERCENT}");
         let deplete_amount_arg = format!("depleteuptoamount={CANDIDATE_DEPLETE_UP_TO_AMOUNT_SAT}");
         let args = [
@@ -311,7 +316,7 @@ pub fn run_sling(store: &Store) {
             historical_fee_ppm_log,
             my_ppm_log,
             budget_ppm,
-            SLING_JOB_TARGET,
+            TARGET_REBALANCE_BALANCE,
             CANDIDATE_DEPLETE_UP_TO_PERCENT,
             CANDIDATE_DEPLETE_UP_TO_AMOUNT_SAT,
         );
@@ -338,8 +343,8 @@ pub fn run_sling(store: &Store) {
 mod tests {
     use super::{
         compute_base_rebalance_amount, compute_budget_ppm, compute_capacity_rebalance_amounts,
-        compute_job_amount, enrich_sling_stats_with_last_channel_partner, BOOTSTRAP_MAX_PPM,
-        BUDGET_PPM_MAX, BUDGET_PPM_MIN, REBALANCE_JOB_AMOUNT_CAP_SAT,
+        compute_job_amount, enrich_sling_stats_with_last_channel_partner, is_target_eligible,
+        BOOTSTRAP_MAX_PPM, BUDGET_PPM_MAX, BUDGET_PPM_MIN, REBALANCE_JOB_AMOUNT_CAP_SAT,
         REBALANCE_JOB_AMOUNT_JITTER_PERCENT,
     };
     use serde_json::Value;
@@ -410,6 +415,12 @@ mod tests {
     #[test]
     fn compute_capacity_rebalance_amounts_skips_when_missing_target_is_too_small() {
         assert_eq!(compute_capacity_rebalance_amounts(1_000_000, 495_000), None);
+    }
+
+    #[test]
+    fn target_eligibility_uses_thirty_percent_balance() {
+        assert!(is_target_eligible(0.30));
+        assert!(!is_target_eligible(0.31));
     }
 
     #[test]
