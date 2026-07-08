@@ -14,6 +14,10 @@ const BUDGET_PPM_MIN: u64 = crate::fees::PPM_MIN;
 // Rebalance budget cap. Keep this below the general channel fee cap because
 // this is what we are willing to pay, not what we are willing to charge.
 const BUDGET_PPM_MAX: u64 = 700;
+
+const ZERO_LOCAL_BOOTSTRAP_AMOUNT_SAT: u64 = crate::fees::DEPLETED_LOCAL_BALANCE_SAT * 2;
+const ZERO_LOCAL_BOOTSTRAP_MAX_PPM: u64 = BUDGET_PPM_MAX;
+
 const BOOTSTRAP_AMOUNT_CAP_SAT: u64 = 50_000;
 const BOOTSTRAP_CAPACITY_DIVISOR: u64 = 20;
 const REBALANCE_JOB_AMOUNT_CAP_SAT: u64 = 100_000;
@@ -151,6 +155,25 @@ fn compute_job_amount(amount_sat: u64, jitter_seed: u64) -> u64 {
     jittered_amount.clamp(MIN_AMOUNT_SAT as i64, REBALANCE_JOB_AMOUNT_CAP_SAT as i64) as u64
 }
 
+fn zero_local_bootstrap_args<'a>(
+    scid: &'a str,
+    candidates_arg: &'a str,
+    amount_arg: &'a str,
+    onceamount_arg: &'a str,
+    maxppm_arg: &'a str,
+) -> [&'a str; 8] {
+    [
+        "sling-once",
+        "-k",
+        scid,
+        "direction=pull",
+        candidates_arg,
+        maxppm_arg,
+        amount_arg,
+        onceamount_arg,
+    ]
+}
+
 fn delete_existing_sling_jobs() {
     log::info!("EXECUTE_SLING is set, deleting existing sling jobs before creating new ones");
     let result = crate::cmd::cmd_result(CMD, &["sling-deletejob", "all"]);
@@ -250,6 +273,7 @@ pub fn run_sling(store: &Store) {
     let mut targets_without_local_channel_info = 0u64;
     let mut skipped_small_amount = 0u64;
     let mut suggested = 0u64;
+    let mut bootstrap = 0u64;
 
     for channel in channels {
         let balance = channel.perc_float();
@@ -288,6 +312,40 @@ pub fn run_sling(store: &Store) {
 
         let channel_capacity_sat = channel.amount_msat / 1000;
         let local_balance_sat = channel.our_amount_msat / 1000;
+        let candidates_arg = format!("candidates={candidates_json}");
+
+        if local_balance_sat == 0 {
+            bootstrap += 1;
+            let scid_arg = format!("scid={scid}");
+            let amount_arg = format!("amount={ZERO_LOCAL_BOOTSTRAP_AMOUNT_SAT}");
+            let onceamount_arg = format!("onceamount={ZERO_LOCAL_BOOTSTRAP_AMOUNT_SAT}");
+            let maxppm_arg = format!("maxppm={ZERO_LOCAL_BOOTSTRAP_MAX_PPM}");
+            let args = zero_local_bootstrap_args(
+                &scid_arg,
+                &candidates_arg,
+                &amount_arg,
+                &onceamount_arg,
+                &maxppm_arg,
+            );
+            log::info!(
+                "{alias} balance:{:.1}% zero_local_bootstrap amount:{}s tppm:{} historical_fee_ppm:{} channel_ppm:{} maxppm:{}",
+                balance * 100.0,
+                ZERO_LOCAL_BOOTSTRAP_AMOUNT_SAT,
+                tppm_log,
+                historical_fee_ppm_log,
+                my_ppm_log,
+                ZERO_LOCAL_BOOTSTRAP_MAX_PPM,
+            );
+            log::debug!("{CMD} {}", args.join(" "));
+            if execute_sling {
+                log::info!("executing `{CMD} sling-once` {alias} scid:{scid}");
+
+                let result = crate::cmd::cmd_result(CMD, &args);
+                log::debug!("cmd return: {result}");
+            }
+            continue;
+        }
+
         let Some(amount_hint) =
             compute_capacity_rebalance_amounts(channel_capacity_sat, local_balance_sat)
         else {
@@ -309,7 +367,6 @@ pub fn run_sling(store: &Store) {
         // Build arguments as a Vec to avoid shell quoting issues.
         // When calling a program directly (not via shell), we pass raw values
         // without shell-style quoting like single quotes around the JSON array.
-        let candidates_arg = format!("candidates={candidates_json}");
         let amount_arg = format!("amount={job_amount}");
         let maxppm_arg = format!("maxppm={budget_ppm}");
         let target_arg = format!("target={TARGET_REBALANCE_BALANCE}");
@@ -346,8 +403,9 @@ pub fn run_sling(store: &Store) {
     }
 
     log::info!(
-        "Sling summary: suggested:{} skipped_balance:{} skipped_small_amount:{} skipped_missing_scid:{} targets_without_local_channel_info:{}",
+        "Sling summary: suggested:{} bootstrap:{} skipped_balance:{} skipped_small_amount:{} skipped_missing_scid:{} targets_without_local_channel_info:{}",
         suggested,
+        bootstrap,
         skipped_balance,
         skipped_small_amount,
         skipped_missing_scid,
@@ -360,8 +418,8 @@ mod tests {
     use super::{
         compute_base_rebalance_amount, compute_budget_ppm, compute_capacity_rebalance_amounts,
         compute_job_amount, enrich_sling_stats_with_last_channel_partner, is_target_eligible,
-        BOOTSTRAP_MAX_PPM, BUDGET_PPM_MAX, BUDGET_PPM_MIN, REBALANCE_JOB_AMOUNT_CAP_SAT,
-        REBALANCE_JOB_AMOUNT_JITTER_PERCENT,
+        zero_local_bootstrap_args, BOOTSTRAP_MAX_PPM, BUDGET_PPM_MAX, BUDGET_PPM_MIN,
+        REBALANCE_JOB_AMOUNT_CAP_SAT, REBALANCE_JOB_AMOUNT_JITTER_PERCENT,
     };
     use serde_json::Value;
 
@@ -373,7 +431,7 @@ mod tests {
     fn compute_budget_ppm_uses_half_of_available_metric_average() {
         assert_eq!(
             compute_budget_ppm(Some(2_947.0), Some(316.0), Some(1_223)),
-            815
+            BUDGET_PPM_MAX
         );
         assert_eq!(compute_budget_ppm(Some(400.0), Some(200.0), Some(300)), 150);
     }
@@ -453,6 +511,29 @@ mod tests {
     fn target_eligibility_uses_thirty_percent_balance() {
         assert!(is_target_eligible(0.30));
         assert!(!is_target_eligible(0.31));
+    }
+
+    #[test]
+    fn zero_local_bootstrap_uses_sling_once_arguments() {
+        assert_eq!(
+            zero_local_bootstrap_args(
+                "scid=1x2x3",
+                "candidates=[]",
+                "amount=60000",
+                "onceamount=60000",
+                "maxppm=500",
+            ),
+            [
+                "sling-once",
+                "-k",
+                "scid=1x2x3",
+                "direction=pull",
+                "candidates=[]",
+                "maxppm=500",
+                "amount=60000",
+                "onceamount=60000",
+            ]
+        );
     }
 
     #[test]
