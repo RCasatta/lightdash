@@ -1872,6 +1872,19 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                     }
 
                     div class="info-item" {
+                        span class="label" title="Time-decayed effective fee rate using a 1-week half-life, weighted by routed amount." {
+                            "TPPM: "
+                        }
+                        span class="value" {
+                            @if let Some(tppm) = store.get_channel_time_decayed_effective_fee_ppm(scid) {
+                                (format!("{tppm:.0} ppm"))
+                            } @else {
+                                "-"
+                            }
+                        }
+                    }
+
+                    div class="info-item" {
                         span class="label" { "Total Rebalance Cost: " }
                         span class="value" {
                             (format!(

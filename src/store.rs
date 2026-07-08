@@ -831,6 +831,41 @@ impl Store {
         Some(total_fees as f64 * 1_000_000.0 / total_routed as f64)
     }
 
+    /// Get time-decayed effective fee rate in ppm for outbound forwards on a channel.
+    ///
+    /// Uses a 1-week half-life. The average is still weighted by routed amount:
+    /// sum(fee * decay) divided by sum(amount * decay).
+    pub fn get_channel_time_decayed_effective_fee_ppm(
+        &self,
+        short_channel_id: &str,
+    ) -> Option<f64> {
+        const HALF_LIFE_SECONDS: f64 = 7.0 * 24.0 * 60.0 * 60.0;
+
+        let (weighted_fees, weighted_routed) = self
+            .settled_forwards()
+            .iter()
+            .filter(|forward| forward.out_channel == short_channel_id)
+            .fold((0.0, 0.0), |(fees, routed), forward| {
+                let age_seconds = self
+                    .now
+                    .signed_duration_since(forward.resolved_time)
+                    .num_seconds()
+                    .max(0) as f64;
+                let decay = 0.5_f64.powf(age_seconds / HALF_LIFE_SECONDS);
+
+                (
+                    fees + forward.fee_sat as f64 * decay,
+                    routed + forward.out_sat as f64 * decay,
+                )
+            });
+
+        if weighted_routed == 0.0 {
+            return None;
+        }
+
+        Some(weighted_fees * 1_000_000.0 / weighted_routed)
+    }
+
     pub fn get_channel_rebalance_target_cost_msat(&self, short_channel_id: &str) -> u64 {
         self.rebalance_parts
             .iter()
