@@ -25,8 +25,6 @@ const LOW_LOCAL_BOOTSTRAP_MAX_PPM: u64 = BUDGET_PPM_MAX;
 
 const BOOTSTRAP_AMOUNT_CAP_SAT: u64 = 50_000;
 const BOOTSTRAP_CAPACITY_DIVISOR: u64 = 20;
-const REBALANCE_JOB_AMOUNT_CAP_SAT: u64 = 100_000;
-const REBALANCE_JOB_AMOUNT_JITTER_PERCENT: u64 = 10;
 const CANDIDATE_DEPLETE_UP_TO_PERCENT: &str = "0.5";
 const CANDIDATE_DEPLETE_UP_TO_AMOUNT_SAT: u64 = 1_000_000;
 const CMD: &str = "lightning-cli";
@@ -152,16 +150,9 @@ fn rebalance_jitter_seed(scid: &str) -> u64 {
 }
 
 fn compute_job_amount(amount_sat: u64, jitter_seed: u64) -> u64 {
-    let capped_amount = amount_sat.min(REBALANCE_JOB_AMOUNT_CAP_SAT);
-    let jitter_span = capped_amount * REBALANCE_JOB_AMOUNT_JITTER_PERCENT / 100;
-    if jitter_span == 0 {
-        return capped_amount;
-    }
-
-    let jitter_range = 2 * jitter_span + 1;
-    let jitter = jitter_seed % jitter_range;
-    let jittered_amount = capped_amount as i64 + jitter as i64 - jitter_span as i64;
-    jittered_amount.clamp(MIN_AMOUNT_SAT as i64, REBALANCE_JOB_AMOUNT_CAP_SAT as i64) as u64
+    let values = [10_000, 20_000, 80_000, 160_000, 320_000];
+    let index = (jitter_seed % values.len() as u64) as usize;
+    values[index].min(amount_sat).max(MIN_AMOUNT_SAT)
 }
 
 fn low_local_bootstrap_args<'a>(
@@ -447,7 +438,7 @@ mod tests {
         compute_base_rebalance_amount, compute_budget_ppm, compute_capacity_rebalance_amounts,
         compute_job_amount, enrich_sling_stats_with_last_channel_partner, is_target_eligible,
         low_local_bootstrap_args, should_bootstrap_low_local, BOOTSTRAP_MAX_PPM, BUDGET_PPM_MAX,
-        BUDGET_PPM_MIN, REBALANCE_JOB_AMOUNT_CAP_SAT, REBALANCE_JOB_AMOUNT_JITTER_PERCENT,
+        BUDGET_PPM_MIN,
     };
     use serde_json::Value;
 
@@ -573,31 +564,14 @@ mod tests {
     }
 
     #[test]
-    fn compute_job_amount_can_keep_the_base_amount_with_neutral_jitter() {
-        let jitter_span = 50_000 * REBALANCE_JOB_AMOUNT_JITTER_PERCENT / 100;
-        assert_eq!(compute_job_amount(50_000, jitter_span), 50_000);
-    }
-
-    #[test]
-    fn compute_job_amount_applies_bounded_jitter() {
-        let jitter_span = 50_000 * REBALANCE_JOB_AMOUNT_JITTER_PERCENT / 100;
-        assert_eq!(compute_job_amount(50_000, 0), 45_000);
-        assert_eq!(compute_job_amount(50_000, 2 * jitter_span), 55_000);
-    }
-
-    #[test]
-    fn compute_job_amount_caps_after_jitter() {
-        let jitter_span = REBALANCE_JOB_AMOUNT_CAP_SAT * REBALANCE_JOB_AMOUNT_JITTER_PERCENT / 100;
-        assert_eq!(
-            compute_job_amount(500_000, 2 * jitter_span),
-            REBALANCE_JOB_AMOUNT_CAP_SAT
-        );
-    }
-
-    #[test]
-    fn compute_job_amount_keeps_minimum_without_rounding_to_multiple_of_four() {
-        assert_eq!(compute_job_amount(10_001, 0), 10_000);
-        assert_eq!(compute_job_amount(50_003, 5_000), 50_003);
+    fn compute_job_amount_returns_random_predefined_value() {
+        assert_eq!(compute_job_amount(200_000, 0), 10_000);
+        assert_eq!(compute_job_amount(200_000, 1), 20_000);
+        assert_eq!(compute_job_amount(200_000, 2), 80_000);
+        assert_eq!(compute_job_amount(200_000, 3), 160_000);
+        assert_eq!(compute_job_amount(200_000, 4), 200_000);
+        assert_eq!(compute_job_amount(2_000_000, 4), 320_000);
+        assert_eq!(compute_job_amount(10_000, 2), 10_000);
     }
 
     #[test]
