@@ -11,6 +11,7 @@ pub const MIN_HTLC: u64 = 100000; // msat
 pub const INCREASE_STEP_PERC: f64 = 0.1;
 pub const DECREASE_STEP_PERC: f64 = 0.05;
 pub const FEE_BASE: u64 = 1000; // msat
+pub const FAST_DECREASE_PPM_THRESHOLD: u64 = 1000;
 
 pub fn run_fees(store: &Store) {
     let normal_channels = store.normal_channels();
@@ -60,9 +61,13 @@ pub fn largest_power_of_two_leq(n: u64) -> u64 {
     }
 }
 
-fn fee_perc_change(forwards_ok: usize) -> f64 {
+fn fee_perc_change(forwards_ok: usize, current_ppm: u64) -> f64 {
     if forwards_ok == 0 {
-        -DECREASE_STEP_PERC
+        if current_ppm > FAST_DECREASE_PPM_THRESHOLD {
+            -DECREASE_STEP_PERC * 2.0
+        } else {
+            -DECREASE_STEP_PERC
+        }
     } else {
         INCREASE_STEP_PERC
     }
@@ -126,7 +131,7 @@ pub fn calc_setchannel(
         max(new_max_htlc_msat, 1), // min_htlc cannot be greater than max_htlc and lower than 1
     );
 
-    let perc_change = fee_perc_change(forwards_ok);
+    let perc_change = fee_perc_change(forwards_ok, current_ppm);
 
     let new_ppm = (current_ppm as f64 + (current_ppm as f64 * perc_change)) as u64;
 
@@ -213,13 +218,30 @@ mod tests {
 
     #[test]
     fn fee_perc_change_uses_fixed_decrease_without_forwards() {
-        assert_eq!(fee_perc_change(0), -DECREASE_STEP_PERC);
+        assert_eq!(
+            fee_perc_change(0, FAST_DECREASE_PPM_THRESHOLD),
+            -DECREASE_STEP_PERC
+        );
+        assert_eq!(
+            fee_perc_change(0, FAST_DECREASE_PPM_THRESHOLD - 500),
+            -DECREASE_STEP_PERC
+        );
+        assert_eq!(
+            fee_perc_change(0, FAST_DECREASE_PPM_THRESHOLD + 1),
+            -DECREASE_STEP_PERC * 2.0
+        );
     }
 
     #[test]
     fn fee_perc_change_uses_fixed_increase_with_forwards() {
-        assert_eq!(fee_perc_change(1), INCREASE_STEP_PERC);
-        assert_eq!(fee_perc_change(12), INCREASE_STEP_PERC);
+        assert_eq!(
+            fee_perc_change(1, FAST_DECREASE_PPM_THRESHOLD),
+            INCREASE_STEP_PERC
+        );
+        assert_eq!(
+            fee_perc_change(12, FAST_DECREASE_PPM_THRESHOLD * 2),
+            INCREASE_STEP_PERC
+        );
     }
 
     #[test]
