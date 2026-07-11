@@ -13,7 +13,7 @@ const BOOTSTRAP_MAX_PPM: u64 = crate::fees::PPM_MIN;
 const BUDGET_PPM_MIN: u64 = crate::fees::PPM_MIN;
 // Rebalance budget cap. Keep this below the general channel fee cap because
 // this is what we are willing to pay, not what we are willing to charge.
-const BUDGET_PPM_MAX: u64 = 800;
+const BUDGET_PPM_MAX: u64 = 1000;
 
 // Bootstrap rebalances make the channel greater than the depleted threshold,
 // triggering dynamic fee search.
