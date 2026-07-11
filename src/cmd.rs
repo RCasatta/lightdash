@@ -289,6 +289,8 @@ pub struct BkprListAccountEvents {
 pub struct BkprAccountEvent {
     pub account: String,
     #[serde(default)]
+    pub tag: String,
+    #[serde(default)]
     pub credit_msat: u64,
     #[serde(default)]
     pub debit_msat: u64,

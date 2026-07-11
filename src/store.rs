@@ -81,13 +81,20 @@ struct RebalancePartBuilder {
     timestamp: Option<u64>,
 }
 
+fn is_rebalance_candidate_event(event: &cmd::BkprAccountEvent) -> bool {
+    event.is_rebalance || event.tag == "invoice"
+}
+
 pub(crate) fn match_rebalance_parts(
     events: &[cmd::BkprAccountEvent],
     account_to_channel: &HashMap<String, String>,
 ) -> Vec<RebalancePart> {
     let mut grouped: HashMap<(String, u64), RebalancePartBuilder> = HashMap::new();
 
-    for event in events.iter().filter(|event| event.is_rebalance) {
+    for event in events
+        .iter()
+        .filter(|event| is_rebalance_candidate_event(event))
+    {
         let (Some(payment_id), Some(part_id)) = (&event.payment_id, event.part_id) else {
             log::debug!(
                 "Ignoring rebalance event without payment_id or part_id on account {}",
@@ -1541,16 +1548,78 @@ mod tests {
         assert!(parts.is_empty());
     }
 
+    #[test]
+    fn rebalance_matching_includes_self_invoice_pairs_without_rebalance_flag() {
+        let events = parse_events(
+            r#"{
+                "events": [
+                    {
+                        "account": "source-account",
+                        "tag": "invoice",
+                        "credit_msat": 0,
+                        "debit_msat": 10005011,
+                        "payment_id": "payment-6",
+                        "fees_msat": 5011,
+                        "is_rebalance": false,
+                        "part_id": 0,
+                        "timestamp": 1783711902
+                    },
+                    {
+                        "account": "target-account",
+                        "tag": "invoice",
+                        "credit_msat": 10000000,
+                        "debit_msat": 0,
+                        "payment_id": "payment-6",
+                        "is_rebalance": false,
+                        "part_id": 0,
+                        "timestamp": 1783711903
+                    },
+                    {
+                        "account": "other-source",
+                        "tag": "routed",
+                        "credit_msat": 0,
+                        "debit_msat": 5000000,
+                        "payment_id": "forward-1",
+                        "fees_msat": 100,
+                        "is_rebalance": false,
+                        "part_id": 0
+                    },
+                    {
+                        "account": "other-target",
+                        "tag": "routed",
+                        "credit_msat": 5000100,
+                        "debit_msat": 0,
+                        "payment_id": "forward-1",
+                        "fees_msat": 100,
+                        "is_rebalance": false,
+                        "part_id": 0
+                    }
+                ]
+            }"#,
+        );
+
+        let parts = match_rebalance_parts(&events, &account_map());
+
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].payment_id, "payment-6");
+        assert_eq!(parts[0].source_channel_id.as_deref(), Some("source-scid"));
+        assert_eq!(parts[0].target_channel_id.as_deref(), Some("target-scid"));
+        assert_eq!(parts[0].debit_msat, 10005011);
+        assert_eq!(parts[0].credit_msat, 10000000);
+        assert_eq!(parts[0].fees_msat, 5011);
+        assert_eq!(parts[0].timestamp, Some(1783711902));
+    }
+
     #[cfg(feature = "large-fixture-tests")]
     #[test]
     fn gz_bkpr_fixture_matches_expected_rebalance_parts() {
         let events = cmd::bkpr_list_account_events();
         let parts = match_rebalance_parts(&events.events, &HashMap::new());
 
-        assert_eq!(parts.len(), 1593);
+        assert_eq!(parts.len(), 1827);
         assert_eq!(
             parts.iter().map(|part| part.fees_msat).sum::<u64>(),
-            7_598_600
+            8_276_748
         );
     }
 }
