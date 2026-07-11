@@ -23,7 +23,6 @@ const LOW_LOCAL_BOOTSTRAP_AMOUNT_SAT: u64 = crate::fees::DEPLETED_LOCAL_BALANCE_
 // We are okay paying a lot for first bootstrap, because it is one-shot and amount-limited.
 const LOW_LOCAL_BOOTSTRAP_MAX_PPM: u64 = BUDGET_PPM_MAX;
 
-const BOOTSTRAP_AMOUNT_CAP_SAT: u64 = 50_000;
 const BOOTSTRAP_CAPACITY_DIVISOR: u64 = 20;
 const CANDIDATE_DEPLETE_UP_TO_PERCENT: &str = "0.5";
 const CANDIDATE_DEPLETE_UP_TO_AMOUNT_SAT: u64 = 1_000_000;
@@ -105,8 +104,7 @@ fn compute_budget_ppm(
 }
 
 fn compute_base_rebalance_amount(channel_capacity_sat: u64) -> Option<u64> {
-    let target_amount =
-        (channel_capacity_sat / BOOTSTRAP_CAPACITY_DIVISOR).min(BOOTSTRAP_AMOUNT_CAP_SAT);
+    let target_amount = channel_capacity_sat / BOOTSTRAP_CAPACITY_DIVISOR;
     let amount = target_amount - (target_amount % 4);
 
     if amount < MIN_AMOUNT_SAT {
@@ -150,7 +148,7 @@ fn rebalance_jitter_seed(scid: &str) -> u64 {
 }
 
 fn compute_job_amount(amount_sat: u64, jitter_seed: u64) -> u64 {
-    let values = [10_000, 20_000, 80_000, 160_000, 320_000];
+    let values = [10_000, 20_000, 40_000, 80_000, 160_000, 320_000];
     let index = (jitter_seed % values.len() as u64) as usize;
     values[index].min(amount_sat).max(MIN_AMOUNT_SAT)
 }
@@ -499,8 +497,8 @@ mod tests {
     }
 
     #[test]
-    fn compute_base_rebalance_amount_caps_large_channels() {
-        assert_eq!(compute_base_rebalance_amount(2_000_000), Some(50_000));
+    fn compute_base_rebalance_amount_uses_five_percent_for_large_channels() {
+        assert_eq!(compute_base_rebalance_amount(2_000_000), Some(100_000));
     }
 
     #[test]
@@ -567,10 +565,11 @@ mod tests {
     fn compute_job_amount_returns_random_predefined_value() {
         assert_eq!(compute_job_amount(200_000, 0), 10_000);
         assert_eq!(compute_job_amount(200_000, 1), 20_000);
-        assert_eq!(compute_job_amount(200_000, 2), 80_000);
-        assert_eq!(compute_job_amount(200_000, 3), 160_000);
-        assert_eq!(compute_job_amount(200_000, 4), 200_000);
-        assert_eq!(compute_job_amount(2_000_000, 4), 320_000);
+        assert_eq!(compute_job_amount(200_000, 2), 40_000);
+        assert_eq!(compute_job_amount(200_000, 3), 80_000);
+        assert_eq!(compute_job_amount(200_000, 4), 160_000);
+        assert_eq!(compute_job_amount(200_000, 5), 200_000);
+        assert_eq!(compute_job_amount(2_000_000, 5), 320_000);
         assert_eq!(compute_job_amount(10_000, 2), 10_000);
     }
 
