@@ -119,10 +119,8 @@ pub fn signmessage(message: &str) -> String {
 
 pub fn cmd_result(cmd: &str, args: &[impl AsRef<str>]) -> Value {
     // println!("cmd:{cmd} args:{args:?}");
-    let data = match std::process::Command::new(cmd)
-        .args(args.iter().map(|s| s.as_ref()))
-        .output()
-    {
+    let args: Vec<&str> = args.iter().map(|s| s.as_ref()).collect();
+    let data = match std::process::Command::new(cmd).args(&args).output() {
         Ok(data) => data,
         Err(e) => {
             error_panic!("executing `{cmd}` with {} args returned {e:?}", args.len());
@@ -132,7 +130,11 @@ pub fn cmd_result(cmd: &str, args: &[impl AsRef<str>]) -> Value {
     match serde_json::from_str(s) {
         Ok(v) => v,
         Err(e) => {
-            error_panic!("executing `{cmd}` returned {s} with error {e:?}");
+            let stderr = std::str::from_utf8(&data.stderr).unwrap_or("<stderr is not utf8>");
+            error_panic!(
+                "executing `{cmd}` with args {args:?} exited with status {} and stdout `{s}` stderr `{stderr}`; parsing json returned {e:?}",
+                data.status
+            );
         }
     }
 }
