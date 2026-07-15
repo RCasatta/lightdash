@@ -1337,6 +1337,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
         div class="info-card" {
             h2 { "Channel List" }
             p { "Total channels: " (channels.len()) }
+            p { "Indirect ROIC attributes each settled forwarding fee to the incoming channel as well as the revenue-earning outgoing channel. Do not aggregate it across the node as unique revenue." }
 
             table class="sortable" {
                 thead {
@@ -1353,6 +1354,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                         th style="text-align: right;" { "HTLC Max (sats)" }
                         th style="text-align: right;" { "Inbound PPM" }
                         th style="text-align: right;" title="Annualized channel return after subtracting target-attributed rebalance cost." { "Net ROIC%" }
+                        th style="text-align: right;" title="Annualized return from fees on settled forwards for which this was the incoming channel. Revenue is earned on the paired outgoing channel; do not aggregate this attribution as unique node revenue." { "Indirect ROIC%" }
                     }
                 }
                 tbody {
@@ -1472,6 +1474,19 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                                     "-"
                                 }
                             }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(indirect_roic) = store.get_channel_indirect_roic(scid) {
+                                        span title={(format!("{} sats indirectly attributed / {} sats capacity", format_sats(store.get_channel_indirect_fees(scid)), format_sats(channel.amount_msat / 1000)))} {
+                                            (format!("{indirect_roic:.2}%"))
+                                        }
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
+                            }
                         }
                     }
                 }
@@ -1497,6 +1512,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                         th style="text-align: right;" { "HTLC Max (sats)" }
                         th style="text-align: right;" { "Inbound PPM" }
                         th style="text-align: right;" title="Annualized channel return after subtracting target-attributed rebalance cost." { "Net ROIC%" }
+                        th style="text-align: right;" title="Annualized return from fees on settled forwards for which this was the incoming channel. Revenue is earned on the paired outgoing channel; do not aggregate this attribution as unique node revenue." { "Indirect ROIC%" }
                         th style="text-align: right;" { "Age (days)" }
                     }
                 }
@@ -1609,6 +1625,19 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                                     @if let Some(net_roic) = store.get_channel_net_roic(scid) {
                                         span title={(format!("{} sats net / {} sats capacity", format_signed_sats(store.get_channel_net_routing_revenue_msat(scid) / 1000), format_sats(channel.amount_msat / 1000)))} {
                                             (format!("{:.2}%", net_roic))
+                                        }
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
+                            }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(indirect_roic) = store.get_channel_indirect_roic(scid) {
+                                        span title={(format!("{} sats indirectly attributed / {} sats capacity", format_sats(store.get_channel_indirect_fees(scid)), format_sats(channel.amount_msat / 1000)))} {
+                                            (format!("{indirect_roic:.2}%"))
                                         }
                                     } @else {
                                         "-"
@@ -1888,6 +1917,11 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                     }
 
                     div class="info-item" {
+                        span class="label" title="Fees on settled forwards for which this was the incoming channel. Revenue is earned on the paired outgoing channel." { "Indirect Fees: " }
+                        span class="value" { (format!("{} sats", format_sats(store.get_channel_indirect_fees(scid)))) }
+                    }
+
+                    div class="info-item" {
                         span class="label" { "Historical Effective Fee Rate: " }
                         span class="value" {
                             @if let Some(effective_fee_ppm) = store.get_channel_effective_fee_ppm(scid) {
@@ -1985,6 +2019,28 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                                 "{} sats",
                                 format_signed_sats(store.get_channel_net_routing_revenue_msat(scid) / 1000)
                             ))
+                        }
+                    }
+
+                    div class="info-item" {
+                        span class="label" { "Net ROIC: " }
+                        span class="value" {
+                            @if let Some(net_roic) = store.get_channel_net_roic(scid) {
+                                (format!("{net_roic:.2}%"))
+                            } @else {
+                                "-"
+                            }
+                        }
+                    }
+
+                    div class="info-item" {
+                        span class="label" title="Annualized return from fees on settled forwards for which this was the incoming channel. Revenue is earned on the paired outgoing channel; do not aggregate this attribution as unique node revenue." { "Indirect ROIC: " }
+                        span class="value" {
+                            @if let Some(indirect_roic) = store.get_channel_indirect_roic(scid) {
+                                (format!("{indirect_roic:.2}%"))
+                            } @else {
+                                "-"
+                            }
                         }
                     }
 
@@ -2649,6 +2705,7 @@ fn create_closed_channels_page(
                             th style="text-align: right;" { "Opening Block" }
                             th style="text-align: right;" { "Final Amount (sats)" }
                             th style="text-align: right;" title="Annualized all-time channel return after subtracting target-attributed rebalance cost. Lifetime uses last stable connection when available." { "Net ROIC%" }
+                            th style="text-align: right;" title="Annualized all-time return from fees on settled forwards for which this was the incoming channel. Revenue is earned on the paired outgoing channel; do not aggregate this attribution as unique node revenue." { "Indirect ROIC%" }
                             th style="text-align: right;" { "Total HTLCs Sent" }
                         }
                     }
@@ -2709,6 +2766,13 @@ fn create_closed_channels_page(
                                 td style="text-align: right;" {
                                     @if let Some(net_roic) = store.get_closed_channel_net_roic(&channel_info.channel) {
                                         (format!("{net_roic:.2}%"))
+                                    } @else {
+                                        "-"
+                                    }
+                                }
+                                td style="text-align: right;" {
+                                    @if let Some(indirect_roic) = store.get_closed_channel_indirect_roic(&channel_info.channel) {
+                                        (format!("{indirect_roic:.2}%"))
                                     } @else {
                                         "-"
                                     }

@@ -85,6 +85,39 @@ fn is_rebalance_candidate_event(event: &cmd::BkprAccountEvent) -> bool {
     event.is_rebalance || event.tag == "invoice"
 }
 
+fn annualized_channel_roic_percent(
+    revenue_msat: i64,
+    channel_capacity_msat: u64,
+    age_days: i64,
+) -> f64 {
+    if age_days <= 0 || channel_capacity_msat == 0 {
+        return 0.0;
+    }
+
+    (revenue_msat as f64 / channel_capacity_msat as f64) * (365.0 / age_days as f64) * 100.0
+}
+
+#[derive(Clone, Copy)]
+enum ForwardChannelSide {
+    Incoming,
+    Outgoing,
+}
+
+fn forwarding_fees_sat_for_channel(
+    forwards: &[SettledForward],
+    short_channel_id: &str,
+    side: ForwardChannelSide,
+) -> u64 {
+    forwards
+        .iter()
+        .filter(|forward| match side {
+            ForwardChannelSide::Incoming => forward.in_channel == short_channel_id,
+            ForwardChannelSide::Outgoing => forward.out_channel == short_channel_id,
+        })
+        .map(|forward| forward.fee_sat)
+        .sum()
+}
+
 pub(crate) fn match_rebalance_parts(
     events: &[cmd::BkprAccountEvent],
     account_to_channel: &HashMap<String, String>,
@@ -809,11 +842,20 @@ impl Store {
 
     /// Get total fees earned for a specific channel (from outbound forwards)
     pub fn get_channel_total_fees(&self, short_channel_id: &str) -> u64 {
-        self.settled_forwards()
-            .iter()
-            .filter(|f| f.out_channel == short_channel_id)
-            .map(|f| f.fee_sat)
-            .sum()
+        forwarding_fees_sat_for_channel(
+            &self.settled_forwards(),
+            short_channel_id,
+            ForwardChannelSide::Outgoing,
+        )
+    }
+
+    /// Get fees attributed indirectly to a channel acting as the incoming channel.
+    pub fn get_channel_indirect_fees(&self, short_channel_id: &str) -> u64 {
+        forwarding_fees_sat_for_channel(
+            &self.settled_forwards(),
+            short_channel_id,
+            ForwardChannelSide::Incoming,
+        )
     }
 
     pub fn get_channel_forwarding_fee_totals(&self, short_channel_id: &str) -> (u64, u64) {
@@ -991,41 +1033,46 @@ impl Store {
 
     pub fn get_channel_net_roic(&self, short_channel_id: &str) -> Option<f64> {
         let age_days = self.get_channel_age_days(short_channel_id)?;
-        if age_days <= 0 {
-            return Some(0.0);
-        }
-
         let fund = self.get_fund(short_channel_id)?;
-        let channel_capacity_msat = fund.amount_msat;
-        if channel_capacity_msat == 0 {
-            return Some(0.0);
-        }
-
         let net_revenue_msat = self.get_channel_net_routing_revenue_msat(short_channel_id);
-        Some(
-            (net_revenue_msat as f64 / channel_capacity_msat as f64)
-                * (365.0 / age_days as f64)
-                * 100.0,
-        )
+        Some(annualized_channel_roic_percent(
+            net_revenue_msat,
+            fund.amount_msat,
+            age_days,
+        ))
+    }
+
+    pub fn get_channel_indirect_roic(&self, short_channel_id: &str) -> Option<f64> {
+        let age_days = self.get_channel_age_days(short_channel_id)?;
+        let fund = self.get_fund(short_channel_id)?;
+        let indirect_fees_msat = self.get_channel_indirect_fees(short_channel_id) as i64 * 1000;
+        Some(annualized_channel_roic_percent(
+            indirect_fees_msat,
+            fund.amount_msat,
+            age_days,
+        ))
     }
 
     pub fn get_closed_channel_net_roic(&self, channel: &cmd::ClosedChannel) -> Option<f64> {
         let short_channel_id = channel.short_channel_id.as_deref()?;
         let age_days = self.get_closed_channel_age_days(channel)?;
-        if age_days <= 0 {
-            return Some(0.0);
-        }
-
-        if channel.total_msat == 0 {
-            return Some(0.0);
-        }
-
         let net_revenue_msat = self.get_channel_net_routing_revenue_msat(short_channel_id);
-        Some(
-            (net_revenue_msat as f64 / channel.total_msat as f64)
-                * (365.0 / age_days as f64)
-                * 100.0,
-        )
+        Some(annualized_channel_roic_percent(
+            net_revenue_msat,
+            channel.total_msat,
+            age_days,
+        ))
+    }
+
+    pub fn get_closed_channel_indirect_roic(&self, channel: &cmd::ClosedChannel) -> Option<f64> {
+        let short_channel_id = channel.short_channel_id.as_deref()?;
+        let age_days = self.get_closed_channel_age_days(channel)?;
+        let indirect_fees_msat = self.get_channel_indirect_fees(short_channel_id) as i64 * 1000;
+        Some(annualized_channel_roic_percent(
+            indirect_fees_msat,
+            channel.total_msat,
+            age_days,
+        ))
     }
 
     pub fn get_closed_channel_age_days(&self, channel: &cmd::ClosedChannel) -> Option<i64> {
@@ -1368,6 +1415,11 @@ impl Store {
 mod tests {
     use super::*;
 
+    const INCOMING_SCID: &str = "147440x1x0";
+    const OUTGOING_SCID: &str = "147440x2x0";
+    const UNRELATED_SCID: &str = "147440x3x0";
+    const NOW_TIMESTAMP: i64 = 2_000_000_000;
+
     fn parse_events(json: &str) -> Vec<cmd::BkprAccountEvent> {
         serde_json::from_str::<cmd::BkprListAccountEvents>(json)
             .unwrap()
@@ -1381,6 +1433,217 @@ mod tests {
             ("other-source".to_string(), "other-source-scid".to_string()),
             ("other-target".to_string(), "other-target-scid".to_string()),
         ])
+    }
+
+    fn fund(short_channel_id: &str, amount_msat: u64) -> cmd::Fund {
+        cmd::Fund {
+            peer_id: "shared-peer".to_string(),
+            connected: true,
+            state: "CHANNELD_NORMAL".to_string(),
+            channel_id: format!("channel-{short_channel_id}"),
+            short_channel_id: Some(short_channel_id.to_string()),
+            our_amount_msat: amount_msat / 2,
+            amount_msat,
+            funding_txid: "funding-txid".to_string(),
+            funding_output: 0,
+        }
+    }
+
+    fn forward(
+        in_channel: &str,
+        out_channel: &str,
+        fee_msat: u64,
+        status: &str,
+        resolved_time: i64,
+    ) -> cmd::Forward {
+        cmd::Forward {
+            in_channel: in_channel.to_string(),
+            out_channel: Some(out_channel.to_string()),
+            fee_msat: Some(fee_msat),
+            in_msat: 1_000_000 + fee_msat,
+            out_msat: Some(1_000_000),
+            status: status.to_string(),
+            received_time: (resolved_time - 1) as f64,
+            resolved_time: Some(resolved_time as f64),
+            failreason: None,
+            failcode: None,
+        }
+    }
+
+    fn test_store(
+        funds: Vec<cmd::Fund>,
+        forwards: Vec<cmd::Forward>,
+        rebalance_parts: Vec<RebalancePart>,
+    ) -> Store {
+        Store {
+            info: cmd::GetInfo {
+                id: "our-node".to_string(),
+                blockheight: 200_000,
+            },
+            channels: cmd::ListChannels { channels: vec![] },
+            peers: cmd::ListPeers { peers: vec![] },
+            funds: cmd::ListFunds {
+                channels: funds,
+                outputs: vec![],
+            },
+            forwards: cmd::ListForwards { forwards },
+            nodes: cmd::ListNodes { nodes: vec![] },
+            closed_channels: cmd::ListClosedChannels {
+                closedchannels: vec![],
+            },
+            rebalance_parts,
+            nodes_by_id: HashMap::new(),
+            channels_by_id: HashMap::new(),
+            node_channel_counts: HashMap::new(),
+            peer_notes: HashMap::new(),
+            setchannel_timestamps: HashMap::new(),
+            now: DateTime::from_timestamp(NOW_TIMESTAMP, 0).unwrap(),
+            avail_map: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn indirect_fees_credit_only_settled_incoming_channel() {
+        let store = test_store(
+            vec![
+                fund(INCOMING_SCID, 1_000_000_000),
+                fund(OUTGOING_SCID, 1_000_000_000),
+                fund(UNRELATED_SCID, 1_000_000_000),
+            ],
+            vec![
+                forward(
+                    INCOMING_SCID,
+                    OUTGOING_SCID,
+                    10_999,
+                    "settled",
+                    NOW_TIMESTAMP - 60,
+                ),
+                forward(
+                    INCOMING_SCID,
+                    OUTGOING_SCID,
+                    50_000,
+                    "failed",
+                    NOW_TIMESTAMP - 50,
+                ),
+                forward(
+                    INCOMING_SCID,
+                    OUTGOING_SCID,
+                    60_000,
+                    "pending",
+                    NOW_TIMESTAMP - 40,
+                ),
+                forward(
+                    UNRELATED_SCID,
+                    OUTGOING_SCID,
+                    7_000,
+                    "settled",
+                    NOW_TIMESTAMP - 30,
+                ),
+            ],
+            vec![],
+        );
+
+        assert_eq!(store.get_channel_indirect_fees(INCOMING_SCID), 10);
+        assert_eq!(store.get_channel_indirect_fees(OUTGOING_SCID), 0);
+        assert_eq!(store.get_channel_indirect_fees(UNRELATED_SCID), 7);
+        assert_eq!(store.get_channel_indirect_fees("unknown-scid"), 0);
+        assert_eq!(store.get_channel_total_fees(OUTGOING_SCID), 17);
+    }
+
+    #[test]
+    fn indirect_fee_period_filter_uses_settled_forward_resolution_time() {
+        let store = test_store(
+            vec![fund(INCOMING_SCID, 1_000_000_000)],
+            vec![
+                forward(
+                    INCOMING_SCID,
+                    OUTGOING_SCID,
+                    11_000,
+                    "settled",
+                    NOW_TIMESTAMP - 29 * 24 * 60 * 60,
+                ),
+                forward(
+                    INCOMING_SCID,
+                    OUTGOING_SCID,
+                    13_000,
+                    "settled",
+                    NOW_TIMESTAMP - 31 * 24 * 60 * 60,
+                ),
+            ],
+            vec![],
+        );
+
+        let period_forwards = store.filter_settled_forwards_by_days(30);
+        assert_eq!(
+            forwarding_fees_sat_for_channel(
+                &period_forwards,
+                INCOMING_SCID,
+                ForwardChannelSide::Incoming,
+            ),
+            11
+        );
+    }
+
+    #[test]
+    fn indirect_roic_is_safe_for_zero_capacity_and_missing_channels() {
+        let store = test_store(
+            vec![fund(INCOMING_SCID, 0)],
+            vec![forward(
+                INCOMING_SCID,
+                OUTGOING_SCID,
+                10_000,
+                "settled",
+                NOW_TIMESTAMP - 60,
+            )],
+            vec![],
+        );
+
+        assert_eq!(store.get_channel_indirect_roic(INCOMING_SCID), Some(0.0));
+        assert_eq!(store.get_channel_indirect_roic("unknown-scid"), None);
+    }
+
+    #[test]
+    fn indirect_roic_does_not_change_net_roic_or_rebalance_cost() {
+        let rebalance_parts = vec![RebalancePart {
+            payment_id: "rebalance-payment".to_string(),
+            part_id: 0,
+            source_account: "source-account".to_string(),
+            target_account: "target-account".to_string(),
+            source_channel_id: Some(UNRELATED_SCID.to_string()),
+            target_channel_id: Some(OUTGOING_SCID.to_string()),
+            debit_msat: 1_002_000,
+            credit_msat: 1_000_000,
+            fees_msat: 2_000,
+            timestamp: Some(NOW_TIMESTAMP as u64 - 60),
+        }];
+        let store = test_store(
+            vec![
+                fund(INCOMING_SCID, 1_000_000_000),
+                fund(OUTGOING_SCID, 1_000_000_000),
+            ],
+            vec![forward(
+                INCOMING_SCID,
+                OUTGOING_SCID,
+                10_999,
+                "settled",
+                NOW_TIMESTAMP - 60,
+            )],
+            rebalance_parts,
+        );
+
+        assert_eq!(
+            store.get_channel_rebalance_target_cost_msat(OUTGOING_SCID),
+            2_000
+        );
+        assert_eq!(
+            store.get_channel_net_routing_revenue_msat(OUTGOING_SCID),
+            8_000
+        );
+        let net_roic = store.get_channel_net_roic(OUTGOING_SCID).unwrap();
+        let indirect_roic = store.get_channel_indirect_roic(INCOMING_SCID).unwrap();
+        assert!((net_roic - 0.0008).abs() < f64::EPSILON);
+        assert!((indirect_roic - 0.001).abs() < f64::EPSILON);
+        assert_eq!(store.get_channel_indirect_roic(OUTGOING_SCID), Some(0.0));
     }
 
     #[test]
