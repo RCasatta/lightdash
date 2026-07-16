@@ -168,8 +168,9 @@ fn execute_command(cmd: &str, args: &[&str]) -> (String, io::Result<ProcessOutpu
     if cmd == "lightning-cli" {
         if let Some(destination) = SSH_DESTINATION.get() {
             let remote_command = build_remote_command(cmd, args);
-            let description = format!("ssh {destination} {remote_command}");
+            let description = format!("ssh -C {destination} {remote_command}");
             let result = Command::new("ssh")
+                .arg("-C")
                 .arg(destination)
                 .arg(&remote_command)
                 .output();

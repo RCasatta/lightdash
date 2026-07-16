@@ -16,7 +16,8 @@ plus forward and rebalance event streams in JSONL format.
 
 Use the global `--ssh` option to execute every `lightning-cli` command on a
 remote node. SSH host aliases are supported, so ports and identity files can be
-configured in `~/.ssh/config`.
+configured in `~/.ssh/config`. Lightdash enables SSH compression automatically
+to reduce bandwidth usage for the JSON responses.
 
 ```bash
 lightdash --ssh name@host snapshot target/snapshot
