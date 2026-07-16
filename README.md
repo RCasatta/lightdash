@@ -11,7 +11,10 @@ lightdash snapshot target/snapshot
 
 The output contains a manifest and summary, current and closed channel JSON
 files, separate settled and non-settled forward streams, and rebalance events in
-JSONL format.
+JSONL format. The manifest embeds a dataset and field catalog with units,
+definitions, formulas, sources, aggregation guidance, and warnings. Matching
+`*.schema.json` companion files make each data file understandable when shared
+without the rest of the snapshot.
 
 Lightdash automatically reads Summars availability data from
 `~/.lightning/bitcoin/summars/availdb.json`. Use `--availdb PATH` or the

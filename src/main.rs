@@ -16,6 +16,7 @@ mod lnplus;
 mod routes;
 mod sling;
 mod snapshot;
+mod snapshot_metadata;
 mod store;
 
 #[derive(Parser)]

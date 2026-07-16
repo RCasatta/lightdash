@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
 use std::path::Path;
@@ -7,9 +7,10 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::cmd::{ClosedChannel, Forward, Fund};
+use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts, DatasetMetadata};
 use crate::store::{RebalancePart, Store};
 
-pub(crate) const SCHEMA_VERSION: u32 = 2;
+pub(crate) const SCHEMA_VERSION: u32 = 3;
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct SnapshotManifest {
@@ -18,9 +19,10 @@ pub(crate) struct SnapshotManifest {
     pub node_id: String,
     pub block_height: u64,
     pub files: SnapshotFiles,
+    pub datasets: BTreeMap<String, DatasetMetadata>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub(crate) struct SnapshotFiles {
     pub summary: String,
     pub channels: String,
@@ -126,8 +128,10 @@ struct ForwardSnapshot<'a> {
     in_msat: u64,
     out_msat: Option<u64>,
     fee_msat: Option<u64>,
+    fee_ppm: Option<f64>,
     received_at: Option<String>,
     resolved_at: Option<String>,
+    elapsed_seconds: Option<f64>,
     fail_reason: Option<&'a str>,
     fail_code: Option<u32>,
 }
@@ -168,22 +172,38 @@ pub fn run_snapshot(store: &Store, directory: &str) -> io::Result<()> {
     let directory = Path::new(directory);
     fs::create_dir_all(directory)?;
 
+    let files = SnapshotFiles {
+        summary: "summary.json".to_string(),
+        channels: "channels.json".to_string(),
+        closed_channels: "closed-channels.json".to_string(),
+        settled_forwards: "settled-forwards.jsonl".to_string(),
+        other_forwards: "other-forwards.jsonl".to_string(),
+        rebalances: "rebalances.jsonl".to_string(),
+    };
+    let settled_forward_count = store.settled_forwards().len();
+    let datasets = build_dataset_metadata(
+        &files,
+        DatasetCounts {
+            channels: store.funds.channels.len(),
+            closed_channels: store.closed_channels.closedchannels.len(),
+            settled_forwards: settled_forward_count,
+            other_forwards: store.forwards_len() - settled_forward_count,
+            rebalances: store.rebalance_parts().count(),
+        },
+    );
     let generated_at = format_datetime(store.snapshot_time());
     let manifest = SnapshotManifest {
         schema_version: SCHEMA_VERSION,
         generated_at,
         node_id: store.info.id.clone(),
         block_height: store.info.blockheight,
-        files: SnapshotFiles {
-            summary: "summary.json".to_string(),
-            channels: "channels.json".to_string(),
-            closed_channels: "closed-channels.json".to_string(),
-            settled_forwards: "settled-forwards.jsonl".to_string(),
-            other_forwards: "other-forwards.jsonl".to_string(),
-            rebalances: "rebalances.jsonl".to_string(),
-        },
+        files,
+        datasets,
     };
     write_json(directory.join("manifest.json"), &manifest)?;
+    for dataset in manifest.datasets.values() {
+        write_json(directory.join(&dataset.schema_path), dataset)?;
+    }
 
     let summary = build_summary(store);
     write_json(directory.join("summary.json"), &summary)?;
@@ -485,6 +505,16 @@ fn build_closed_channel_snapshot(
 }
 
 fn build_forward_snapshot(forward: &Forward) -> ForwardSnapshot<'_> {
+    let fee_ppm = match (forward.fee_msat, forward.out_msat) {
+        (Some(fee_msat), Some(out_msat)) if out_msat > 0 => {
+            Some(fee_msat as f64 * 1_000_000.0 / out_msat as f64)
+        }
+        _ => None,
+    };
+    let elapsed_seconds = forward
+        .resolved_time
+        .map(|resolved_time| resolved_time - forward.received_time);
+
     ForwardSnapshot {
         in_channel: &forward.in_channel,
         out_channel: forward.out_channel.as_deref(),
@@ -492,8 +522,10 @@ fn build_forward_snapshot(forward: &Forward) -> ForwardSnapshot<'_> {
         in_msat: forward.in_msat,
         out_msat: forward.out_msat,
         fee_msat: forward.fee_msat,
+        fee_ppm,
         received_at: format_unix_seconds(forward.received_time),
         resolved_at: forward.resolved_time.and_then(format_unix_seconds),
+        elapsed_seconds,
         fail_reason: forward.failreason.as_deref(),
         fail_code: forward.failcode,
     }

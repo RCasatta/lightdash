@@ -49,6 +49,15 @@ pub fn run_dashboard2(snapshot_directory: &str, output_directory: &str) -> Resul
         &snapshot_directory.join("manifest.json"),
         &data_directory.join("manifest.json"),
     )?;
+    for dataset_key in ["summary", "channels", "settled_forwards"] {
+        let dataset = manifest
+            .datasets
+            .get(dataset_key)
+            .ok_or_else(|| format!("snapshot manifest is missing dataset `{dataset_key}`"))?;
+        let schema_source = snapshot_file(snapshot_directory, &dataset.schema_path)?;
+        let schema_destination = snapshot_file(&data_directory, &dataset.schema_path)?;
+        copy_file(&schema_source, &schema_destination)?;
+    }
 
     let overview = render_overview_page(&manifest, &summary);
     write_file(&output_directory.join("index.html"), &overview)?;
@@ -399,6 +408,7 @@ mod tests {
         RoicPeriodSnapshot, RoicSnapshot, SnapshotFiles, SnapshotManifest, SummarySnapshot,
         SCHEMA_VERSION,
     };
+    use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts};
 
     use super::{format_number, run_dashboard2, snapshot_file};
 
@@ -422,19 +432,30 @@ mod tests {
         let output = root.join("site");
         fs::create_dir_all(&snapshot).unwrap();
 
+        let files = SnapshotFiles {
+            summary: "summary.json".to_string(),
+            channels: "channels.json".to_string(),
+            closed_channels: "closed-channels.json".to_string(),
+            settled_forwards: "settled-forwards.jsonl".to_string(),
+            other_forwards: "other-forwards.jsonl".to_string(),
+            rebalances: "rebalances.jsonl".to_string(),
+        };
         let manifest = SnapshotManifest {
             schema_version: SCHEMA_VERSION,
             generated_at: "2026-07-16T10:00:00Z".to_string(),
             node_id: "02testnode".to_string(),
             block_height: 950_000,
-            files: SnapshotFiles {
-                summary: "summary.json".to_string(),
-                channels: "channels.json".to_string(),
-                closed_channels: "closed-channels.json".to_string(),
-                settled_forwards: "settled-forwards.jsonl".to_string(),
-                other_forwards: "other-forwards.jsonl".to_string(),
-                rebalances: "rebalances.jsonl".to_string(),
-            },
+            datasets: build_dataset_metadata(
+                &files,
+                DatasetCounts {
+                    channels: 0,
+                    closed_channels: 0,
+                    settled_forwards: 0,
+                    other_forwards: 0,
+                    rebalances: 0,
+                },
+            ),
+            files,
         };
         let summary = SummarySnapshot {
             node_id: manifest.node_id.clone(),
@@ -477,6 +498,13 @@ mod tests {
         .unwrap();
         fs::write(snapshot.join("channels.json"), b"[]").unwrap();
         fs::write(snapshot.join("settled-forwards.jsonl"), b"").unwrap();
+        for dataset in manifest.datasets.values() {
+            fs::write(
+                snapshot.join(&dataset.schema_path),
+                serde_json::to_vec(dataset).unwrap(),
+            )
+            .unwrap();
+        }
 
         run_dashboard2(snapshot.to_str().unwrap(), output.to_str().unwrap()).unwrap();
 
@@ -490,6 +518,9 @@ mod tests {
             "[]"
         );
         assert!(output.join("data/settled-forwards.jsonl").is_file());
+        assert!(output.join("data/summary.schema.json").is_file());
+        assert!(output.join("data/channels.schema.json").is_file());
+        assert!(output.join("data/settled-forwards.schema.json").is_file());
 
         fs::remove_dir_all(root).unwrap();
     }

@@ -38,15 +38,21 @@
     const pageSizeSelect = document.querySelector("#page-size");
     let searchTimer;
 
-    initializeFromUrl();
-    buildFilterPanel();
-    buildColumnPanel();
-    bindControls();
-    loadRows();
+    initialize();
+
+    async function initialize() {
+        await loadMetadata();
+        initializeFromUrl();
+        buildFilterPanel();
+        buildColumnPanel();
+        bindControls();
+        await loadRows();
+    }
 
     function tableConfig(kind, referenceTime) {
         const configs = {
             channels: {
+                datasetKey: "channels",
                 source: "data/channels.json",
                 format: "json",
                 itemLabel: "channels",
@@ -68,6 +74,7 @@
                 columns: channelColumns()
             },
             forwards: {
+                datasetKey: "settled_forwards",
                 source: "data/settled-forwards.jsonl",
                 format: "jsonl",
                 itemLabel: "settled forwards",
@@ -125,8 +132,8 @@
             column("out_channel", "Out channel", "text", { visible: true, monospace: true }),
             column("out_msat", "Out amount", "number", { visible: true, transform: value => value / 1000, suffix: " sats", decimals: 0 }),
             column("fee_msat", "Fee", "number", { visible: true, transform: value => value / 1000, suffix: " sats", decimals: 3 }),
-            column("fee_ppm", "Fee PPM", "number", { visible: true, value: row => row._feePpm, suffix: " ppm", decimals: 1 }),
-            column("elapsed_seconds", "Elapsed", "number", { visible: true, value: row => row._elapsedSeconds, suffix: " s", decimals: 1 }),
+            column("fee_ppm", "Fee PPM", "number", { visible: true, suffix: " ppm", decimals: 1 }),
+            column("elapsed_seconds", "Elapsed", "number", { visible: true, suffix: " s", decimals: 1 }),
             column("resolved_at", "Resolved", "date", { value: row => row._resolvedAt }),
             column("in_msat", "In amount", "number", { transform: value => value / 1000, suffix: " sats", decimals: 0 })
         ];
@@ -145,20 +152,29 @@
             monospace: options.monospace ?? false,
             signedClass: options.signedClass ?? false,
             options: options.options ?? [],
-            badge: options.badge ?? false
+            badge: options.badge ?? false,
+            metadata: null
         };
     }
 
     function prepareForward(row) {
         row._receivedAt = parseDate(row.received_at);
         row._resolvedAt = parseDate(row.resolved_at);
-        row._feePpm = row.fee_msat !== null && row.out_msat
-            ? row.fee_msat * 1_000_000 / row.out_msat
-            : null;
-        row._elapsedSeconds = row._receivedAt !== null && row._resolvedAt !== null
-            ? (row._resolvedAt - row._receivedAt) / 1000
-            : null;
         return row;
+    }
+
+    async function loadMetadata() {
+        try {
+            const response = await fetch("data/manifest.json", { cache: "no-store" });
+            if (!response.ok) return;
+            const manifest = await response.json();
+            const fields = manifest.datasets?.[config.datasetKey]?.fields || {};
+            columns.forEach(item => {
+                item.metadata = fields[item.key] || null;
+            });
+        } catch {
+            // Metadata enriches the UI but is not required to render the table.
+        }
     }
 
     async function loadRows() {
@@ -272,6 +288,7 @@
             wrapper.className = "filter-control";
             const title = document.createElement("span");
             title.textContent = item.label;
+            title.title = metadataTitle(item.metadata);
             wrapper.appendChild(title);
 
             if (item.type === "number" || item.type === "date") {
@@ -352,6 +369,7 @@
             });
             const text = document.createElement("span");
             text.textContent = item.label;
+            text.title = metadataTitle(item.metadata);
             label.append(checkbox, text);
             fragment.appendChild(label);
         });
@@ -405,6 +423,7 @@
             const button = document.createElement("button");
             button.type = "button";
             button.textContent = `${item.label}${state.sort === item.key ? (state.direction === "asc" ? " ↑" : " ↓") : ""}`;
+            button.title = metadataTitle(item.metadata);
             button.addEventListener("click", () => {
                 if (state.sort === item.key) {
                     state.direction = state.direction === "asc" ? "desc" : "asc";
@@ -686,6 +705,18 @@
         return String(value)
             .replaceAll("_", " ")
             .replace(/\b\w/g, character => character.toUpperCase());
+    }
+
+    function metadataTitle(metadata) {
+        if (!metadata) return "";
+        return [
+            metadata.description,
+            metadata.unit ? `Unit: ${metadata.unit}` : "",
+            metadata.formula ? `Formula: ${metadata.formula}` : "",
+            metadata.source ? `Source: ${metadata.source}` : "",
+            metadata.aggregation ? `Aggregation: ${metadata.aggregation}` : "",
+            metadata.warning ? `Warning: ${metadata.warning}` : ""
+        ].filter(Boolean).join("\n");
     }
 
     function formatInteger(value) {
