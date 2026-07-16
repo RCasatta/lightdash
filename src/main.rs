@@ -37,7 +37,7 @@ enum Commands {
         /// Minimum number of channels a node must have to be included
         #[arg(long, default_value = "1")]
         min_channels: usize,
-        /// Path to JSON file with node uptime data (format: {node_id: {avail: float}})
+        /// Override the availdb path; remote when --ssh is used
         #[arg(long)]
         availdb: Option<String>,
         /// Base URL where funds charts are served, e.g. /auth/funds-charts
@@ -48,7 +48,7 @@ enum Commands {
     Snapshot {
         /// Directory for snapshot files
         directory: String,
-        /// Path to JSON file with node uptime data (format: {node_id: {avail: float}})
+        /// Override the availdb path; remote when --ssh is used
         #[arg(long)]
         availdb: Option<String>,
     },
@@ -61,7 +61,7 @@ enum Commands {
     Sling,
     /// Execute fee adjustments
     Fees {
-        /// Path to JSON file with node uptime data (format: {node_id: {avail: float}})
+        /// Override the availdb path; remote when --ssh is used
         #[arg(long)]
         availdb: Option<String>,
     },

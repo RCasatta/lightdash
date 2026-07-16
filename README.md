@@ -6,11 +6,16 @@
 Export a versioned snapshot without generating the HTML dashboard:
 
 ```bash
-lightdash snapshot target/snapshot --availdb test-json/availdb.json
+lightdash snapshot target/snapshot
 ```
 
 The output contains a manifest and summary, current and closed channel JSON files,
 plus forward and rebalance event streams in JSONL format.
+
+Lightdash automatically reads Summars availability data from
+`~/.lightning/bitcoin/summars/availdb.json`. Use `--availdb PATH` or the
+`AVAILDB_PATH` environment variable to override it. With `--ssh`, the path is
+read from the remote host.
 
 ## Remote Core Lightning node
 

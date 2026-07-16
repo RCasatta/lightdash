@@ -3,7 +3,6 @@ use crate::common::ChannelFee;
 use chrono::{DateTime, Datelike, Utc};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
-use std::fs;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RebalancePart {
@@ -197,34 +196,25 @@ impl Store {
         log::debug!("Data fetched successfully");
 
         log::info!("Loading availdb");
-        let avail_map: HashMap<String, f64> = if let Some(path) = availdb.as_ref() {
-            match fs::read_to_string(path) {
-                Ok(content) => match serde_json::from_str::<HashMap<String, Value>>(&content) {
-                    Ok(outer) => {
-                        let mut map = HashMap::new();
-                        for (node_id, data) in outer {
-                            if let Some(obj) = data.as_object() {
-                                if let Some(avail_val) = obj.get("avail") {
-                                    if let Some(avail) = avail_val.as_f64() {
-                                        map.insert(node_id, avail);
-                                    }
-                                }
-                            }
-                        }
-                        map
-                    }
-                    Err(e) => {
-                        log::error!("Failed to parse availdb {}: {}", path, e);
-                        HashMap::new()
-                    }
-                },
+        let avail_map: HashMap<String, f64> = match cmd::read_availdb_json(availdb.as_deref()) {
+            Ok(value) => match serde_json::from_value::<HashMap<String, Value>>(value) {
+                Ok(outer) => outer
+                    .into_iter()
+                    .filter_map(|(node_id, data)| {
+                        data.get("avail")
+                            .and_then(Value::as_f64)
+                            .map(|avail| (node_id, avail))
+                    })
+                    .collect(),
                 Err(e) => {
-                    log::error!("Failed to read availdb {}: {}", path, e);
+                    log::warn!("Failed to parse availdb entries: {e}");
                     HashMap::new()
                 }
+            },
+            Err(e) => {
+                log::warn!("Availability data is unavailable: {e}");
+                HashMap::new()
             }
-        } else {
-            HashMap::new()
         };
         log::info!("Loaded availdb with {} entries", avail_map.len());
 

@@ -2,14 +2,17 @@ use chrono::{DateTime, Utc};
 use flate2::read::GzDecoder;
 use serde::Deserialize;
 use serde_json::Value;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io;
+use std::path::PathBuf;
 use std::process::{Command, Output as ProcessOutput};
 use std::sync::OnceLock;
 
 use crate::error_panic;
 
 static SSH_DESTINATION: OnceLock<String> = OnceLock::new();
+const DEFAULT_LOCAL_AVAILDB_PATH: &str = ".lightning/bitcoin/summars/availdb.json";
+const TEST_AVAILDB_PATH: &str = "test-json/availdb.json";
 
 pub fn configure_ssh(destination: Option<String>) -> Result<(), String> {
     let Some(destination) = destination else {
@@ -29,6 +32,35 @@ pub fn configure_ssh(destination: Option<String>) -> Result<(), String> {
 
 pub fn using_test_data() -> bool {
     cfg!(debug_assertions) && SSH_DESTINATION.get().is_none()
+}
+
+pub fn read_availdb_json(path: Option<&str>) -> Result<Value, String> {
+    let configured_path = path
+        .map(str::to_string)
+        .or_else(|| std::env::var("AVAILDB_PATH").ok());
+
+    if let Some(destination) = SSH_DESTINATION.get() {
+        let remote_path = configured_path
+            .as_deref()
+            .map(normalize_remote_home_path)
+            .unwrap_or(DEFAULT_LOCAL_AVAILDB_PATH);
+        return read_remote_json_file(destination, remote_path);
+    }
+
+    let local_path = if let Some(path) = configured_path {
+        expand_local_home_path(&path)?
+    } else if using_test_data() {
+        PathBuf::from(TEST_AVAILDB_PATH)
+    } else {
+        let home = std::env::var_os("HOME")
+            .ok_or_else(|| "HOME is not set; pass --availdb explicitly".to_string())?;
+        PathBuf::from(home).join(DEFAULT_LOCAL_AVAILDB_PATH)
+    };
+
+    let content = fs::read_to_string(&local_path)
+        .map_err(|e| format!("reading availdb `{}` failed: {e}", local_path.display()))?;
+    serde_json::from_str(&content)
+        .map_err(|e| format!("parsing availdb `{}` failed: {e}", local_path.display()))
 }
 
 pub fn list_funds() -> ListFunds {
@@ -167,20 +199,57 @@ pub fn cmd_result(cmd: &str, args: &[impl AsRef<str>]) -> Value {
 fn execute_command(cmd: &str, args: &[&str]) -> (String, io::Result<ProcessOutput>) {
     if cmd == "lightning-cli" {
         if let Some(destination) = SSH_DESTINATION.get() {
-            let remote_command = build_remote_command(cmd, args);
-            let description = format!("ssh -C {destination} {remote_command}");
-            let result = Command::new("ssh")
-                .arg("-C")
-                .arg(destination)
-                .arg(&remote_command)
-                .output();
-            return (description, result);
+            return execute_ssh_command(destination, cmd, args);
         }
     }
 
     let description = format!("{cmd} {}", args.join(" "));
     let result = Command::new(cmd).args(args).output();
     (description, result)
+}
+
+fn execute_ssh_command(
+    destination: &str,
+    cmd: &str,
+    args: &[&str],
+) -> (String, io::Result<ProcessOutput>) {
+    let remote_command = build_remote_command(cmd, args);
+    let description = format!("ssh -C {destination} {remote_command}");
+    let result = Command::new("ssh")
+        .arg("-C")
+        .arg(destination)
+        .arg(&remote_command)
+        .output();
+    (description, result)
+}
+
+fn read_remote_json_file(destination: &str, path: &str) -> Result<Value, String> {
+    let (description, result) = execute_ssh_command(destination, "cat", &["--", path]);
+    let data = result.map_err(|e| format!("executing `{description}` failed: {e}"))?;
+    let stdout = std::str::from_utf8(&data.stdout)
+        .map_err(|e| format!("`{description}` returned non-UTF-8 output: {e}"))?;
+    if !data.status.success() {
+        let stderr = std::str::from_utf8(&data.stderr).unwrap_or("<stderr is not utf8>");
+        return Err(format!(
+            "`{description}` exited with status {}: {stderr}",
+            data.status
+        ));
+    }
+
+    serde_json::from_str(stdout).map_err(|e| format!("parsing `{description}` output failed: {e}"))
+}
+
+fn expand_local_home_path(path: &str) -> Result<PathBuf, String> {
+    let Some(relative_path) = path.strip_prefix("~/") else {
+        return Ok(PathBuf::from(path));
+    };
+    let home = std::env::var_os("HOME")
+        .ok_or_else(|| "HOME is not set; use an absolute path".to_string())?;
+    Ok(PathBuf::from(home).join(relative_path))
+}
+
+fn normalize_remote_home_path(path: &str) -> &str {
+    path.strip_prefix("~/").unwrap_or(path)
 }
 
 fn build_remote_command(cmd: &str, args: &[&str]) -> String {
@@ -603,7 +672,7 @@ pub struct ListDatastore {
 
 #[cfg(test)]
 mod command_tests {
-    use super::{build_remote_command, shell_quote};
+    use super::{build_remote_command, normalize_remote_home_path, shell_quote};
 
     #[test]
     fn remote_lightning_cli_command_is_shell_quoted() {
@@ -620,6 +689,18 @@ mod command_tests {
     fn safe_remote_arguments_remain_readable() {
         assert_eq!(shell_quote("getinfo"), "getinfo");
         assert_eq!(shell_quote("id=123x4x5"), "id=123x4x5");
+    }
+
+    #[test]
+    fn remote_home_paths_are_relative_to_the_ssh_login_directory() {
+        assert_eq!(
+            normalize_remote_home_path("~/.lightning/bitcoin/summars/availdb.json"),
+            ".lightning/bitcoin/summars/availdb.json"
+        );
+        assert_eq!(
+            normalize_remote_home_path("/srv/availdb.json"),
+            "/srv/availdb.json"
+        );
     }
 }
 
