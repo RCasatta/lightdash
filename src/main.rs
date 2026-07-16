@@ -21,6 +21,9 @@ mod store;
 #[command(name = "lightdash")]
 #[command(about = "Lightning Network channel management dashboard")]
 struct Cli {
+    /// Execute lightning-cli on a remote host through SSH
+    #[arg(long, global = true, value_name = "USER@HOST")]
+    ssh: Option<String>,
     #[command(subcommand)]
     command: Commands,
 }
@@ -93,6 +96,9 @@ enum Commands {
 fn main() {
     init_logging();
     let cli = Cli::parse();
+    if let Err(e) = cmd::configure_ssh(cli.ssh) {
+        error_panic!("configuring SSH command mode failed: {e}");
+    }
 
     match cli.command {
         Commands::Dashboard {

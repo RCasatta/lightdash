@@ -9,7 +9,7 @@
 
 use std::cmp::max;
 
-use crate::cmd::{cmd_result, list_peer_channels};
+use crate::cmd::{cmd_result, list_peer_channels, using_test_data};
 use crate::fees::largest_power_of_two_leq;
 
 pub fn run_htlc() {
@@ -50,7 +50,7 @@ pub fn run_htlc() {
 }
 
 fn set_channel_htlc_max(short_channel_id: &str, htlc_max: u64) {
-    if cfg!(debug_assertions) {
+    if using_test_data() {
         log::debug!("Debug mode: would set htlcmax={htlc_max} for {short_channel_id}");
         return;
     }

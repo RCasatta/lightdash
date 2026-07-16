@@ -3,11 +3,36 @@ use flate2::read::GzDecoder;
 use serde::Deserialize;
 use serde_json::Value;
 use std::fs::File;
+use std::io;
+use std::process::{Command, Output as ProcessOutput};
+use std::sync::OnceLock;
 
 use crate::error_panic;
 
+static SSH_DESTINATION: OnceLock<String> = OnceLock::new();
+
+pub fn configure_ssh(destination: Option<String>) -> Result<(), String> {
+    let Some(destination) = destination else {
+        return Ok(());
+    };
+    if destination.is_empty() {
+        return Err("SSH destination cannot be empty".to_string());
+    }
+    if destination.starts_with('-') || destination.chars().any(char::is_whitespace) {
+        return Err(format!("invalid SSH destination `{destination}`"));
+    }
+
+    SSH_DESTINATION
+        .set(destination)
+        .map_err(|_| "SSH destination was already configured".to_string())
+}
+
+pub fn using_test_data() -> bool {
+    cfg!(debug_assertions) && SSH_DESTINATION.get().is_none()
+}
+
 pub fn list_funds() -> ListFunds {
-    let v = if cfg!(debug_assertions) {
+    let v = if using_test_data() {
         gz_json_file("test-json/listfunds.gz")
     } else {
         cmd_result("lightning-cli", &["listfunds"])
@@ -16,7 +41,7 @@ pub fn list_funds() -> ListFunds {
 }
 
 pub fn list_nodes() -> ListNodes {
-    let v = if cfg!(debug_assertions) {
+    let v = if using_test_data() {
         gz_json_file("test-json/listnodes.gz")
     } else {
         cmd_result("lightning-cli", &["listnodes"])
@@ -25,7 +50,7 @@ pub fn list_nodes() -> ListNodes {
 }
 
 pub fn list_channels() -> ListChannels {
-    let v = if cfg!(debug_assertions) {
+    let v = if using_test_data() {
         gz_json_file("test-json/listchannels.gz")
     } else {
         cmd_result("lightning-cli", &["listchannels"])
@@ -44,7 +69,7 @@ pub fn read_xz_funds(path: &str) -> ListFunds {
 }
 
 pub fn list_peers() -> ListPeers {
-    let v = if cfg!(debug_assertions) {
+    let v = if using_test_data() {
         gz_json_file("test-json/listpeers.gz")
     } else {
         cmd_result("lightning-cli", &["listpeers"])
@@ -53,7 +78,7 @@ pub fn list_peers() -> ListPeers {
 }
 
 pub fn list_peer_channels() -> ListPeerChannels {
-    let v = if cfg!(debug_assertions) {
+    let v = if using_test_data() {
         cmd_result("xzcat", &["test-json/listpeerchannels.xz"])
     } else {
         cmd_result("lightning-cli", &["listpeerchannels"])
@@ -62,7 +87,7 @@ pub fn list_peer_channels() -> ListPeerChannels {
 }
 
 pub fn list_forwards() -> ListForwards {
-    let v = if cfg!(debug_assertions) {
+    let v = if using_test_data() {
         cmd_result("xzcat", &["test-json/listforwards.xz"])
     } else {
         cmd_result("lightning-cli", &["listforwards"])
@@ -71,7 +96,7 @@ pub fn list_forwards() -> ListForwards {
 }
 
 pub fn list_closed_channels() -> ListClosedChannels {
-    let v = if cfg!(debug_assertions) {
+    let v = if using_test_data() {
         gz_json_file("test-json/listclosedchannels.gz")
     } else {
         cmd_result("lightning-cli", &["listclosedchannels"])
@@ -80,7 +105,7 @@ pub fn list_closed_channels() -> ListClosedChannels {
 }
 
 pub fn bkpr_list_account_events() -> BkprListAccountEvents {
-    let v = if cfg!(any(debug_assertions, test)) {
+    let v = if using_test_data() {
         gz_json_file("test-json/bkpr-listaccountevents.gz")
     } else {
         cmd_result("lightning-cli", &["bkpr-listaccountevents"])
@@ -89,7 +114,7 @@ pub fn bkpr_list_account_events() -> BkprListAccountEvents {
 }
 
 pub fn get_info() -> GetInfo {
-    let v = if cfg!(debug_assertions) {
+    let v = if using_test_data() {
         cmd_result("cat", &["test-json/getinfo"])
     } else {
         cmd_result("lightning-cli", &["getinfo"])
@@ -98,7 +123,7 @@ pub fn get_info() -> GetInfo {
 }
 
 pub fn get_route(id: &str, amount_msat: u64) -> Option<GetRoute> {
-    let v = if cfg!(debug_assertions) {
+    let v = if using_test_data() {
         cmd_result("cat", &["test-json/getroute"])
     } else {
         cmd_result(
@@ -118,12 +143,12 @@ pub fn signmessage(message: &str) -> String {
 }
 
 pub fn cmd_result(cmd: &str, args: &[impl AsRef<str>]) -> Value {
-    // println!("cmd:{cmd} args:{args:?}");
     let args: Vec<&str> = args.iter().map(|s| s.as_ref()).collect();
-    let data = match std::process::Command::new(cmd).args(&args).output() {
+    let (description, result) = execute_command(cmd, &args);
+    let data = match result {
         Ok(data) => data,
         Err(e) => {
-            error_panic!("executing `{cmd}` with {} args returned {e:?}", args.len());
+            error_panic!("executing `{description}` returned {e:?}");
         }
     };
     let s = std::str::from_utf8(&data.stdout).unwrap();
@@ -132,11 +157,49 @@ pub fn cmd_result(cmd: &str, args: &[impl AsRef<str>]) -> Value {
         Err(e) => {
             let stderr = std::str::from_utf8(&data.stderr).unwrap_or("<stderr is not utf8>");
             error_panic!(
-                "executing `{cmd}` with args {args:?} exited with status {} and stdout `{s}` stderr `{stderr}`; parsing json returned {e:?}",
+                "executing `{description}` exited with status {} and stdout `{s}` stderr `{stderr}`; parsing json returned {e:?}",
                 data.status
             );
         }
     }
+}
+
+fn execute_command(cmd: &str, args: &[&str]) -> (String, io::Result<ProcessOutput>) {
+    if cmd == "lightning-cli" {
+        if let Some(destination) = SSH_DESTINATION.get() {
+            let remote_command = build_remote_command(cmd, args);
+            let description = format!("ssh {destination} {remote_command}");
+            let result = Command::new("ssh")
+                .arg(destination)
+                .arg(&remote_command)
+                .output();
+            return (description, result);
+        }
+    }
+
+    let description = format!("{cmd} {}", args.join(" "));
+    let result = Command::new(cmd).args(args).output();
+    (description, result)
+}
+
+fn build_remote_command(cmd: &str, args: &[&str]) -> String {
+    std::iter::once(cmd)
+        .chain(args.iter().copied())
+        .map(shell_quote)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn shell_quote(value: &str) -> String {
+    if !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_@%+=:,./-".contains(&byte))
+    {
+        return value.to_string();
+    }
+
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 fn gz_json_file(path: &str) -> Value {
@@ -422,7 +485,7 @@ pub fn datastore_string(
     mode: DatastoreMode,
 ) -> Result<DatastoreResponse, String> {
     // In debug mode, skip datastore operations
-    if cfg!(debug_assertions) {
+    if using_test_data() {
         log::debug!("Debug mode: Skipping datastore_string for key {:?}", key);
         return Ok(DatastoreResponse {
             key: key.iter().map(|s| s.to_string()).collect(),
@@ -469,7 +532,7 @@ pub fn datastore_string(
 /// List/retrieve data from the datastore, optionally filtered by key
 pub fn listdatastore(key: Option<&[&str]>) -> Result<ListDatastore, String> {
     // In debug mode, return empty datastore
-    if cfg!(debug_assertions) {
+    if using_test_data() {
         log::debug!("Debug mode: Skipping listdatastore for key {:?}", key);
         return Ok(ListDatastore { datastore: vec![] });
     }
@@ -487,7 +550,7 @@ pub fn listdatastore(key: Option<&[&str]>) -> Result<ListDatastore, String> {
 /// Delete data from the datastore
 pub fn _deldatastore(key: &[&str]) -> Result<DatastoreResponse, String> {
     // In debug mode, skip datastore operations
-    if cfg!(debug_assertions) {
+    if using_test_data() {
         log::debug!("Debug mode: Skipping _deldatastore for key {:?}", key);
         return Ok(DatastoreResponse {
             key: key.iter().map(|s| s.to_string()).collect(),
@@ -535,6 +598,28 @@ pub struct DatastoreResponse {
 #[derive(Deserialize, Debug)]
 pub struct ListDatastore {
     pub datastore: Vec<DatastoreResponse>,
+}
+
+#[cfg(test)]
+mod command_tests {
+    use super::{build_remote_command, shell_quote};
+
+    #[test]
+    fn remote_lightning_cli_command_is_shell_quoted() {
+        assert_eq!(
+            build_remote_command(
+                "lightning-cli",
+                &["signmessage", "hello world", "apostrophe's"]
+            ),
+            "lightning-cli signmessage 'hello world' 'apostrophe'\\''s'"
+        );
+    }
+
+    #[test]
+    fn safe_remote_arguments_remain_readable() {
+        assert_eq!(shell_quote("getinfo"), "getinfo");
+        assert_eq!(shell_quote("id=123x4x5"), "id=123x4x5");
+    }
 }
 
 #[cfg(all(test, feature = "large-fixture-tests"))]

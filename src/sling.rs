@@ -192,7 +192,7 @@ fn start_sling_jobs() {
 }
 
 fn get_sling_stats(scid: Option<&str>) -> Value {
-    if cfg!(debug_assertions) {
+    if crate::cmd::using_test_data() {
         match scid {
             Some(_) => {
                 crate::cmd::cmd_result("cat", &["test-json/sling-stats/sling-stats-details.json"])
