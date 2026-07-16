@@ -187,7 +187,7 @@ fn create_page_header(title: &str, is_subdir: bool) -> Markup {
         forwards_link,
         routes_link,
         failures_link,
-        apy_link,
+        roic_link,
         rebalance_link,
         closed_link,
     ) = if is_subdir {
@@ -198,7 +198,7 @@ fn create_page_header(title: &str, is_subdir: bool) -> Markup {
             "../forwards-week.html",
             "../routes-10000.html",
             "../failures.html",
-            "../apy.html",
+            "../roic.html",
             "../rebalance.html",
             "../closed-channels.html",
         )
@@ -210,7 +210,7 @@ fn create_page_header(title: &str, is_subdir: bool) -> Markup {
             "forwards-week.html",
             "routes-10000.html",
             "failures.html",
-            "apy.html",
+            "roic.html",
             "rebalance.html",
             "closed-channels.html",
         )
@@ -226,7 +226,7 @@ fn create_page_header(title: &str, is_subdir: bool) -> Markup {
                 a href=(forwards_link) { "Forwards" } " | "
                 a href=(routes_link) { "Routes" } " | "
                 a href=(failures_link) { "Failures" } " | "
-                a href=(apy_link) { "APY" } " | "
+                a href=(roic_link) { "ROIC" } " | "
                 a href=(rebalance_link) { "Rebalance" } " | "
                 a href=(closed_link) { "Closed" }
             }
@@ -1730,21 +1730,6 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                 }
 
                 div class="info-item" {
-                    span class="label" { "APY%: " }
-                    span class="value" {
-                        @if let Some(scid) = &channel.short_channel_id {
-                            @if let Some(apy) = store.get_channel_apy(scid) {
-                                (format!("{:.2}%", apy))
-                            } @else {
-                                "-"
-                            }
-                        } @else {
-                            "-"
-                        }
-                    }
-                }
-
-                div class="info-item" {
                     span class="label" { "State: " }
                     span class="value" { (channel.state) }
                 }
@@ -2023,6 +2008,17 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                     }
 
                     div class="info-item" {
+                        span class="label" title="Annualized forwarding fees divided by channel capacity." { "Gross ROIC: " }
+                        span class="value" {
+                            @if let Some(gross_roic) = store.get_channel_gross_roic(scid) {
+                                (format!("{gross_roic:.2}%"))
+                            } @else {
+                                "-"
+                            }
+                        }
+                    }
+
+                    div class="info-item" {
                         span class="label" { "Net ROIC: " }
                         span class="value" {
                             @if let Some(net_roic) = store.get_channel_net_roic(scid) {
@@ -2044,14 +2040,6 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                         }
                     }
 
-                    @if let Some(apy) = store.get_channel_apy(scid) {
-                        div class="info-item" {
-                            span class="label" { "APY%: " }
-                            span class="value" {
-                                (format!("{:.2}%", apy))
-                            }
-                        }
-                    }
                 } @else {
                     div class="info-item" {
                         span class="label" { "Forward Activity: " }
@@ -2376,14 +2364,14 @@ fn calculate_balance_target_kpis(channels: &[crate::cmd::Fund]) -> (f64, f64) {
     (variance_percentage_points, stddev_percentage_points)
 }
 
-fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono::Utc>) {
-    let apy_data = store.get_apy_data();
+fn create_roic_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono::Utc>) {
+    let roic_data = store.get_roic_data();
 
-    let apy_content = html! {
-        (create_page_header("APY Analysis", false))
+    let roic_content = html! {
+        (create_page_header("ROIC Analysis", false))
 
         div class="info-card" {
-            h2 { "Annual Percentage Yield (APY) Analysis" }
+            h2 { "Return on Invested Capital (ROIC) Analysis" }
 
             div class="section" {
                 h3 class="section-title" { "Capital Efficiency Metrics" }
@@ -2396,7 +2384,7 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
                         div class="metric-title" { "Effective Fee Rate" }
                         div class="metric-subtitle" { "Fees earned / Total routed" }
                         div class="metric-value" {
-                            (format!("{:.2} bps", apy_data.effective_fee_rate_12_months_bps))
+                            (format!("{:.2} bps", roic_data.effective_fee_rate_12_months_bps))
                         }
                     }
                     div class="metric-operator" { "x" }
@@ -2404,13 +2392,13 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
                         div class="metric-title" { "Capital Velocity" }
                         div class="metric-subtitle" { "Total routed / Channel funds" }
                         div class="metric-value" {
-                            (format!("{:.2}x", apy_data.capital_velocity_12_months))
+                            (format!("{:.2}x", roic_data.capital_velocity_12_months))
                         }
                     }
                     div class="metric-operator" { "=" }
                     div class="metric-result" {
                         div class="metric-value" {
-                            (format!("{:.2}%", apy_data.gross_roic_12_months))
+                            (format!("{:.2}%", roic_data.gross_roic_12_months))
                         }
                         div class="metric-subtitle" { "Gross ROIC" }
                     }
@@ -2420,7 +2408,7 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
                     div class="info-item" {
                         span class="label" { "Net ROIC: " }
                         span class="value" {
-                            (format!("{:.2}%", apy_data.net_roic_12_months))
+                            (format!("{:.2}%", roic_data.net_roic_12_months))
                         }
                     }
                 }
@@ -2428,21 +2416,21 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
                 div class="metric-context" {
                     div class="info-item" {
                         span class="label" { "Routed Last 12 Months: " }
-                        span class="value" { (format!("{} sats", format_sats(apy_data.routed_12_months))) }
+                        span class="value" { (format!("{} sats", format_sats(roic_data.routed_12_months))) }
                     }
                     div class="info-item" {
                         span class="label" { "Fees Last 12 Months: " }
-                        span class="value" { (format!("{} sats", format_sats(apy_data.fees_12_months))) }
+                        span class="value" { (format!("{} sats", format_sats(roic_data.fees_12_months))) }
                     }
                     div class="info-item" {
                         span class="label" { "Rebalance Cost Last 12 Months: " }
                         span class="value" {
-                            (format!("{} sats", format_sats(apy_data.rebalance_cost_12_months_msat / 1000)))
+                            (format!("{} sats", format_sats(roic_data.rebalance_cost_12_months_msat / 1000)))
                         }
                     }
                     div class="info-item" {
                         span class="label" { "Channel Funds: " }
-                        span class="value" { (format!("{} sats", format_sats(apy_data.total_funds))) }
+                        span class="value" { (format!("{} sats", format_sats(roic_data.total_funds))) }
                     }
                 }
             }
@@ -2455,29 +2443,29 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
                         tr {
                             th { "Period" }
                             th style="text-align: right;" { "Fees Earned (sats)" }
-                            th style="text-align: right;" { "Projected Yearly APY %" }
+                            th style="text-align: right;" { "Annualized Gross ROIC %" }
                         }
                     }
                     tbody {
                         tr {
                             td { "Last 1 Month" }
-                            td style="text-align: right;" { (format_sats(apy_data.fees_1_month)) }
-                            td style="text-align: right;" { (format!("{:.3}", apy_data.apy_1_month)) }
+                            td style="text-align: right;" { (format_sats(roic_data.fees_1_month)) }
+                            td style="text-align: right;" { (format!("{:.3}", roic_data.gross_roic_1_month)) }
                         }
                         tr {
                             td { "Last 3 Months" }
-                            td style="text-align: right;" { (format_sats(apy_data.fees_3_months)) }
-                            td style="text-align: right;" { (format!("{:.3}", apy_data.apy_3_months)) }
+                            td style="text-align: right;" { (format_sats(roic_data.fees_3_months)) }
+                            td style="text-align: right;" { (format!("{:.3}", roic_data.gross_roic_3_months)) }
                         }
                         tr {
                             td { "Last 6 Months" }
-                            td style="text-align: right;" { (format_sats(apy_data.fees_6_months)) }
-                            td style="text-align: right;" { (format!("{:.3}", apy_data.apy_6_months)) }
+                            td style="text-align: right;" { (format_sats(roic_data.fees_6_months)) }
+                            td style="text-align: right;" { (format!("{:.3}", roic_data.gross_roic_6_months)) }
                         }
                         tr {
                             td { "Last 12 Months" }
-                            td style="text-align: right;" { (format_sats(apy_data.fees_12_months)) }
-                            td style="text-align: right;" { (format!("{:.3}", apy_data.apy_12_months)) }
+                            td style="text-align: right;" { (format_sats(roic_data.fees_12_months)) }
+                            td style="text-align: right;" { (format!("{:.3}", roic_data.gross_roic_12_months)) }
                         }
                     }
                 }
@@ -2520,24 +2508,24 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
 
                 div class="info-item" {
                     span class="label" { "Total Channel Funds: " }
-                    span class="value" { (format!("{} sats", format_sats(apy_data.total_funds))) }
+                    span class="value" { (format!("{} sats", format_sats(roic_data.total_funds))) }
                 }
 
                 div class="info-item" {
                     span class="label" { "Transacted Last Month: " }
-                    span class="value" { (format!("{} sats", format_sats(apy_data.transacted_last_month))) }
+                    span class="value" { (format!("{} sats", format_sats(roic_data.transacted_last_month))) }
                 }
             }
 
             div class="section" {
-                h3 class="section-title" { "APY Methodology" }
+                h3 class="section-title" { "ROIC Methodology" }
                 p {
-                    "APY (Annual Percentage Yield) is calculated by taking the fees earned over a specific period, "
+                    "Gross ROIC is calculated by taking the fees earned over a specific period, "
                     "annualizing them (multiplying by 12/months), and dividing by the total channel funds. "
-                    "This gives a projected yearly return rate as a percentage."
+                    "This gives an annualized return on the capital deployed in channels."
                 }
                 p {
-                    "Formula: APY% = (Fees Earned × 12 ÷ Period in Months × 100) ÷ Total Funds"
+                    "Formula: Gross ROIC% = (Fees Earned × 12 ÷ Period in Months × 100) ÷ Total Funds"
                 }
                 p {
                     "ROIC decomposition: Effective Fee Rate (bps) = Fees Earned × 10,000 ÷ Total Routed; "
@@ -2654,16 +2642,16 @@ fn create_apy_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono
         }
     };
 
-    let apy_html = wrap_in_html_page(
-        "APY Analysis",
-        apy_content,
+    let roic_html = wrap_in_html_page(
+        "ROIC Analysis",
+        roic_content,
         &now.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
     );
 
-    let apy_file_path = format!("{}/apy.html", directory);
-    match fs::write(&apy_file_path, apy_html.into_string()) {
-        Ok(_) => log::debug!("APY page generated: {}", apy_file_path),
-        Err(e) => log::debug!("Error writing APY page: {}", e),
+    let roic_file_path = format!("{directory}/roic.html");
+    match fs::write(&roic_file_path, roic_html.into_string()) {
+        Ok(_) => log::debug!("ROIC page generated: {roic_file_path}"),
+        Err(e) => log::debug!("Error writing ROIC page: {e}"),
     }
 }
 
@@ -3298,8 +3286,8 @@ pub fn run_dashboard(
                 }
             }
             h3 {
-                a href="apy.html" {
-                    "📈 APY Analysis"
+                a href="roic.html" {
+                    "📈 ROIC Analysis"
                 }
             }
             h3 {
@@ -3759,8 +3747,8 @@ pub fn run_dashboard(
     log::info!("Creating weekday chart page");
     create_weekday_chart_page(&directory, store, &now);
 
-    log::info!("Creating APY page");
-    create_apy_page(&directory, store, &now);
+    log::info!("Creating ROIC page");
+    create_roic_page(&directory, store, &now);
 
     log::info!("Creating rebalance page");
     create_rebalance_page(&directory, store, &now);

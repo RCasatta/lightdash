@@ -579,8 +579,8 @@ impl Store {
         self.onchain_balance_btc() + self.channels_balance_btc()
     }
 
-    /// Calculate projected yearly APY percentage for given time period
-    pub fn calculate_apy_percent(&self, months: i64) -> f64 {
+    /// Calculate annualized gross ROIC for the given time period.
+    pub fn calculate_gross_roic_percent(&self, months: i64) -> f64 {
         let fees_earned = self.fees_earned_last_months(months);
         let total_funds = self.total_channel_funds_sats();
 
@@ -592,7 +592,7 @@ impl Store {
         (fees_earned as f64 * 100.0 * annualization_factor) / total_funds as f64
     }
 
-    pub fn calculate_net_apy_percent(&self, months: i64) -> f64 {
+    pub fn calculate_net_roic_percent(&self, months: i64) -> f64 {
         let total_funds = self.total_channel_funds_sats();
         if total_funds == 0 {
             return 0.0;
@@ -633,25 +633,24 @@ impl Store {
         self.fees_earned_last_months(months) as f64 * 10_000.0 / total_routed as f64
     }
 
-    /// Get APY data structure with all calculations
-    pub fn get_apy_data(&self) -> ApyData {
-        ApyData {
+    /// Get ROIC data with gross and net annualized returns.
+    pub fn get_roic_data(&self) -> RoicData {
+        RoicData {
             fees_1_month: self.fees_earned_last_months(1),
             fees_3_months: self.fees_earned_last_months(3),
             fees_6_months: self.fees_earned_last_months(6),
             fees_12_months: self.fees_earned_last_months(12),
             total_funds: self.total_channel_funds_sats(),
-            apy_1_month: self.calculate_apy_percent(1),
-            apy_3_months: self.calculate_apy_percent(3),
-            apy_6_months: self.calculate_apy_percent(6),
-            apy_12_months: self.calculate_apy_percent(12),
+            gross_roic_1_month: self.calculate_gross_roic_percent(1),
+            gross_roic_3_months: self.calculate_gross_roic_percent(3),
+            gross_roic_6_months: self.calculate_gross_roic_percent(6),
+            gross_roic_12_months: self.calculate_gross_roic_percent(12),
             transacted_last_month: self.transacted_last_month_sats(),
             routed_12_months: self.routed_last_months_sats(12),
             capital_velocity_12_months: self.calculate_capital_velocity(12),
             effective_fee_rate_12_months_bps: self.calculate_effective_fee_rate_bps(12),
-            gross_roic_12_months: self.calculate_apy_percent(12),
             rebalance_cost_12_months_msat: self.rebalance_cost_last_months_msat(12),
-            net_roic_12_months: self.calculate_net_apy_percent(12),
+            net_roic_12_months: self.calculate_net_roic_percent(12),
         }
     }
 
@@ -869,7 +868,7 @@ impl Store {
 
     /// Get historical effective fee rate in ppm for outbound forwards on a channel.
     ///
-    /// This is the per-channel version of the APY page effective fee rate:
+    /// This is the per-channel version of the ROIC page effective fee rate:
     /// fees earned divided by total routed amount.
     pub fn get_channel_effective_fee_ppm(&self, short_channel_id: &str) -> Option<f64> {
         let (total_fees, total_routed) = self.get_channel_forwarding_fee_totals(short_channel_id);
@@ -1112,26 +1111,16 @@ impl Store {
             .find(|f| f.short_channel_id.as_deref() == Some(short_channel_id))
     }
 
-    /// Get channel APY (Annual Percentage Yield) based on fees earned relative to locked liquidity
-    /// Formula: (total_fees_sat / channel_capacity_sat) * (365 / age_days) * 100
-    pub fn get_channel_apy(&self, short_channel_id: &str) -> Option<f64> {
+    /// Get annualized gross channel ROIC based on forwarding fees and channel capacity.
+    pub fn get_channel_gross_roic(&self, short_channel_id: &str) -> Option<f64> {
         let age_days = self.get_channel_age_days(short_channel_id)?;
-        if age_days <= 0 {
-            return Some(0.0);
-        }
-
         let fund = self.get_fund(short_channel_id)?;
-        let channel_capacity_sat = fund.amount_msat / 1000;
-        if channel_capacity_sat == 0 {
-            return Some(0.0);
-        }
-
-        let total_fees = self.get_channel_total_fees(short_channel_id);
-
-        // APY = (total_fees / capacity) * (365 / age_days) * 100
-        let apy =
-            (total_fees as f64 / channel_capacity_sat as f64) * (365.0 / age_days as f64) * 100.0;
-        Some(apy)
+        let gross_revenue_msat = self.get_channel_total_fees(short_channel_id) as i64 * 1000;
+        Some(annualized_channel_roic_percent(
+            gross_revenue_msat,
+            fund.amount_msat,
+            age_days,
+        ))
     }
 
     /// Get all settled forwards for a specific channel (both inbound and outbound)
@@ -1887,22 +1876,21 @@ mod tests {
     }
 }
 
-/// APY calculation data
-pub struct ApyData {
+/// ROIC calculation data.
+pub struct RoicData {
     pub fees_1_month: u64,
     pub fees_3_months: u64,
     pub fees_6_months: u64,
     pub fees_12_months: u64,
     pub total_funds: u64,
-    pub apy_1_month: f64,
-    pub apy_3_months: f64,
-    pub apy_6_months: f64,
-    pub apy_12_months: f64,
+    pub gross_roic_1_month: f64,
+    pub gross_roic_3_months: f64,
+    pub gross_roic_6_months: f64,
+    pub gross_roic_12_months: f64,
     pub transacted_last_month: u64,
     pub routed_12_months: u64,
     pub capital_velocity_12_months: f64,
     pub effective_fee_rate_12_months_bps: f64,
-    pub gross_roic_12_months: f64,
     pub rebalance_cost_12_months_msat: u64,
     pub net_roic_12_months: f64,
 }

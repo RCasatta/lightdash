@@ -217,7 +217,7 @@ fn render_routes_page(
                             a href="forwards-week.html" { "Forwards" } " | "
                             a href="routes-10000.html" { "Routes" } " | "
                             a href="failures.html" { "Failures" } " | "
-                            a href="apy.html" { "APY" } " | "
+                            a href="roic.html" { "ROIC" } " | "
                             a href="closed-channels.html" { "Closed" }
                         }
                     }
