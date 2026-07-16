@@ -35,7 +35,7 @@ enum Commands {
         /// Directory for dashboard files
         directory: String,
         /// Minimum number of channels a node must have to be included
-        #[arg(long, default_value = "1")]
+        #[arg(long, default_value = "10")]
         min_channels: usize,
         /// Override the availdb path; remote when --ssh is used
         #[arg(long)]
