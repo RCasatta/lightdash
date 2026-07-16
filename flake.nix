@@ -26,7 +26,8 @@
           src = lib.cleanSourceWith {
             src = ./.; # The original, unfiltered source
             filter = path: type:
-               (lib.hasSuffix "\.js" path) ||
+              (lib.hasSuffix ".js" path) ||
+              (lib.hasSuffix ".css" path) ||
               # (lib.hasInfix "/test_data/" path) ||
 
               # Default filter from crane (allow .rs files)
@@ -70,4 +71,3 @@
         }
       );
 }
-
