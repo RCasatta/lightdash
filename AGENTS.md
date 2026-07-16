@@ -2,51 +2,66 @@
 
 ## Project Overview
 
-Lightdash is a Rust CLI tool for Lightning Network channel management dashboard generation. It interfaces with a Core Lightning node via `lightning-cli` and generates HTML dashboards.
+Lightdash is a Rust CLI tool for Lightning Network channel management and
+dashboard generation. It interfaces with a Core Lightning node through
+`lightning-cli`, either locally, through SSH, or from bundled test data.
+
+There are currently two dashboard flows:
+
+- `dashboard` is the existing direct flow: query the node and generate the
+  complete legacy HTML site in one process.
+- `snapshot` + `dashboard2` is the new two-stage flow: first export a versioned,
+  self-descriptive analytical dataset, then generate a simpler dynamic site
+  using only those files.
+
+Prefer extending the snapshot-driven flow for new Dashboard2 features. Do not
+make Dashboard2 query `Store` or invoke `lightning-cli`; it must remain a pure
+snapshot consumer.
 
 ## Build Commands
 
 ```bash
-# Build the project
-cargo build
+# Check the project
+direnv exec . cargo check
 
 # Build in release mode
-cargo build --release
+direnv exec . cargo build --release
 
-# Run the CLI
-cargo run -- dashboard target --min-channels 100 --availdb test-json/availdb.json
+# Run the legacy dashboard
+direnv exec . cargo run -- dashboard target/site --min-channels 100 \
+  --availdb test-json/availdb.json
 
 # Run with custom arguments
-cargo run -- <command> [args]
+direnv exec . cargo run -- <command> [args]
 ```
 
 ## Lint and Format Commands
 
 ```bash
 # Run clippy for linting
-cargo clippy -- -D warnings
+direnv exec . cargo clippy -- -D warnings
 
 # Format code
-cargo fmt
+direnv exec . cargo fmt
 
 # Check formatting
-cargo fmt --check
+direnv exec . cargo fmt --check
 ```
 
 ## Test Commands
 
 ```bash
 # Run all tests
-cargo test
+direnv exec . cargo test --quiet
 
 # Run a single test by name
-cargo test test_name
+direnv exec . cargo test test_name
 
 # Run doc tests
-cargo test --doc
+direnv exec . cargo test --doc
 
 # Run tests with output
-cargo test -- --nocapture
+direnv exec . cargo test -- --nocapture
 ```
 
 ## Development Environment
@@ -64,6 +79,67 @@ direnv allow
 ```
 
 The dev shell includes: rust-toolchain, miniserve, just.
+
+All build, test, formatting, and CLI commands must be run through
+`direnv exec .` on NixOS.
+
+## Snapshot and Dashboard2 Architecture
+
+Generate the analytical snapshot first, then render Dashboard2:
+
+```bash
+direnv exec . cargo run -- snapshot target/snapshot
+direnv exec . cargo run -- dashboard2 target/snapshot target/site2
+```
+
+For a remote node, `--ssh` is a global argument and belongs before the
+subcommand:
+
+```bash
+direnv exec . cargo run -- --ssh name@host snapshot target/snapshot
+direnv exec . cargo run -- dashboard2 target/snapshot target/site2
+```
+
+The snapshot contract is versioned by `SCHEMA_VERSION` in `src/snapshot.rs`.
+Dashboard2 intentionally rejects unsupported versions. When changing exported
+field names, types, meaning, or file layout:
+
+1. Update the serialized snapshot structs and generation logic.
+2. Update the canonical catalog in `src/snapshot_metadata.rs`.
+3. Increment `SCHEMA_VERSION`.
+4. Update Dashboard2 to consume the new contract.
+5. Regenerate fixtures or validation snapshots rather than expecting old
+   snapshots to work.
+
+`manifest.json` contains node and snapshot identity, dataset paths, record
+counts, and the full field catalog. Each dataset also has a matching
+`*.schema.json` companion containing its description and field metadata. Keep
+these files suitable for analysis by people and AI agents: document exact
+units, formulas, sources, aggregation rules, and important caveats.
+
+Snapshot datasets currently include:
+
+- `summary.json`: node-level balances, counts, revenue, and ROIC.
+- `channels.json`: current channels with routing, rebalance, and ROIC metrics.
+- `closed-channels.json`: closed-channel history and return attribution.
+- `settled-forwards.jsonl`: successful forwards used by Dashboard2.
+- `other-forwards.jsonl`: failed, offered, pending, and other noisy attempts.
+- `rebalances.jsonl`: matched bookkeeper rebalance parts.
+
+Keep settled and non-settled forwards separate. The Dashboard2 forwards page
+must load only `settled-forwards.jsonl`; failed forwards are high-volume,
+spammy, and not economically meaningful enough for the default interactive
+view.
+
+Derived values that are part of the analytical contract, such as `fee_ppm` and
+`elapsed_seconds`, should be computed during snapshot generation. Avoid
+reimplementing metric formulas independently in browser JavaScript.
+
+Dashboard2 copies only the data it uses into its `data/` directory. Its tables
+are client-side and support filtering, sorting, presets, column visibility, URL
+state, pagination where appropriate, and filtered exports. Column descriptions
+and tooltips must come from snapshot metadata instead of duplicated prose in
+HTML or JavaScript.
 
 ## Code Style Guidelines
 
@@ -120,7 +196,8 @@ use crate::common::ChannelFee;
 
 ### Testing Patterns
 
-The codebase uses `cfg!(debug_assertions)` to switch between test and production modes:
+The codebase uses `cfg!(debug_assertions)` to switch between test and production
+modes:
 
 ```rust
 pub fn list_channels() -> ListChannels {
@@ -163,7 +240,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     Dashboard {
-        #[arg(long, default_value = "1")]
+        #[arg(long, default_value = "10")]
         min_channels: usize,
     },
 }
@@ -176,7 +253,12 @@ enum Commands {
 | `src/main.rs` | CLI entry point, command routing |
 | `src/cmd.rs` | Lightning CLI command wrappers |
 | `src/store.rs` | Data store for fetched node data |
-| `src/dashboard.rs` | HTML dashboard generation |
+| `src/dashboard.rs` | Legacy direct HTML dashboard generation |
+| `src/snapshot.rs` | Versioned JSON/JSONL analytical snapshot generation |
+| `src/snapshot_metadata.rs` | Canonical dataset and metric descriptions |
+| `src/dashboard2.rs` | Snapshot-driven site generation and shared HTML shell |
+| `src/dashboard2.js` | Dynamic Dashboard2 tables and metadata tooltips |
+| `src/dashboard2.css` | Dashboard2 shared styling |
 | `src/routes.rs` | Routing analysis |
 | `src/sling.rs` | Sling job execution |
 | `src/fees.rs` | Fee adjustments |
@@ -184,15 +266,36 @@ enum Commands {
 ### Common Development Tasks
 
 ```bash
-# Generate dashboard
-cargo run -- dashboard target --min-channels 100 --availdb test-json/availdb.json
+# Generate a test-data snapshot and Dashboard2 site
+direnv exec . cargo run -- snapshot target/snapshot
+direnv exec . cargo run -- dashboard2 target/snapshot target/site2
 
-# Serve dashboard locally
-miniserve --index index.html --port 3535 target/ -i 127.0.0.1
+# Generate the legacy dashboard
+direnv exec . cargo run -- dashboard target/site --min-channels 100 \
+  --availdb test-json/availdb.json
+
+# Serve Dashboard2 locally; opening through file:// will not load JSON data
+direnv exec . miniserve --index index.html --port 3535 \
+  --interfaces 127.0.0.1 target/site2
 
 # Or use just
-just serve
+direnv exec . just serve
 ```
+
+Before completing changes to snapshots or Dashboard2, run:
+
+```bash
+direnv exec . cargo fmt --check
+direnv exec . cargo check --quiet
+direnv exec . cargo clippy --quiet -- -D warnings
+direnv exec . cargo test --quiet
+direnv exec . node --check src/dashboard2.js
+```
+
+For contract changes, also generate a fresh snapshot and Dashboard2 site, then
+inspect `manifest.json`, the companion schema files, and at least one record
+from each affected dataset. Browser-test dynamic tables over HTTP when their
+JavaScript or metadata integration changes.
 
 ### Configuration Files
 
