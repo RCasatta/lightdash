@@ -126,6 +126,20 @@ Snapshot datasets currently include:
 - `other-forwards.jsonl`: failed, offered, pending, and other noisy attempts.
 - `rebalances.jsonl`: matched bookkeeper rebalance parts.
 
+Historical archives are a separate server-side source under
+`/var/lib/lightdash/history/raw/{channels,funds}`. Rebuild their normalized
+change-point datasets with:
+
+```bash
+direnv exec . cargo run -- history rebuild
+```
+
+The command writes a self-descriptive manifest, schema companions, and gzip
+JSONL datasets to `/var/lib/lightdash/history/processed`. It intentionally
+rescans the complete raw archive so processed-schema changes remain easy to
+rebuild. Keep raw archives as the source of truth; do not make Dashboard2 read
+the raw `listchannels` or `listfunds` files.
+
 Keep settled and non-settled forwards separate. The Dashboard2 forwards page
 must load only `settled-forwards.jsonl`; failed forwards are high-volume,
 spammy, and not economically meaningful enough for the default interactive
@@ -259,6 +273,7 @@ enum Commands {
 | `src/dashboard2.rs` | Snapshot-driven site generation and shared HTML shell |
 | `src/dashboard2.js` | Dynamic Dashboard2 tables and metadata tooltips |
 | `src/dashboard2.css` | Dashboard2 shared styling |
+| `src/history.rs` | Full rebuild of normalized historical channel datasets |
 | `src/routes.rs` | Routing analysis |
 | `src/sling.rs` | Sling job execution |
 | `src/fees.rs` | Fee adjustments |

@@ -11,6 +11,7 @@ mod dashboard;
 mod dashboard2;
 mod fees;
 mod funds;
+mod history;
 mod htlc;
 mod lnplus;
 mod routes;
@@ -61,6 +62,11 @@ enum Commands {
         #[arg(long)]
         availdb: Option<String>,
     },
+    /// Process raw listchannels and listfunds archives into normalized history datasets
+    History {
+        #[command(subcommand)]
+        command: HistoryCommands,
+    },
     /// Generate routing analysis page
     Routes {
         /// Directory for routes output
@@ -102,6 +108,19 @@ enum Commands {
     },
 }
 
+#[derive(Subcommand)]
+enum HistoryCommands {
+    /// Rebuild all processed history datasets from the raw archives
+    Rebuild {
+        /// Directory containing channels/ and funds/ raw archive directories
+        #[arg(long, default_value = "/var/lib/lightdash/history/raw")]
+        raw_directory: String,
+        /// Directory for normalized processed history datasets
+        #[arg(long, default_value = "/var/lib/lightdash/history/processed")]
+        output_directory: String,
+    },
+}
+
 fn main() {
     init_logging();
     log::info!("Lightdash starting");
@@ -135,6 +154,16 @@ fn main() {
                 error_panic!("creating snapshot in `{directory}` failed: {e}");
             }
         }
+        Commands::History { command } => match command {
+            HistoryCommands::Rebuild {
+                raw_directory,
+                output_directory,
+            } => {
+                if let Err(e) = history::run_rebuild(&raw_directory, &output_directory) {
+                    error_panic!("rebuilding historical datasets failed: {e}");
+                }
+            }
+        },
         Commands::Routes { directory } => {
             let store = Store::new(None);
 

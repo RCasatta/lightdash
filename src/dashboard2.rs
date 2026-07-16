@@ -4,7 +4,7 @@ use std::path::{Component, Path, PathBuf};
 use maud::{html, Markup, DOCTYPE};
 use serde::de::DeserializeOwned;
 
-use crate::snapshot::{ChannelSnapshot, SnapshotManifest, SummarySnapshot, SCHEMA_VERSION};
+use crate::snapshot::{SnapshotManifest, SummarySnapshot, SCHEMA_VERSION};
 
 const APP_CSS: &str = include_str!("dashboard2.css");
 const APP_JS: &str = include_str!("dashboard2.js");
@@ -28,7 +28,6 @@ pub fn run_dashboard2(snapshot_directory: &str, output_directory: &str) -> Resul
     let channels_path = snapshot_file(snapshot_directory, &manifest.files.channels)?;
     let forwards_path = snapshot_file(snapshot_directory, &manifest.files.settled_forwards)?;
     let summary: SummarySnapshot = read_json(&summary_path, "snapshot summary")?;
-    let channels: Vec<ChannelSnapshot> = read_json(&channels_path, "snapshot channels")?;
 
     let assets_directory = output_directory.join("assets");
     let data_directory = output_directory.join("data");
@@ -61,9 +60,9 @@ pub fn run_dashboard2(snapshot_directory: &str, output_directory: &str) -> Resul
 
     let overview = render_overview_page(&manifest, &summary);
     write_file(&output_directory.join("index.html"), &overview)?;
-    let channels_page = render_channels_page(&manifest, channels.len());
+    let channels_page = render_channels_page(&manifest);
     write_file(&output_directory.join("channels.html"), &channels_page)?;
-    let forwards_page = render_forwards_page(&manifest, summary.settled_forward_count);
+    let forwards_page = render_forwards_page(&manifest);
     write_file(&output_directory.join("forwards.html"), &forwards_page)?;
 
     log::info!(
@@ -167,20 +166,10 @@ fn render_overview_page(manifest: &SnapshotManifest, summary: &SummarySnapshot) 
     page_shell("Overview", "overview", manifest, content)
 }
 
-fn render_channels_page(manifest: &SnapshotManifest, channel_count: usize) -> String {
+fn render_channels_page(manifest: &SnapshotManifest) -> String {
     let content = html! {
-        section class="hero compact-hero" {
-            div {
-                p class="eyebrow" { "Channels" }
-                h1 { "One table, many views" }
-                p class="hero-copy" {
-                    "Filter, sort, and reshape " (format_number(channel_count))
-                    " channel records without regenerating the site."
-                }
-            }
-        }
-
         (dynamic_table_panel(
+            "Channels",
             "channels",
             "data/channels.json",
             "json",
@@ -201,20 +190,10 @@ fn render_channels_page(manifest: &SnapshotManifest, channel_count: usize) -> St
     page_shell("Channels", "channels", manifest, content)
 }
 
-fn render_forwards_page(manifest: &SnapshotManifest, forward_count: usize) -> String {
+fn render_forwards_page(manifest: &SnapshotManifest) -> String {
     let content = html! {
-        section class="hero compact-hero" {
-            div {
-                p class="eyebrow" { "Forwards" }
-                h1 { "Settled forwarding history" }
-                p class="hero-copy" {
-                    "Explore " (format_number(forward_count))
-                    " settled forwards with time presets. Only the current page is rendered."
-                }
-            }
-        }
-
         (dynamic_table_panel(
+            "Forwards",
             "forwards",
             "data/settled-forwards.jsonl",
             "jsonl",
@@ -235,6 +214,7 @@ fn render_forwards_page(manifest: &SnapshotManifest, forward_count: usize) -> St
 }
 
 fn dynamic_table_panel(
+    page_title: &str,
     table_kind: &str,
     data_source: &str,
     data_format: &str,
@@ -245,11 +225,13 @@ fn dynamic_table_panel(
     html! {
         section
             class="panel table-panel"
+            aria-labelledby="table-page-title"
             data-table-root
             data-table-kind=(table_kind)
             data-source=(data_source)
             data-source-format=(data_format)
             data-paginated=(paginated) {
+            h1 id="table-page-title" class="sr-only" { (page_title) }
             noscript {
                 div class="error-banner" {
                     "This dynamic table requires JavaScript."

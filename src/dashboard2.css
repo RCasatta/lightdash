@@ -161,10 +161,6 @@ a {
     box-shadow: var(--shadow);
 }
 
-.compact-hero {
-    padding-block: 1.8rem;
-}
-
 .eyebrow {
     margin: 0 0 0.55rem;
     color: var(--accent);

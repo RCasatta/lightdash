@@ -34,6 +34,32 @@ only `settled-forwards.jsonl` and paginates the result instead of loading noisy
 failed attempts or rendering the complete history into the DOM. Serve the
 output over HTTP so the browser can load its data files.
 
+## Historical channel data
+
+Rebuild normalized channel policy and liquidity histories from the raw
+`listchannels` and `listfunds` archives:
+
+```bash
+lightdash history rebuild
+```
+
+The default source is `/var/lib/lightdash/history/raw`, containing `channels/`
+and `funds/`. Processed data is atomically written under
+`/var/lib/lightdash/history/processed` as:
+
+```text
+manifest.json
+channel-policy-history.jsonl.gz
+channel-policy-history.schema.json
+channel-liquidity-history.jsonl.gz
+channel-liquidity-history.schema.json
+```
+
+The rebuild scans all raw archives but emits change points rather than
+repeating identical consecutive observations. Policy history is restricted to
+channels involving the local node. Use `--raw-directory` and
+`--output-directory` to override the defaults for development or migration.
+
 ## Remote Core Lightning node
 
 Use the global `--ssh` option to execute every `lightning-cli` command on a

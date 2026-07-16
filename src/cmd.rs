@@ -345,6 +345,8 @@ pub struct Channel {
     pub delay: u64,
     pub htlc_minimum_msat: u64,
     pub htlc_maximum_msat: u64,
+    #[serde(default)]
+    pub active: Option<bool>,
 }
 
 #[derive(Deserialize, Debug)]
