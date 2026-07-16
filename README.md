@@ -17,6 +17,17 @@ Lightdash automatically reads Summars availability data from
 `AVAILDB_PATH` environment variable to override it. With `--ssh`, the path is
 read from the remote host.
 
+Generate the experimental snapshot-driven site in a separate step:
+
+```bash
+lightdash dashboard2 target/snapshot target/site2
+```
+
+Dashboard2 currently provides a shared site shell, an overview, and a dynamic
+channels table with presets, generic filters, sorting, column visibility, URL
+state, and filtered CSV/JSON exports. Serve the output over HTTP so the browser
+can load its data files.
+
 ## Remote Core Lightning node
 
 Use the global `--ssh` option to execute every `lightning-cli` command on a
@@ -39,6 +50,8 @@ src/
 ├── cmd.rs       # Lightning CLI command wrappers
 ├── common.rs    # Shared constants, structs, and utilities
 ├── dashboard.rs # Main dashboard display
+├── dashboard2.rs # Experimental snapshot-driven site renderer
+├── snapshot.rs  # Versioned analytical snapshot export
 ├── routes.rs    # Routing analysis
 ├── sling.rs     # Sling job execution
 └── fees.rs      # Fee adjustments

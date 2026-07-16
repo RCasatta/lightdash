@@ -8,6 +8,7 @@ mod channels;
 mod cmd;
 mod common;
 mod dashboard;
+mod dashboard2;
 mod fees;
 mod funds;
 mod htlc;
@@ -43,6 +44,13 @@ enum Commands {
         /// Base URL where funds charts are served, e.g. /auth/funds-charts
         #[arg(long)]
         funds_charts_url: Option<String>,
+    },
+    /// Generate the experimental site from a snapshot directory
+    Dashboard2 {
+        /// Directory containing manifest.json and snapshot data files
+        snapshot_directory: String,
+        /// Directory for the generated site
+        directory: String,
     },
     /// Export a versioned analytical snapshot as JSON and JSONL files
     Snapshot {
@@ -111,6 +119,14 @@ fn main() {
             let store = Store::new(availdb);
             log::debug!("Dashboard directory: {}", directory);
             dashboard::run_dashboard(&store, directory, min_channels, funds_charts_url);
+        }
+        Commands::Dashboard2 {
+            snapshot_directory,
+            directory,
+        } => {
+            if let Err(e) = dashboard2::run_dashboard2(&snapshot_directory, &directory) {
+                error_panic!("creating dashboard2 in `{directory}` failed: {e}");
+            }
         }
         Commands::Snapshot { directory, availdb } => {
             let store = Store::new(availdb);

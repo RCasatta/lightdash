@@ -4,97 +4,97 @@ use std::io::{self, BufWriter, Write};
 use std::path::Path;
 
 use chrono::{DateTime, SecondsFormat, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::cmd::{ClosedChannel, Forward, Fund};
 use crate::store::{RebalancePart, Store};
 
-const SCHEMA_VERSION: u32 = 1;
+pub(crate) const SCHEMA_VERSION: u32 = 1;
 
-#[derive(Serialize)]
-struct SnapshotManifest<'a> {
-    schema_version: u32,
-    generated_at: String,
-    node_id: &'a str,
-    block_height: u64,
-    files: SnapshotFiles,
+#[derive(Deserialize, Serialize)]
+pub(crate) struct SnapshotManifest {
+    pub schema_version: u32,
+    pub generated_at: String,
+    pub node_id: String,
+    pub block_height: u64,
+    pub files: SnapshotFiles,
 }
 
-#[derive(Serialize)]
-struct SnapshotFiles {
-    summary: &'static str,
-    channels: &'static str,
-    closed_channels: &'static str,
-    forwards: &'static str,
-    rebalances: &'static str,
+#[derive(Deserialize, Serialize)]
+pub(crate) struct SnapshotFiles {
+    pub summary: String,
+    pub channels: String,
+    pub closed_channels: String,
+    pub forwards: String,
+    pub rebalances: String,
 }
 
-#[derive(Serialize)]
-struct SummarySnapshot<'a> {
-    node_id: &'a str,
-    block_height: u64,
-    peer_count: usize,
-    network_channel_count: usize,
-    current_channel_count: usize,
-    normal_channel_count: usize,
-    closed_channel_count: usize,
-    forward_attempt_count: usize,
-    settled_forward_count: usize,
-    onchain_balance_msat: u64,
-    channel_funds_sat: u64,
-    total_forwarding_fees_sat: u64,
-    total_rebalance_cost_msat: u64,
-    net_routing_revenue_msat: i64,
-    roic: RoicSnapshot,
+#[derive(Deserialize, Serialize)]
+pub(crate) struct SummarySnapshot {
+    pub node_id: String,
+    pub block_height: u64,
+    pub peer_count: usize,
+    pub network_channel_count: usize,
+    pub current_channel_count: usize,
+    pub normal_channel_count: usize,
+    pub closed_channel_count: usize,
+    pub forward_attempt_count: usize,
+    pub settled_forward_count: usize,
+    pub onchain_balance_msat: u64,
+    pub channel_funds_sat: u64,
+    pub total_forwarding_fees_sat: u64,
+    pub total_rebalance_cost_msat: u64,
+    pub net_routing_revenue_msat: i64,
+    pub roic: RoicSnapshot,
 }
 
-#[derive(Serialize)]
-struct RoicSnapshot {
-    periods: Vec<RoicPeriodSnapshot>,
-    routed_12_months_sat: u64,
-    capital_velocity_12_months: f64,
-    effective_fee_rate_12_months_bps: f64,
-    rebalance_cost_12_months_msat: u64,
-    net_roic_12_months_percent: f64,
+#[derive(Deserialize, Serialize)]
+pub(crate) struct RoicSnapshot {
+    pub periods: Vec<RoicPeriodSnapshot>,
+    pub routed_12_months_sat: u64,
+    pub capital_velocity_12_months: f64,
+    pub effective_fee_rate_12_months_bps: f64,
+    pub rebalance_cost_12_months_msat: u64,
+    pub net_roic_12_months_percent: f64,
 }
 
-#[derive(Serialize)]
-struct RoicPeriodSnapshot {
-    months: i64,
-    forwarding_fees_sat: u64,
-    annualized_gross_roic_percent: f64,
+#[derive(Deserialize, Serialize)]
+pub(crate) struct RoicPeriodSnapshot {
+    pub months: i64,
+    pub forwarding_fees_sat: u64,
+    pub annualized_gross_roic_percent: f64,
 }
 
-#[derive(Serialize)]
-struct ChannelSnapshot {
-    channel_id: String,
-    short_channel_id: Option<String>,
-    peer_id: String,
-    peer_alias: String,
-    connected: bool,
-    state: String,
-    is_normal: bool,
-    capacity_msat: u64,
-    local_balance_msat: u64,
-    local_balance_percent: Option<f64>,
-    age_days: Option<i64>,
-    uptime_ratio: Option<f64>,
-    outbound_fee_ppm: Option<u64>,
-    inbound_fee_ppm: Option<u64>,
-    settled_forward_count: usize,
-    routed_out_sat: u64,
-    forwarding_fees_sat: u64,
-    indirect_fees_sat: u64,
-    historical_effective_fee_ppm: Option<f64>,
-    time_decayed_variable_fee_ppm: Option<f64>,
-    rebalance_target_cost_msat: u64,
-    rebalance_target_credit_msat: u64,
-    rebalance_effective_fee_ppm: Option<f64>,
-    rebalance_source_cost_msat: u64,
-    net_routing_revenue_msat: i64,
-    gross_roic_percent: Option<f64>,
-    net_roic_percent: Option<f64>,
-    indirect_roic_percent: Option<f64>,
+#[derive(Deserialize, Serialize)]
+pub(crate) struct ChannelSnapshot {
+    pub channel_id: String,
+    pub short_channel_id: Option<String>,
+    pub peer_id: String,
+    pub peer_alias: String,
+    pub connected: bool,
+    pub state: String,
+    pub is_normal: bool,
+    pub capacity_msat: u64,
+    pub local_balance_msat: u64,
+    pub local_balance_percent: Option<f64>,
+    pub age_days: Option<i64>,
+    pub uptime_ratio: Option<f64>,
+    pub outbound_fee_ppm: Option<u64>,
+    pub inbound_fee_ppm: Option<u64>,
+    pub settled_forward_count: usize,
+    pub routed_out_sat: u64,
+    pub forwarding_fees_sat: u64,
+    pub indirect_fees_sat: u64,
+    pub historical_effective_fee_ppm: Option<f64>,
+    pub time_decayed_variable_fee_ppm: Option<f64>,
+    pub rebalance_target_cost_msat: u64,
+    pub rebalance_target_credit_msat: u64,
+    pub rebalance_effective_fee_ppm: Option<f64>,
+    pub rebalance_source_cost_msat: u64,
+    pub net_routing_revenue_msat: i64,
+    pub gross_roic_percent: Option<f64>,
+    pub net_roic_percent: Option<f64>,
+    pub indirect_roic_percent: Option<f64>,
 }
 
 #[derive(Serialize)]
@@ -171,14 +171,14 @@ pub fn run_snapshot(store: &Store, directory: &str) -> io::Result<()> {
     let manifest = SnapshotManifest {
         schema_version: SCHEMA_VERSION,
         generated_at,
-        node_id: &store.info.id,
+        node_id: store.info.id.clone(),
         block_height: store.info.blockheight,
         files: SnapshotFiles {
-            summary: "summary.json",
-            channels: "channels.json",
-            closed_channels: "closed-channels.json",
-            forwards: "forwards.jsonl",
-            rebalances: "rebalances.jsonl",
+            summary: "summary.json".to_string(),
+            channels: "channels.json".to_string(),
+            closed_channels: "closed-channels.json".to_string(),
+            forwards: "forwards.jsonl".to_string(),
+            rebalances: "rebalances.jsonl".to_string(),
         },
     };
     write_json(directory.join("manifest.json"), &manifest)?;
@@ -219,10 +219,10 @@ pub fn run_snapshot(store: &Store, directory: &str) -> io::Result<()> {
     Ok(())
 }
 
-fn build_summary(store: &Store) -> SummarySnapshot<'_> {
+fn build_summary(store: &Store) -> SummarySnapshot {
     let roic = store.get_roic_data();
     SummarySnapshot {
-        node_id: &store.info.id,
+        node_id: store.info.id.clone(),
         block_height: store.info.blockheight,
         peer_count: store.peers.peers.len(),
         network_channel_count: store.channels_len(),
