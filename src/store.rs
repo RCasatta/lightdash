@@ -32,6 +32,7 @@ pub struct Store {
     nodes_by_id: HashMap<String, cmd::Node>,
     channels_by_id: HashMap<(String, String), cmd::Channel>,
     node_channel_counts: HashMap<String, usize>,
+    forward_cache: ForwardCache,
     peer_notes: HashMap<String, String>,
     setchannel_timestamps: HashMap<String, i64>,
     now: DateTime<Utc>,
@@ -96,25 +97,116 @@ fn annualized_channel_roic_percent(
     (revenue_msat as f64 / channel_capacity_msat as f64) * (365.0 / age_days as f64) * 100.0
 }
 
-#[derive(Clone, Copy)]
-enum ForwardChannelSide {
-    Incoming,
-    Outgoing,
+#[derive(Default)]
+struct ChannelForwardMetrics {
+    settled_count: usize,
+    outbound_fees_sat: u64,
+    indirect_fees_sat: u64,
+    routed_out_sat: u64,
+    weighted_fees_sat: f64,
+    weighted_variable_fees_sat: f64,
+    weighted_routed_sat: f64,
 }
 
-fn forwarding_fees_sat_for_channel(
-    forwards: &[SettledForward],
-    short_channel_id: &str,
-    side: ForwardChannelSide,
-) -> u64 {
-    forwards
+#[derive(Default)]
+struct ForwardCache {
+    settled: Vec<SettledForward>,
+    metrics_by_channel: HashMap<String, ChannelForwardMetrics>,
+    settled_indices_by_channel: HashMap<String, Vec<usize>>,
+    local_failed_indices_by_channel: HashMap<String, Vec<usize>>,
+    failed_indices_by_channel: HashMap<String, Vec<usize>>,
+}
+
+fn build_forward_cache(forwards: &cmd::ListForwards, now: DateTime<Utc>) -> ForwardCache {
+    const HALF_LIFE_SECONDS: f64 = 7.0 * 24.0 * 60.0 * 60.0;
+    const OUR_BASE_FEE_SAT: u64 = 1;
+
+    let mut settled: Vec<_> = forwards
+        .forwards
         .iter()
-        .filter(|forward| match side {
-            ForwardChannelSide::Incoming => forward.in_channel == short_channel_id,
-            ForwardChannelSide::Outgoing => forward.out_channel == short_channel_id,
-        })
-        .map(|forward| forward.fee_sat)
-        .sum()
+        .filter(|forward| forward.status == "settled")
+        .map(|forward| SettledForward::try_from(forward.clone()).unwrap())
+        .collect();
+    settled.sort_by(|a, b| b.resolved_time.cmp(&a.resolved_time));
+
+    let mut metrics_by_channel: HashMap<String, ChannelForwardMetrics> = HashMap::new();
+    let mut settled_indices_by_channel: HashMap<String, Vec<usize>> = HashMap::new();
+    for (index, forward) in settled.iter().enumerate() {
+        let incoming = metrics_by_channel
+            .entry(forward.in_channel.clone())
+            .or_default();
+        incoming.settled_count += 1;
+        incoming.indirect_fees_sat += forward.fee_sat;
+        settled_indices_by_channel
+            .entry(forward.in_channel.clone())
+            .or_default()
+            .push(index);
+
+        let outgoing = metrics_by_channel
+            .entry(forward.out_channel.clone())
+            .or_default();
+        if forward.out_channel != forward.in_channel {
+            outgoing.settled_count += 1;
+            settled_indices_by_channel
+                .entry(forward.out_channel.clone())
+                .or_default()
+                .push(index);
+        }
+        outgoing.outbound_fees_sat += forward.fee_sat;
+        outgoing.routed_out_sat += forward.out_sat;
+
+        let age_seconds = now
+            .signed_duration_since(forward.resolved_time)
+            .num_seconds()
+            .max(0) as f64;
+        let decay = 0.5_f64.powf(age_seconds / HALF_LIFE_SECONDS);
+        outgoing.weighted_fees_sat += forward.fee_sat as f64 * decay;
+        outgoing.weighted_variable_fees_sat +=
+            forward.fee_sat.saturating_sub(OUR_BASE_FEE_SAT) as f64 * decay;
+        outgoing.weighted_routed_sat += forward.out_sat as f64 * decay;
+    }
+
+    let mut local_failed_indices_by_channel: HashMap<String, Vec<usize>> = HashMap::new();
+    let mut failed_indices_by_channel: HashMap<String, Vec<usize>> = HashMap::new();
+    for (index, forward) in forwards.forwards.iter().enumerate() {
+        let indices_by_channel = match forward.status.as_str() {
+            "local_failed" => &mut local_failed_indices_by_channel,
+            "failed" => &mut failed_indices_by_channel,
+            _ => continue,
+        };
+        indices_by_channel
+            .entry(forward.in_channel.clone())
+            .or_default()
+            .push(index);
+        if let Some(out_channel) = &forward.out_channel {
+            if out_channel != &forward.in_channel {
+                indices_by_channel
+                    .entry(out_channel.clone())
+                    .or_default()
+                    .push(index);
+            }
+        }
+    }
+
+    for indices in local_failed_indices_by_channel
+        .values_mut()
+        .chain(failed_indices_by_channel.values_mut())
+    {
+        indices.sort_by(|a, b| {
+            forwards.forwards[*b]
+                .received_time
+                .partial_cmp(&forwards.forwards[*a].received_time)
+                .unwrap()
+        });
+    }
+
+    ForwardCache {
+        settled,
+        metrics_by_channel,
+        settled_indices_by_channel,
+        local_failed_indices_by_channel,
+        failed_indices_by_channel,
+    }
 }
 
 pub(crate) fn match_rebalance_parts(
@@ -194,6 +286,12 @@ impl Store {
         let nodes = cmd::list_nodes();
         let closed_channels = cmd::list_closed_channels();
         log::debug!("Data fetched successfully");
+        let forward_cache = build_forward_cache(&forwards, now);
+        log::info!(
+            "Cached {} settled forwards across {} channels",
+            forward_cache.settled.len(),
+            forward_cache.metrics_by_channel.len()
+        );
 
         log::info!("Loading availdb");
         let avail_map: HashMap<String, f64> = match cmd::read_availdb_json(availdb.as_deref()) {
@@ -316,6 +414,7 @@ impl Store {
             nodes_by_id,
             channels_by_id,
             node_channel_counts,
+            forward_cache,
             peer_notes,
             setchannel_timestamps,
             now,
@@ -343,22 +442,16 @@ impl Store {
 
     /// Get settled forwards by most recent first
     pub fn settled_forwards(&self) -> Vec<SettledForward> {
-        let mut f: Vec<_> = self
-            .forwards
-            .forwards
-            .iter()
-            .filter(|e| e.status == "settled")
-            .map(|e| SettledForward::try_from(e.clone()).unwrap())
-            .collect();
-        f.sort_by(|a, b| b.resolved_time.cmp(&a.resolved_time));
-        f
+        self.forward_cache.settled.clone()
     }
 
     /// Filter settled forwards to only include those resolved within the last N days
     pub fn filter_settled_forwards_by_days(&self, days: i64) -> Vec<SettledForward> {
-        self.settled_forwards()
-            .into_iter()
+        self.forward_cache
+            .settled
+            .iter()
             .filter(|f| self.now.signed_duration_since(f.resolved_time).num_hours() <= days * 24)
+            .cloned()
             .collect()
     }
 
@@ -416,7 +509,8 @@ impl Store {
     }
 
     pub fn total_forwarding_fees_sat(&self) -> u64 {
-        self.settled_forwards()
+        self.forward_cache
+            .settled
             .iter()
             .map(|forward| forward.fee_sat)
             .sum()
@@ -515,7 +609,7 @@ impl Store {
     pub fn forwards_by_weekday(&self) -> Vec<usize> {
         let mut weekday_counts = vec![0; 7];
 
-        for forward in self.settled_forwards() {
+        for forward in &self.forward_cache.settled {
             let weekday = forward.resolved_time.weekday();
             let index = match weekday {
                 chrono::Weekday::Sun => 0,
@@ -535,8 +629,9 @@ impl Store {
     /// Get fees earned in sats for the last N months from settled forwards
     pub fn fees_earned_last_months(&self, months: i64) -> u64 {
         let days = months * 30; // Approximating 30 days per month like the bash script
-        self.settled_forwards()
-            .into_iter()
+        self.forward_cache
+            .settled
+            .iter()
             .filter(|f| self.now.signed_duration_since(f.resolved_time).num_days() <= days)
             .map(|f| f.fee_sat)
             .sum()
@@ -545,8 +640,9 @@ impl Store {
     /// Get total routed amount in sats for the last N months from settled forwards
     pub fn routed_last_months_sats(&self, months: i64) -> u64 {
         let days = months * 30; // Approximating 30 days per month like the bash script
-        self.settled_forwards()
-            .into_iter()
+        self.forward_cache
+            .settled
+            .iter()
             .filter(|f| self.now.signed_duration_since(f.resolved_time).num_days() <= days)
             .map(|f| f.out_sat)
             .sum()
@@ -831,37 +927,37 @@ impl Store {
 
     /// Get total number of forwards for a specific channel (both inbound and outbound)
     pub fn get_channel_total_forwards(&self, short_channel_id: &str) -> usize {
-        self.settled_forwards()
-            .iter()
-            .filter(|f| f.in_channel == short_channel_id || f.out_channel == short_channel_id)
-            .count()
+        self.forward_cache
+            .metrics_by_channel
+            .get(short_channel_id)
+            .map(|metrics| metrics.settled_count)
+            .unwrap_or_default()
     }
 
     /// Get total fees earned for a specific channel (from outbound forwards)
     pub fn get_channel_total_fees(&self, short_channel_id: &str) -> u64 {
-        forwarding_fees_sat_for_channel(
-            &self.settled_forwards(),
-            short_channel_id,
-            ForwardChannelSide::Outgoing,
-        )
+        self.forward_cache
+            .metrics_by_channel
+            .get(short_channel_id)
+            .map(|metrics| metrics.outbound_fees_sat)
+            .unwrap_or_default()
     }
 
     /// Get fees attributed indirectly to a channel acting as the incoming channel.
     pub fn get_channel_indirect_fees(&self, short_channel_id: &str) -> u64 {
-        forwarding_fees_sat_for_channel(
-            &self.settled_forwards(),
-            short_channel_id,
-            ForwardChannelSide::Incoming,
-        )
+        self.forward_cache
+            .metrics_by_channel
+            .get(short_channel_id)
+            .map(|metrics| metrics.indirect_fees_sat)
+            .unwrap_or_default()
     }
 
     pub fn get_channel_forwarding_fee_totals(&self, short_channel_id: &str) -> (u64, u64) {
-        self.settled_forwards()
-            .iter()
-            .filter(|f| f.out_channel == short_channel_id)
-            .fold((0u64, 0u64), |(fees, routed), f| {
-                (fees + f.fee_sat, routed + f.out_sat)
-            })
+        self.forward_cache
+            .metrics_by_channel
+            .get(short_channel_id)
+            .map(|metrics| (metrics.outbound_fees_sat, metrics.routed_out_sat))
+            .unwrap_or_default()
     }
 
     /// Get historical effective fee rate in ppm for outbound forwards on a channel.
@@ -885,25 +981,12 @@ impl Store {
         &self,
         short_channel_id: &str,
     ) -> Option<f64> {
-        const HALF_LIFE_SECONDS: f64 = 7.0 * 24.0 * 60.0 * 60.0;
-
-        let (weighted_fees, weighted_routed) = self
-            .settled_forwards()
-            .iter()
-            .filter(|forward| forward.out_channel == short_channel_id)
-            .fold((0.0, 0.0), |(fees, routed), forward| {
-                let age_seconds = self
-                    .now
-                    .signed_duration_since(forward.resolved_time)
-                    .num_seconds()
-                    .max(0) as f64;
-                let decay = 0.5_f64.powf(age_seconds / HALF_LIFE_SECONDS);
-
-                (
-                    fees + forward.fee_sat as f64 * decay,
-                    routed + forward.out_sat as f64 * decay,
-                )
-            });
+        let metrics = self
+            .forward_cache
+            .metrics_by_channel
+            .get(short_channel_id)?;
+        let weighted_fees = metrics.weighted_fees_sat;
+        let weighted_routed = metrics.weighted_routed_sat;
 
         if weighted_routed == 0.0 {
             return None;
@@ -917,27 +1000,12 @@ impl Store {
     /// This keeps the same 1-week half-life and amount weighting as TPPM, but reduces
     /// each outbound forward fee by 1000 msat before averaging.
     pub fn get_channel_time_decayed_variable_fee_ppm(&self, short_channel_id: &str) -> Option<f64> {
-        const HALF_LIFE_SECONDS: f64 = 7.0 * 24.0 * 60.0 * 60.0;
-        const OUR_BASE_FEE_SAT: u64 = 1;
-
-        let (weighted_fees, weighted_routed) = self
-            .settled_forwards()
-            .iter()
-            .filter(|forward| forward.out_channel == short_channel_id)
-            .fold((0.0, 0.0), |(fees, routed), forward| {
-                let age_seconds = self
-                    .now
-                    .signed_duration_since(forward.resolved_time)
-                    .num_seconds()
-                    .max(0) as f64;
-                let decay = 0.5_f64.powf(age_seconds / HALF_LIFE_SECONDS);
-                let variable_fee_sat = forward.fee_sat.saturating_sub(OUR_BASE_FEE_SAT);
-
-                (
-                    fees + variable_fee_sat as f64 * decay,
-                    routed + forward.out_sat as f64 * decay,
-                )
-            });
+        let metrics = self
+            .forward_cache
+            .metrics_by_channel
+            .get(short_channel_id)?;
+        let weighted_fees = metrics.weighted_variable_fees_sat;
+        let weighted_routed = metrics.weighted_routed_sat;
 
         if weighted_routed == 0.0 {
             return None;
@@ -1123,48 +1191,42 @@ impl Store {
 
     /// Get all settled forwards for a specific channel (both inbound and outbound)
     pub fn get_channel_forwards(&self, short_channel_id: &str) -> Vec<SettledForward> {
-        self.settled_forwards()
+        self.forward_cache
+            .settled_indices_by_channel
+            .get(short_channel_id)
             .into_iter()
-            .filter(|f| f.in_channel == short_channel_id || f.out_channel == short_channel_id)
+            .flatten()
+            .map(|index| self.forward_cache.settled[*index].clone())
             .collect()
     }
 
     /// Get local_failed forwards for a specific channel (both inbound and outbound)
     pub fn get_channel_local_failed_forwards(&self, short_channel_id: &str) -> Vec<Forward> {
-        let mut forwards: Vec<_> = self
-            .forwards
-            .forwards
-            .iter()
-            .filter(|f| {
-                f.status == "local_failed"
-                    && (f.in_channel == short_channel_id
-                        || f.out_channel.as_deref() == Some(short_channel_id))
-            })
-            .cloned()
-            .collect();
-
-        // Sort by received_time descending (most recent first)
-        forwards.sort_by(|a, b| b.received_time.partial_cmp(&a.received_time).unwrap());
-        forwards
+        self.forwards_for_channel(
+            short_channel_id,
+            &self.forward_cache.local_failed_indices_by_channel,
+        )
     }
 
     /// Get failed forwards for a specific channel (both inbound and outbound)
     pub fn get_channel_failed_forwards(&self, short_channel_id: &str) -> Vec<Forward> {
-        let mut forwards: Vec<_> = self
-            .forwards
-            .forwards
-            .iter()
-            .filter(|f| {
-                f.status == "failed"
-                    && (f.in_channel == short_channel_id
-                        || f.out_channel.as_deref() == Some(short_channel_id))
-            })
-            .cloned()
-            .collect();
+        self.forwards_for_channel(
+            short_channel_id,
+            &self.forward_cache.failed_indices_by_channel,
+        )
+    }
 
-        // Sort by received_time descending (most recent first)
-        forwards.sort_by(|a, b| b.received_time.partial_cmp(&a.received_time).unwrap());
-        forwards
+    fn forwards_for_channel(
+        &self,
+        short_channel_id: &str,
+        indices_by_channel: &HashMap<String, Vec<usize>>,
+    ) -> Vec<Forward> {
+        indices_by_channel
+            .get(short_channel_id)
+            .into_iter()
+            .flatten()
+            .map(|index| self.forwards.forwards[*index].clone())
+            .collect()
     }
 
     /// Get local_failed forwards with WIRE_TEMPORARY_CHANNEL_FAILURE grouped by out_channel
@@ -1462,6 +1524,9 @@ mod tests {
         forwards: Vec<cmd::Forward>,
         rebalance_parts: Vec<RebalancePart>,
     ) -> Store {
+        let now = DateTime::from_timestamp(NOW_TIMESTAMP, 0).unwrap();
+        let forwards = cmd::ListForwards { forwards };
+        let forward_cache = build_forward_cache(&forwards, now);
         Store {
             info: cmd::GetInfo {
                 id: "our-node".to_string(),
@@ -1473,7 +1538,7 @@ mod tests {
                 channels: funds,
                 outputs: vec![],
             },
-            forwards: cmd::ListForwards { forwards },
+            forwards,
             nodes: cmd::ListNodes { nodes: vec![] },
             closed_channels: cmd::ListClosedChannels {
                 closedchannels: vec![],
@@ -1482,9 +1547,10 @@ mod tests {
             nodes_by_id: HashMap::new(),
             channels_by_id: HashMap::new(),
             node_channel_counts: HashMap::new(),
+            forward_cache,
             peer_notes: HashMap::new(),
             setchannel_timestamps: HashMap::new(),
-            now: DateTime::from_timestamp(NOW_TIMESTAMP, 0).unwrap(),
+            now,
             avail_map: HashMap::new(),
         }
     }
@@ -1562,13 +1628,59 @@ mod tests {
 
         let period_forwards = store.filter_settled_forwards_by_days(30);
         assert_eq!(
-            forwarding_fees_sat_for_channel(
-                &period_forwards,
-                INCOMING_SCID,
-                ForwardChannelSide::Incoming,
-            ),
+            period_forwards
+                .iter()
+                .filter(|forward| forward.in_channel == INCOMING_SCID)
+                .map(|forward| forward.fee_sat)
+                .sum::<u64>(),
             11
         );
+    }
+
+    #[test]
+    fn cached_channel_failure_lists_are_filtered_and_sorted() {
+        let store = test_store(
+            vec![fund(INCOMING_SCID, 1_000_000_000)],
+            vec![
+                forward(
+                    INCOMING_SCID,
+                    OUTGOING_SCID,
+                    0,
+                    "failed",
+                    NOW_TIMESTAMP - 30,
+                ),
+                forward(
+                    UNRELATED_SCID,
+                    INCOMING_SCID,
+                    0,
+                    "failed",
+                    NOW_TIMESTAMP - 10,
+                ),
+                forward(
+                    INCOMING_SCID,
+                    OUTGOING_SCID,
+                    0,
+                    "local_failed",
+                    NOW_TIMESTAMP - 20,
+                ),
+                forward(
+                    INCOMING_SCID,
+                    OUTGOING_SCID,
+                    0,
+                    "pending",
+                    NOW_TIMESTAMP - 5,
+                ),
+            ],
+            vec![],
+        );
+
+        let failed = store.get_channel_failed_forwards(INCOMING_SCID);
+        assert_eq!(failed.len(), 2);
+        assert!(failed[0].received_time > failed[1].received_time);
+
+        let local_failed = store.get_channel_local_failed_forwards(INCOMING_SCID);
+        assert_eq!(local_failed.len(), 1);
+        assert_eq!(local_failed[0].status, "local_failed");
     }
 
     #[test]
