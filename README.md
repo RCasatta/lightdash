@@ -1,6 +1,17 @@
 
 # Lightdash
 
+## Analytical snapshots
+
+Export a versioned snapshot without generating the HTML dashboard:
+
+```bash
+lightdash snapshot target/snapshot --availdb test-json/availdb.json
+```
+
+The output contains a manifest and summary, current and closed channel JSON files,
+plus forward and rebalance event streams in JSONL format.
+
 ## Project Structure
 
 ```

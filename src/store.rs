@@ -417,6 +417,14 @@ impl Store {
         parts
     }
 
+    pub fn rebalance_parts(&self) -> impl Iterator<Item = &RebalancePart> {
+        self.rebalance_parts.iter()
+    }
+
+    pub fn snapshot_time(&self) -> DateTime<Utc> {
+        self.now
+    }
+
     pub fn total_forwarding_fees_sat(&self) -> u64 {
         self.settled_forwards()
             .iter()

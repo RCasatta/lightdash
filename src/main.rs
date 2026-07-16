@@ -14,6 +14,7 @@ mod htlc;
 mod lnplus;
 mod routes;
 mod sling;
+mod snapshot;
 mod store;
 
 #[derive(Parser)]
@@ -39,6 +40,14 @@ enum Commands {
         /// Base URL where funds charts are served, e.g. /auth/funds-charts
         #[arg(long)]
         funds_charts_url: Option<String>,
+    },
+    /// Export a versioned analytical snapshot as JSON and JSONL files
+    Snapshot {
+        /// Directory for snapshot files
+        directory: String,
+        /// Path to JSON file with node uptime data (format: {node_id: {avail: float}})
+        #[arg(long)]
+        availdb: Option<String>,
     },
     /// Generate routing analysis page
     Routes {
@@ -95,6 +104,12 @@ fn main() {
             let store = Store::new(availdb);
             log::debug!("Dashboard directory: {}", directory);
             dashboard::run_dashboard(&store, directory, min_channels, funds_charts_url);
+        }
+        Commands::Snapshot { directory, availdb } => {
+            let store = Store::new(availdb);
+            if let Err(e) = snapshot::run_snapshot(&store, &directory) {
+                error_panic!("creating snapshot in `{directory}` failed: {e}");
+            }
         }
         Commands::Routes { directory } => {
             let store = Store::new(None);
