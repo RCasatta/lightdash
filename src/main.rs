@@ -95,6 +95,7 @@ enum Commands {
 
 fn main() {
     init_logging();
+    log::info!("Lightdash starting");
     let cli = Cli::parse();
     if let Err(e) = cmd::configure_ssh(cli.ssh) {
         error_panic!("configuring SSH command mode failed: {e}");
