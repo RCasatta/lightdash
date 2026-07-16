@@ -9,8 +9,9 @@ Export a versioned snapshot without generating the HTML dashboard:
 lightdash snapshot target/snapshot
 ```
 
-The output contains a manifest and summary, current and closed channel JSON files,
-plus forward and rebalance event streams in JSONL format.
+The output contains a manifest and summary, current and closed channel JSON
+files, separate settled and non-settled forward streams, and rebalance events in
+JSONL format.
 
 Lightdash automatically reads Summars availability data from
 `~/.lightning/bitcoin/summars/availdb.json`. Use `--availdb PATH` or the
@@ -23,10 +24,12 @@ Generate the experimental snapshot-driven site in a separate step:
 lightdash dashboard2 target/snapshot target/site2
 ```
 
-Dashboard2 currently provides a shared site shell, an overview, and a dynamic
-channels table with presets, generic filters, sorting, column visibility, URL
-state, and filtered CSV/JSON exports. Serve the output over HTTP so the browser
-can load its data files.
+Dashboard2 currently provides a shared site shell, an overview, and dynamic
+channel and forward tables with presets, generic filters, sorting, column
+visibility, URL state, and filtered CSV/JSON exports. The forwards page streams
+only `settled-forwards.jsonl` and paginates the result instead of loading noisy
+failed attempts or rendering the complete history into the DOM. Serve the
+output over HTTP so the browser can load its data files.
 
 ## Remote Core Lightning node
 

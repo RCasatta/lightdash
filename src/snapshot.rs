@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::cmd::{ClosedChannel, Forward, Fund};
 use crate::store::{RebalancePart, Store};
 
-pub(crate) const SCHEMA_VERSION: u32 = 1;
+pub(crate) const SCHEMA_VERSION: u32 = 2;
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct SnapshotManifest {
@@ -25,7 +25,8 @@ pub(crate) struct SnapshotFiles {
     pub summary: String,
     pub channels: String,
     pub closed_channels: String,
-    pub forwards: String,
+    pub settled_forwards: String,
+    pub other_forwards: String,
     pub rebalances: String,
 }
 
@@ -177,7 +178,8 @@ pub fn run_snapshot(store: &Store, directory: &str) -> io::Result<()> {
             summary: "summary.json".to_string(),
             channels: "channels.json".to_string(),
             closed_channels: "closed-channels.json".to_string(),
-            forwards: "forwards.jsonl".to_string(),
+            settled_forwards: "settled-forwards.jsonl".to_string(),
+            other_forwards: "other-forwards.jsonl".to_string(),
             rebalances: "rebalances.jsonl".to_string(),
         },
     };
@@ -207,8 +209,22 @@ pub fn run_snapshot(store: &Store, directory: &str) -> io::Result<()> {
     write_json(directory.join("closed-channels.json"), &closed_channels)?;
 
     write_json_lines(
-        directory.join("forwards.jsonl"),
-        store.forwards.forwards.iter().map(build_forward_snapshot),
+        directory.join("settled-forwards.jsonl"),
+        store
+            .forwards
+            .forwards
+            .iter()
+            .filter(|forward| forward.status == "settled")
+            .map(build_forward_snapshot),
+    )?;
+    write_json_lines(
+        directory.join("other-forwards.jsonl"),
+        store
+            .forwards
+            .forwards
+            .iter()
+            .filter(|forward| forward.status != "settled")
+            .map(build_forward_snapshot),
     )?;
     write_json_lines(
         directory.join("rebalances.jsonl"),
