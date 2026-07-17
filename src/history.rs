@@ -1,8 +1,9 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs::{self, File};
-use std::io::{BufWriter, Write};
-use std::path::{Path, PathBuf};
+use std::io::{self, BufWriter, Write};
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
+use std::time::UNIX_EPOCH;
 
 use chrono::{DateTime, SecondsFormat, Utc};
 use flate2::write::GzEncoder;
@@ -18,6 +19,13 @@ const POLICY_FILE: &str = "channel-policy-history.jsonl.gz";
 const POLICY_SCHEMA_FILE: &str = "channel-policy-history.schema.json";
 const LIQUIDITY_FILE: &str = "channel-liquidity-history.jsonl.gz";
 const LIQUIDITY_SCHEMA_FILE: &str = "channel-liquidity-history.schema.json";
+pub(crate) const DEFAULT_PROCESSED_DIRECTORY: &str = "/var/lib/lightdash/history/processed";
+pub(crate) const SNAPSHOT_HISTORY_MANIFEST: &str = "history-manifest.json";
+
+pub(crate) struct ImportedHistory {
+    pub manifest_file: String,
+    pub datasets: BTreeMap<String, DatasetMetadata>,
+}
 
 #[derive(Deserialize, Serialize)]
 struct HistoryManifest {
@@ -84,6 +92,178 @@ pub fn run_rebuild(raw_directory: &str, output_directory: &str) -> Result<(), St
         Path::new(output_directory),
         &node_id,
     )
+}
+
+pub fn run_export(directory: &str) -> Result<(), String> {
+    let stdout = io::stdout();
+    let mut writer = BufWriter::new(stdout.lock());
+    write_export(Path::new(directory), &mut writer)?;
+    writer
+        .flush()
+        .map_err(|e| format!("flushing history export failed: {e}"))
+}
+
+pub(crate) fn import_for_snapshot(
+    snapshot_directory: &Path,
+    configured_directory: Option<&str>,
+    expected_node_id: &str,
+) -> Result<ImportedHistory, String> {
+    let processed_directory = configured_directory.unwrap_or(DEFAULT_PROCESSED_DIRECTORY);
+    if cmd::using_ssh() {
+        log::info!("Fetching processed history from remote node");
+        let archive = cmd::remote_command_output(
+            "lightdash",
+            &["history", "export", "--directory", processed_directory],
+        )?;
+        import_tar_for_snapshot(&archive, snapshot_directory, expected_node_id)
+    } else {
+        log::info!("Loading processed history from {processed_directory}");
+        import_directory_for_snapshot(
+            Path::new(processed_directory),
+            snapshot_directory,
+            expected_node_id,
+        )
+    }
+}
+
+fn import_directory_for_snapshot(
+    processed_directory: &Path,
+    snapshot_directory: &Path,
+    expected_node_id: &str,
+) -> Result<ImportedHistory, String> {
+    let manifest_path = processed_directory.join("manifest.json");
+    let manifest_bytes = fs::read(&manifest_path).map_err(|e| {
+        format!(
+            "reading history manifest `{}` failed: {e}",
+            manifest_path.display()
+        )
+    })?;
+    let manifest = validate_history_manifest(&manifest_bytes, expected_node_id)?;
+
+    for dataset in manifest.datasets.values() {
+        for relative_path in [&dataset.path, &dataset.schema_path] {
+            validate_export_path(relative_path)?;
+            let source = processed_directory.join(relative_path);
+            let destination = snapshot_directory.join(relative_path);
+            fs::copy(&source, &destination).map_err(|e| {
+                format!(
+                    "copying processed history `{}` to `{}` failed: {e}",
+                    source.display(),
+                    destination.display()
+                )
+            })?;
+        }
+    }
+    fs::write(
+        snapshot_directory.join(SNAPSHOT_HISTORY_MANIFEST),
+        &manifest_bytes,
+    )
+    .map_err(|e| format!("writing snapshot history manifest failed: {e}"))?;
+
+    Ok(ImportedHistory {
+        manifest_file: SNAPSHOT_HISTORY_MANIFEST.to_string(),
+        datasets: manifest.datasets,
+    })
+}
+
+fn import_tar_for_snapshot(
+    archive: &[u8],
+    snapshot_directory: &Path,
+    expected_node_id: &str,
+) -> Result<ImportedHistory, String> {
+    let entries = read_tar_entries(archive)?;
+    let manifest_bytes = entries
+        .get("manifest.json")
+        .ok_or_else(|| "history export does not contain manifest.json".to_string())?;
+    let manifest = validate_history_manifest(manifest_bytes, expected_node_id)?;
+
+    for dataset in manifest.datasets.values() {
+        for relative_path in [&dataset.path, &dataset.schema_path] {
+            validate_export_path(relative_path)?;
+            let content = entries.get(relative_path).ok_or_else(|| {
+                format!("history export is missing manifest file `{relative_path}`")
+            })?;
+            fs::write(snapshot_directory.join(relative_path), content).map_err(|e| {
+                format!("writing snapshot history file `{relative_path}` failed: {e}")
+            })?;
+        }
+    }
+    fs::write(
+        snapshot_directory.join(SNAPSHOT_HISTORY_MANIFEST),
+        manifest_bytes,
+    )
+    .map_err(|e| format!("writing snapshot history manifest failed: {e}"))?;
+
+    Ok(ImportedHistory {
+        manifest_file: SNAPSHOT_HISTORY_MANIFEST.to_string(),
+        datasets: manifest.datasets,
+    })
+}
+
+fn validate_history_manifest(
+    bytes: &[u8],
+    expected_node_id: &str,
+) -> Result<HistoryManifest, String> {
+    let manifest: HistoryManifest = serde_json::from_slice(bytes)
+        .map_err(|e| format!("parsing processed history manifest failed: {e}"))?;
+    if manifest.schema_version != HISTORY_SCHEMA_VERSION {
+        return Err(format!(
+            "unsupported history schema version {}; expected {HISTORY_SCHEMA_VERSION}",
+            manifest.schema_version
+        ));
+    }
+    if manifest.node_id != expected_node_id {
+        return Err(format!(
+            "processed history belongs to node {}, but snapshot node is {expected_node_id}",
+            manifest.node_id
+        ));
+    }
+    Ok(manifest)
+}
+
+fn read_tar_entries(archive: &[u8]) -> Result<BTreeMap<String, Vec<u8>>, String> {
+    let mut entries = BTreeMap::new();
+    let mut offset = 0_usize;
+    while offset + 512 <= archive.len() {
+        let header = &archive[offset..offset + 512];
+        if header.iter().all(|byte| *byte == 0) {
+            return Ok(entries);
+        }
+        if header[156] != b'0' && header[156] != 0 {
+            return Err(format!("unsupported tar entry type {}", header[156]));
+        }
+        let name_length = header[..100]
+            .iter()
+            .position(|byte| *byte == 0)
+            .unwrap_or(100);
+        let name = std::str::from_utf8(&header[..name_length])
+            .map_err(|e| format!("history export contains a non-UTF-8 path: {e}"))?;
+        validate_export_path(name)?;
+        let size_text = std::str::from_utf8(&header[124..136])
+            .map_err(|e| format!("history export contains an invalid size: {e}"))?
+            .trim_matches(char::from(0));
+        let size = u64::from_str_radix(size_text, 8)
+            .map_err(|e| format!("history export contains invalid size `{size_text}`: {e}"))?
+            as usize;
+        let content_start = offset + 512;
+        let content_end = content_start
+            .checked_add(size)
+            .ok_or_else(|| "history export entry size overflowed".to_string())?;
+        if content_end > archive.len() {
+            return Err(format!("history export entry `{name}` is truncated"));
+        }
+        if entries
+            .insert(
+                name.to_string(),
+                archive[content_start..content_end].to_vec(),
+            )
+            .is_some()
+        {
+            return Err(format!("history export contains duplicate entry `{name}`"));
+        }
+        offset = content_start + size.div_ceil(512) * 512;
+    }
+    Err("history export is missing the tar end marker".to_string())
 }
 
 fn rebuild_history(
@@ -422,6 +602,141 @@ fn history_dataset_metadata(
     ])
 }
 
+fn write_export(directory: &Path, writer: &mut impl Write) -> Result<(), String> {
+    let manifest_path = directory.join("manifest.json");
+    let manifest: HistoryManifest =
+        serde_json::from_slice(&fs::read(&manifest_path).map_err(|e| {
+            format!(
+                "reading history manifest `{}` failed: {e}",
+                manifest_path.display()
+            )
+        })?)
+        .map_err(|e| {
+            format!(
+                "parsing history manifest `{}` failed: {e}",
+                manifest_path.display()
+            )
+        })?;
+
+    let mut paths = BTreeSet::from(["manifest.json".to_string()]);
+    for dataset in manifest.datasets.values() {
+        validate_export_path(&dataset.path)?;
+        validate_export_path(&dataset.schema_path)?;
+        paths.insert(dataset.path.clone());
+        paths.insert(dataset.schema_path.clone());
+    }
+
+    for relative_path in paths {
+        write_tar_file(directory, &relative_path, writer)?;
+    }
+    writer
+        .write_all(&[0; 1024])
+        .map_err(|e| format!("finishing history export tar stream failed: {e}"))
+}
+
+fn validate_export_path(path: &str) -> Result<(), String> {
+    let path = Path::new(path);
+    if path.is_absolute()
+        || path
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err(format!(
+            "unsafe processed history path `{}`",
+            path.display()
+        ));
+    }
+    if path.as_os_str().len() > 100 {
+        return Err(format!(
+            "processed history path `{}` is too long for the export format",
+            path.display()
+        ));
+    }
+    Ok(())
+}
+
+fn write_tar_file(
+    directory: &Path,
+    relative_path: &str,
+    writer: &mut impl Write,
+) -> Result<(), String> {
+    validate_export_path(relative_path)?;
+    let path = directory.join(relative_path);
+    let metadata = fs::metadata(&path)
+        .map_err(|e| format!("reading metadata for `{}` failed: {e}", path.display()))?;
+    if !metadata.is_file() {
+        return Err(format!(
+            "processed history path `{}` is not a file",
+            path.display()
+        ));
+    }
+
+    let mut header = [0_u8; 512];
+    write_tar_text(&mut header[0..100], relative_path)?;
+    write_tar_octal(&mut header[100..108], 0o644)?;
+    write_tar_octal(&mut header[108..116], 0)?;
+    write_tar_octal(&mut header[116..124], 0)?;
+    write_tar_octal(&mut header[124..136], metadata.len())?;
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_secs())
+        .unwrap_or_default();
+    write_tar_octal(&mut header[136..148], modified)?;
+    header[148..156].fill(b' ');
+    header[156] = b'0';
+    header[257..263].copy_from_slice(b"ustar\0");
+    header[263..265].copy_from_slice(b"00");
+    let checksum: u64 = header.iter().map(|byte| u64::from(*byte)).sum();
+    write_tar_checksum(&mut header[148..156], checksum)?;
+
+    writer
+        .write_all(&header)
+        .map_err(|e| format!("writing tar header for `{relative_path}` failed: {e}"))?;
+    let mut file =
+        File::open(&path).map_err(|e| format!("opening `{}` failed: {e}", path.display()))?;
+    io::copy(&mut file, writer)
+        .map_err(|e| format!("streaming `{}` failed: {e}", path.display()))?;
+    let padding = (512 - metadata.len() % 512) % 512;
+    if padding > 0 {
+        let zeroes = [0_u8; 512];
+        writer
+            .write_all(&zeroes[..padding as usize])
+            .map_err(|e| format!("writing tar padding for `{relative_path}` failed: {e}"))?;
+    }
+    Ok(())
+}
+
+fn write_tar_text(field: &mut [u8], value: &str) -> Result<(), String> {
+    if value.len() > field.len() {
+        return Err(format!("tar text field is too small for `{value}`"));
+    }
+    field[..value.len()].copy_from_slice(value.as_bytes());
+    Ok(())
+}
+
+fn write_tar_octal(field: &mut [u8], value: u64) -> Result<(), String> {
+    let value = format!("{:0width$o}", value, width = field.len() - 1);
+    if value.len() >= field.len() {
+        return Err(format!("value `{value}` does not fit in tar numeric field"));
+    }
+    field[..value.len()].copy_from_slice(value.as_bytes());
+    field[value.len()] = 0;
+    Ok(())
+}
+
+fn write_tar_checksum(field: &mut [u8], value: u64) -> Result<(), String> {
+    let value = format!("{value:06o}");
+    if value.len() != 6 || field.len() != 8 {
+        return Err(format!("checksum `{value}` does not fit in tar header"));
+    }
+    field[..6].copy_from_slice(value.as_bytes());
+    field[6] = 0;
+    field[7] = b' ';
+    Ok(())
+}
+
 fn policy_fields() -> BTreeMap<String, FieldMetadata> {
     BTreeMap::from([
         ("observed_at".into(), field("string", false, Some("rfc3339_utc"), "Time encoded in the source archive filename; this is when the policy was observed.")),
@@ -483,7 +798,9 @@ mod tests {
     use flate2::read::GzDecoder;
     use serde_json::Value;
 
-    use super::rebuild_history;
+    use super::{
+        import_directory_for_snapshot, import_tar_for_snapshot, rebuild_history, write_export,
+    };
 
     #[test]
     fn rebuilds_change_point_history_and_metadata() {
@@ -537,6 +854,39 @@ mod tests {
             .join("channel-liquidity-history.schema.json")
             .is_file());
 
+        let mut export = Vec::new();
+        write_export(&output, &mut export).unwrap();
+        assert_eq!(
+            tar_entry_names(&export),
+            vec![
+                "channel-liquidity-history.jsonl.gz",
+                "channel-liquidity-history.schema.json",
+                "channel-policy-history.jsonl.gz",
+                "channel-policy-history.schema.json",
+                "manifest.json",
+            ]
+        );
+
+        let local_snapshot = root.join("local-snapshot");
+        fs::create_dir_all(&local_snapshot).unwrap();
+        let local_import =
+            import_directory_for_snapshot(&output, &local_snapshot, "local").unwrap();
+        assert_eq!(local_import.datasets.len(), 2);
+        assert!(local_snapshot.join(&local_import.manifest_file).is_file());
+        assert!(local_snapshot
+            .join("channel-policy-history.jsonl.gz")
+            .is_file());
+
+        let remote_snapshot = root.join("remote-snapshot");
+        fs::create_dir_all(&remote_snapshot).unwrap();
+        let remote_import = import_tar_for_snapshot(&export, &remote_snapshot, "local").unwrap();
+        assert_eq!(remote_import.datasets.len(), 2);
+        assert!(remote_snapshot.join(&remote_import.manifest_file).is_file());
+        assert!(remote_snapshot
+            .join("channel-liquidity-history.schema.json")
+            .is_file());
+        assert!(import_tar_for_snapshot(&export, &remote_snapshot, "another-node").is_err());
+
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -566,6 +916,29 @@ mod tests {
             .lines()
             .map(|line| serde_json::from_str(line).unwrap())
             .collect()
+    }
+
+    fn tar_entry_names(archive: &[u8]) -> Vec<&str> {
+        let mut names = Vec::new();
+        let mut offset = 0;
+        while offset + 512 <= archive.len() && archive[offset..offset + 512].iter().any(|b| *b != 0)
+        {
+            let header = &archive[offset..offset + 512];
+            let name_length = header[..100]
+                .iter()
+                .position(|byte| *byte == 0)
+                .unwrap_or(100);
+            names.push(std::str::from_utf8(&header[..name_length]).unwrap());
+            let size = u64::from_str_radix(
+                std::str::from_utf8(&header[124..136])
+                    .unwrap()
+                    .trim_matches(char::from(0)),
+                8,
+            )
+            .unwrap();
+            offset += 512 + size.div_ceil(512) as usize * 512;
+        }
+        names
     }
 
     fn temporary_test_directory() -> PathBuf {

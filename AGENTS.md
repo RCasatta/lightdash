@@ -140,6 +140,17 @@ rescans the complete raw archive so processed-schema changes remain easy to
 rebuild. Keep raw archives as the source of truth; do not make Dashboard2 read
 the raw `listchannels` or `listfunds` files.
 
+`lightdash history export` streams a tar archive to stdout containing only the
+manifest and files referenced by it. This is the transport for retrieving
+processed history over SSH; do not rsync the raw archives into a snapshot.
+
+Snapshot schema v4 imports processed history by default. In local mode it reads
+the processed directory directly; with `--ssh` it invokes the remote history
+export and validates both the history schema version and node ID before merging
+the datasets into the snapshot manifest. Use `--without-history` only when an
+incomplete snapshot is intentional. Test-data mode omits history unless
+`--history-directory` is supplied.
+
 Keep settled and non-settled forwards separate. The Dashboard2 forwards page
 must load only `settled-forwards.jsonl`; failed forwards are high-volume,
 spammy, and not economically meaningful enough for the default interactive

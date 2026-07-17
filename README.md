@@ -16,6 +16,14 @@ definitions, formulas, sources, aggregation guidance, and warnings. Matching
 `*.schema.json` companion files make each data file understandable when shared
 without the rest of the snapshot.
 
+Snapshots include processed channel policy and liquidity history by default.
+When `--ssh` is used, Lightdash runs `lightdash history export` on the remote
+node and imports the resulting tar stream. Local snapshots read
+`/var/lib/lightdash/history/processed` directly. Use `--history-directory` to
+override that path or `--without-history` to intentionally create a snapshot
+without historical datasets. Debug test-data snapshots omit history unless a
+history directory is explicitly supplied.
+
 Lightdash automatically reads Summars availability data from
 `~/.lightning/bitcoin/summars/availdb.json`. Use `--availdb PATH` or the
 `AVAILDB_PATH` environment variable to override it. With `--ssh`, the path is
@@ -59,6 +67,17 @@ The rebuild scans all raw archives but emits change points rather than
 repeating identical consecutive observations. Policy history is restricted to
 channels involving the local node. Use `--raw-directory` and
 `--output-directory` to override the defaults for development or migration.
+
+Export exactly the files referenced by the processed manifest as a tar stream:
+
+```bash
+lightdash history export > history.tar
+ssh casatta@unique lightdash history export > history.tar
+tar -xf history.tar
+```
+
+The JSONL datasets are already gzip-compressed, so the surrounding tar stream
+is intentionally uncompressed.
 
 ## Remote Core Lightning node
 

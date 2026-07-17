@@ -34,6 +34,26 @@ pub fn using_test_data() -> bool {
     cfg!(debug_assertions) && SSH_DESTINATION.get().is_none()
 }
 
+pub(crate) fn using_ssh() -> bool {
+    SSH_DESTINATION.get().is_some()
+}
+
+pub(crate) fn remote_command_output(cmd: &str, args: &[&str]) -> Result<Vec<u8>, String> {
+    let destination = SSH_DESTINATION
+        .get()
+        .ok_or_else(|| "remote command requested without --ssh".to_string())?;
+    let (description, result) = execute_ssh_command(destination, cmd, args);
+    let output = result.map_err(|e| format!("executing `{description}` failed: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "`{description}` exited with status {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(output.stdout)
+}
+
 pub fn read_availdb_json(path: Option<&str>) -> Result<Value, String> {
     let configured_path = path
         .map(str::to_string)

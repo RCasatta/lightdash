@@ -6,11 +6,12 @@ use std::path::Path;
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::cmd::{ClosedChannel, Forward, Fund};
+use crate::cmd::{self, ClosedChannel, Forward, Fund};
+use crate::history;
 use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts, DatasetMetadata};
 use crate::store::{RebalancePart, Store};
 
-pub(crate) const SCHEMA_VERSION: u32 = 3;
+pub(crate) const SCHEMA_VERSION: u32 = 4;
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct SnapshotManifest {
@@ -30,6 +31,7 @@ pub(crate) struct SnapshotFiles {
     pub settled_forwards: String,
     pub other_forwards: String,
     pub rebalances: String,
+    pub history_manifest: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -168,20 +170,26 @@ struct ChannelRebalanceMetrics {
     source_cost_msat: u64,
 }
 
-pub fn run_snapshot(store: &Store, directory: &str) -> io::Result<()> {
+pub fn run_snapshot(
+    store: &Store,
+    directory: &str,
+    history_directory: Option<&str>,
+    without_history: bool,
+) -> io::Result<()> {
     let directory = Path::new(directory);
     fs::create_dir_all(directory)?;
 
-    let files = SnapshotFiles {
+    let mut files = SnapshotFiles {
         summary: "summary.json".to_string(),
         channels: "channels.json".to_string(),
         closed_channels: "closed-channels.json".to_string(),
         settled_forwards: "settled-forwards.jsonl".to_string(),
         other_forwards: "other-forwards.jsonl".to_string(),
         rebalances: "rebalances.jsonl".to_string(),
+        history_manifest: None,
     };
     let settled_forward_count = store.settled_forwards().len();
-    let datasets = build_dataset_metadata(
+    let mut datasets = build_dataset_metadata(
         &files,
         DatasetCounts {
             channels: store.funds.channels.len(),
@@ -191,6 +199,24 @@ pub fn run_snapshot(store: &Store, directory: &str) -> io::Result<()> {
             rebalances: store.rebalance_parts().count(),
         },
     );
+    let include_history =
+        !(without_history || cmd::using_test_data() && history_directory.is_none());
+    if include_history {
+        let imported = history::import_for_snapshot(directory, history_directory, &store.info.id)
+            .map_err(io::Error::other)?;
+        files.history_manifest = Some(imported.manifest_file);
+        for (name, metadata) in imported.datasets {
+            if datasets.insert(name.clone(), metadata).is_some() {
+                return Err(io::Error::other(format!(
+                    "history dataset `{name}` conflicts with a snapshot dataset"
+                )));
+            }
+        }
+    } else if without_history {
+        log::info!("Processed history omitted by --without-history");
+    } else {
+        log::info!("Processed history omitted in test-data mode");
+    }
     let generated_at = format_datetime(store.snapshot_time());
     let manifest = SnapshotManifest {
         schema_version: SCHEMA_VERSION,

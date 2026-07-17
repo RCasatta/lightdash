@@ -61,6 +61,12 @@ enum Commands {
         /// Override the availdb path; remote when --ssh is used
         #[arg(long)]
         availdb: Option<String>,
+        /// Override the processed history directory; remote when --ssh is used
+        #[arg(long, conflicts_with = "without_history")]
+        history_directory: Option<String>,
+        /// Generate the snapshot without processed channel history
+        #[arg(long)]
+        without_history: bool,
     },
     /// Process raw listchannels and listfunds archives into normalized history datasets
     History {
@@ -119,6 +125,12 @@ enum HistoryCommands {
         #[arg(long, default_value = "/var/lib/lightdash/history/processed")]
         output_directory: String,
     },
+    /// Stream the processed history manifest and datasets as a tar archive
+    Export {
+        /// Directory containing processed history datasets
+        #[arg(long, default_value = "/var/lib/lightdash/history/processed")]
+        directory: String,
+    },
 }
 
 fn main() {
@@ -148,9 +160,19 @@ fn main() {
                 error_panic!("creating dashboard2 in `{directory}` failed: {e}");
             }
         }
-        Commands::Snapshot { directory, availdb } => {
+        Commands::Snapshot {
+            directory,
+            availdb,
+            history_directory,
+            without_history,
+        } => {
             let store = Store::new(availdb);
-            if let Err(e) = snapshot::run_snapshot(&store, &directory) {
+            if let Err(e) = snapshot::run_snapshot(
+                &store,
+                &directory,
+                history_directory.as_deref(),
+                without_history,
+            ) {
                 error_panic!("creating snapshot in `{directory}` failed: {e}");
             }
         }
@@ -161,6 +183,11 @@ fn main() {
             } => {
                 if let Err(e) = history::run_rebuild(&raw_directory, &output_directory) {
                     error_panic!("rebuilding historical datasets failed: {e}");
+                }
+            }
+            HistoryCommands::Export { directory } => {
+                if let Err(e) = history::run_export(&directory) {
+                    error_panic!("exporting historical datasets failed: {e}");
                 }
             }
         },

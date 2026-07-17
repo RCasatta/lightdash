@@ -421,6 +421,7 @@ mod tests {
             settled_forwards: "settled-forwards.jsonl".to_string(),
             other_forwards: "other-forwards.jsonl".to_string(),
             rebalances: "rebalances.jsonl".to_string(),
+            history_manifest: None,
         };
         let manifest = SnapshotManifest {
             schema_version: SCHEMA_VERSION,
