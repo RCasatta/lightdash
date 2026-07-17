@@ -1337,7 +1337,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
         div class="info-card" {
             h2 { "Channel List" }
             p { "Total channels: " (channels.len()) }
-            p { "Indirect ROIC attributes each settled forwarding fee to the incoming channel as well as the revenue-earning outgoing channel. Do not aggregate it across the node as unique revenue." }
+            p { "Indirect capacity contribution attributes each settled forwarding fee to the incoming channel as well as the revenue-earning outgoing channel. Do not aggregate it across the node as unique revenue." }
 
             table class="sortable" {
                 thead {
@@ -1353,8 +1353,8 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                         th style="text-align: right;" title="All-time target-attributed rebalance cost divided by all-time target credited rebalance liquidity." { "Hist Reb PPM" }
                         th style="text-align: right;" { "HTLC Max (sats)" }
                         th style="text-align: right;" { "Inbound PPM" }
-                        th style="text-align: right;" title="Annualized channel return after subtracting target-attributed rebalance cost." { "Net ROIC%" }
-                        th style="text-align: right;" title="Annualized return from fees on settled forwards for which this was the incoming channel. Revenue is earned on the paired outgoing channel; do not aggregate this attribution as unique node revenue." { "Indirect ROIC%" }
+                        th style="text-align: right;" title="Annualized return relative to full channel capacity after subtracting target-attributed rebalance cost." { "Net capacity return %" }
+                        th style="text-align: right;" title="Annualized fee attribution relative to full capacity for settled forwards where this was the incoming channel. Revenue is earned on the paired outgoing channel; do not aggregate this attribution as unique node revenue." { "Indirect capacity contribution %" }
                     }
                 }
                 tbody {
@@ -1463,9 +1463,9 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             }
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
-                                    @if let Some(net_roic) = store.get_channel_net_roic(scid) {
+                                    @if let Some(net_capacity_return) = store.get_channel_net_capacity_return(scid) {
                                         span title={(format!("{} sats net / {} sats capacity", format_signed_sats(store.get_channel_net_routing_revenue_msat(scid) / 1000), format_sats(channel.amount_msat / 1000)))} {
-                                            (format!("{:.2}%", net_roic))
+                                            (format!("{net_capacity_return:.2}%"))
                                         }
                                     } @else {
                                         "-"
@@ -1476,9 +1476,9 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             }
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
-                                    @if let Some(indirect_roic) = store.get_channel_indirect_roic(scid) {
+                                    @if let Some(indirect_capacity_contribution) = store.get_channel_indirect_capacity_contribution(scid) {
                                         span title={(format!("{} sats indirectly attributed / {} sats capacity", format_sats(store.get_channel_indirect_fees(scid)), format_sats(channel.amount_msat / 1000)))} {
-                                            (format!("{indirect_roic:.2}%"))
+                                            (format!("{indirect_capacity_contribution:.2}%"))
                                         }
                                     } @else {
                                         "-"
@@ -1511,8 +1511,8 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                         th style="text-align: right;" title="All-time target-attributed rebalance cost divided by all-time target credited rebalance liquidity." { "Hist Reb PPM" }
                         th style="text-align: right;" { "HTLC Max (sats)" }
                         th style="text-align: right;" { "Inbound PPM" }
-                        th style="text-align: right;" title="Annualized channel return after subtracting target-attributed rebalance cost." { "Net ROIC%" }
-                        th style="text-align: right;" title="Annualized return from fees on settled forwards for which this was the incoming channel. Revenue is earned on the paired outgoing channel; do not aggregate this attribution as unique node revenue." { "Indirect ROIC%" }
+                        th style="text-align: right;" title="Annualized return relative to full channel capacity after subtracting target-attributed rebalance cost." { "Net capacity return %" }
+                        th style="text-align: right;" title="Annualized fee attribution relative to full capacity for settled forwards where this was the incoming channel. Revenue is earned on the paired outgoing channel; do not aggregate this attribution as unique node revenue." { "Indirect capacity contribution %" }
                         th style="text-align: right;" { "Age (days)" }
                     }
                 }
@@ -1622,9 +1622,9 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             }
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
-                                    @if let Some(net_roic) = store.get_channel_net_roic(scid) {
+                                    @if let Some(net_capacity_return) = store.get_channel_net_capacity_return(scid) {
                                         span title={(format!("{} sats net / {} sats capacity", format_signed_sats(store.get_channel_net_routing_revenue_msat(scid) / 1000), format_sats(channel.amount_msat / 1000)))} {
-                                            (format!("{:.2}%", net_roic))
+                                            (format!("{net_capacity_return:.2}%"))
                                         }
                                     } @else {
                                         "-"
@@ -1635,9 +1635,9 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             }
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
-                                    @if let Some(indirect_roic) = store.get_channel_indirect_roic(scid) {
+                                    @if let Some(indirect_capacity_contribution) = store.get_channel_indirect_capacity_contribution(scid) {
                                         span title={(format!("{} sats indirectly attributed / {} sats capacity", format_sats(store.get_channel_indirect_fees(scid)), format_sats(channel.amount_msat / 1000)))} {
-                                            (format!("{indirect_roic:.2}%"))
+                                            (format!("{indirect_capacity_contribution:.2}%"))
                                         }
                                     } @else {
                                         "-"
@@ -2008,10 +2008,10 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                     }
 
                     div class="info-item" {
-                        span class="label" title="Annualized forwarding fees divided by channel capacity." { "Gross ROIC: " }
+                        span class="label" title="Annualized forwarding fees divided by full channel capacity." { "Gross capacity return: " }
                         span class="value" {
-                            @if let Some(gross_roic) = store.get_channel_gross_roic(scid) {
-                                (format!("{gross_roic:.2}%"))
+                            @if let Some(gross_capacity_return) = store.get_channel_gross_capacity_return(scid) {
+                                (format!("{gross_capacity_return:.2}%"))
                             } @else {
                                 "-"
                             }
@@ -2019,10 +2019,10 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                     }
 
                     div class="info-item" {
-                        span class="label" { "Net ROIC: " }
+                        span class="label" { "Net capacity return: " }
                         span class="value" {
-                            @if let Some(net_roic) = store.get_channel_net_roic(scid) {
-                                (format!("{net_roic:.2}%"))
+                            @if let Some(net_capacity_return) = store.get_channel_net_capacity_return(scid) {
+                                (format!("{net_capacity_return:.2}%"))
                             } @else {
                                 "-"
                             }
@@ -2030,10 +2030,10 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                     }
 
                     div class="info-item" {
-                        span class="label" title="Annualized return from fees on settled forwards for which this was the incoming channel. Revenue is earned on the paired outgoing channel; do not aggregate this attribution as unique node revenue." { "Indirect ROIC: " }
+                        span class="label" title="Annualized fee attribution relative to full capacity for settled forwards where this was the incoming channel. Revenue is earned on the paired outgoing channel; do not aggregate this attribution as unique node revenue." { "Indirect capacity contribution: " }
                         span class="value" {
-                            @if let Some(indirect_roic) = store.get_channel_indirect_roic(scid) {
-                                (format!("{indirect_roic:.2}%"))
+                            @if let Some(indirect_capacity_contribution) = store.get_channel_indirect_capacity_contribution(scid) {
+                                (format!("{indirect_capacity_contribution:.2}%"))
                             } @else {
                                 "-"
                             }
@@ -2692,8 +2692,8 @@ fn create_closed_channels_page(
                             th { "Funding / Closing" }
                             th style="text-align: right;" { "Opening Block" }
                             th style="text-align: right;" { "Final Amount (sats)" }
-                            th style="text-align: right;" title="Annualized all-time channel return after subtracting target-attributed rebalance cost. Lifetime uses last stable connection when available." { "Net ROIC%" }
-                            th style="text-align: right;" title="Annualized all-time return from fees on settled forwards for which this was the incoming channel. Revenue is earned on the paired outgoing channel; do not aggregate this attribution as unique node revenue." { "Indirect ROIC%" }
+                            th style="text-align: right;" title="Annualized all-time return relative to full channel capacity after subtracting target-attributed rebalance cost. Lifetime uses last stable connection when available." { "Net capacity return %" }
+                            th style="text-align: right;" title="Annualized all-time incoming-side fee attribution relative to full channel capacity. Revenue is earned on the paired outgoing channel; do not aggregate this attribution as unique node revenue." { "Indirect capacity contribution %" }
                             th style="text-align: right;" { "Total HTLCs Sent" }
                         }
                     }
@@ -2752,15 +2752,15 @@ fn create_closed_channels_page(
                                     (format_sats(channel_info.channel.final_to_us_msat / 1000))
                                 }
                                 td style="text-align: right;" {
-                                    @if let Some(net_roic) = store.get_closed_channel_net_roic(&channel_info.channel) {
-                                        (format!("{net_roic:.2}%"))
+                                    @if let Some(net_capacity_return) = store.get_closed_channel_net_capacity_return(&channel_info.channel) {
+                                        (format!("{net_capacity_return:.2}%"))
                                     } @else {
                                         "-"
                                     }
                                 }
                                 td style="text-align: right;" {
-                                    @if let Some(indirect_roic) = store.get_closed_channel_indirect_roic(&channel_info.channel) {
-                                        (format!("{indirect_roic:.2}%"))
+                                    @if let Some(indirect_capacity_contribution) = store.get_closed_channel_indirect_capacity_contribution(&channel_info.channel) {
+                                        (format!("{indirect_capacity_contribution:.2}%"))
                                     } @else {
                                         "-"
                                     }

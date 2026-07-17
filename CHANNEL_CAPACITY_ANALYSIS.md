@@ -25,7 +25,7 @@ to act, such as persistent unavailability, peer failure, or unacceptable risk.
 
 ## Snapshot context
 
-- Snapshot schema: v4
+- Snapshot schema: v5
 - Current normal channels: 93
 - Public capacity of normal channels: 430,079,598 sat
 - Current local balance in normal channels: approximately 198,541,190 sat
@@ -41,13 +41,13 @@ The snapshot currently uses two different denominators:
 - Node-level `net_roic_12_months_percent` uses the current sum of local channel
   balances. It therefore excludes inbound liquidity, although current balance
   is only a proxy for the average capital deployed over the trailing year.
-- Per-channel `gross_roic_percent`, `net_roic_percent`, and
-  `indirect_roic_percent` divide by public channel capacity, which includes the
-  peer's inbound liquidity.
+- Per-channel `gross_capacity_return_percent`, `net_capacity_return_percent`,
+  and `indirect_capacity_contribution_percent` divide by public channel
+  capacity, which includes the peer's inbound liquidity.
 
-The per-channel percentages are therefore not true ROIC from this node's point
-of view. They are capacity-normalized revenue yields. They should not be used as
-the primary ranking for capital allocation.
+The per-channel percentages are capacity-normalized returns rather than ROIC
+from this node's point of view. They should not be used as the primary ranking
+for capital allocation.
 
 For a rigorous per-channel ROIC, the preferred denominator is the node's
 time-weighted average local balance over the same measurement period. Current
@@ -60,7 +60,7 @@ The present snapshot does not export a time-weighted local-capital metric. The
 liquidity-history dataset can approximate it only for the period covered by the
 archive. Until this metric is available, use absolute net fees, realized fee
 rate, liquidity turnover, rebalance cost, and persistent depletion rather than
-calling the per-channel capacity-normalized percentage ROIC.
+interpreting the per-channel capacity-normalized percentage as ROIC.
 
 Indirect fees must also be retained in the analysis. They are not additional
 node revenue, but they identify channels that supplied the incoming side of

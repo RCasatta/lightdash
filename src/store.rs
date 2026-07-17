@@ -85,7 +85,7 @@ fn is_rebalance_candidate_event(event: &cmd::BkprAccountEvent) -> bool {
     event.is_rebalance || event.tag == "invoice"
 }
 
-fn annualized_channel_roic_percent(
+fn annualized_channel_capacity_return_percent(
     revenue_msat: i64,
     channel_capacity_msat: u64,
     age_days: i64,
@@ -1096,44 +1096,53 @@ impl Store {
             - self.get_channel_rebalance_target_cost_msat(short_channel_id) as i64
     }
 
-    pub fn get_channel_net_roic(&self, short_channel_id: &str) -> Option<f64> {
+    pub fn get_channel_net_capacity_return(&self, short_channel_id: &str) -> Option<f64> {
         let age_days = self.get_channel_age_days(short_channel_id)?;
         let fund = self.get_fund(short_channel_id)?;
         let net_revenue_msat = self.get_channel_net_routing_revenue_msat(short_channel_id);
-        Some(annualized_channel_roic_percent(
+        Some(annualized_channel_capacity_return_percent(
             net_revenue_msat,
             fund.amount_msat,
             age_days,
         ))
     }
 
-    pub fn get_channel_indirect_roic(&self, short_channel_id: &str) -> Option<f64> {
+    pub fn get_channel_indirect_capacity_contribution(
+        &self,
+        short_channel_id: &str,
+    ) -> Option<f64> {
         let age_days = self.get_channel_age_days(short_channel_id)?;
         let fund = self.get_fund(short_channel_id)?;
         let indirect_fees_msat = self.get_channel_indirect_fees(short_channel_id) as i64 * 1000;
-        Some(annualized_channel_roic_percent(
+        Some(annualized_channel_capacity_return_percent(
             indirect_fees_msat,
             fund.amount_msat,
             age_days,
         ))
     }
 
-    pub fn get_closed_channel_net_roic(&self, channel: &cmd::ClosedChannel) -> Option<f64> {
+    pub fn get_closed_channel_net_capacity_return(
+        &self,
+        channel: &cmd::ClosedChannel,
+    ) -> Option<f64> {
         let short_channel_id = channel.short_channel_id.as_deref()?;
         let age_days = self.get_closed_channel_age_days(channel)?;
         let net_revenue_msat = self.get_channel_net_routing_revenue_msat(short_channel_id);
-        Some(annualized_channel_roic_percent(
+        Some(annualized_channel_capacity_return_percent(
             net_revenue_msat,
             channel.total_msat,
             age_days,
         ))
     }
 
-    pub fn get_closed_channel_indirect_roic(&self, channel: &cmd::ClosedChannel) -> Option<f64> {
+    pub fn get_closed_channel_indirect_capacity_contribution(
+        &self,
+        channel: &cmd::ClosedChannel,
+    ) -> Option<f64> {
         let short_channel_id = channel.short_channel_id.as_deref()?;
         let age_days = self.get_closed_channel_age_days(channel)?;
         let indirect_fees_msat = self.get_channel_indirect_fees(short_channel_id) as i64 * 1000;
-        Some(annualized_channel_roic_percent(
+        Some(annualized_channel_capacity_return_percent(
             indirect_fees_msat,
             channel.total_msat,
             age_days,
@@ -1177,12 +1186,12 @@ impl Store {
             .find(|f| f.short_channel_id.as_deref() == Some(short_channel_id))
     }
 
-    /// Get annualized gross channel ROIC based on forwarding fees and channel capacity.
-    pub fn get_channel_gross_roic(&self, short_channel_id: &str) -> Option<f64> {
+    /// Get the annualized gross return based on forwarding fees and full channel capacity.
+    pub fn get_channel_gross_capacity_return(&self, short_channel_id: &str) -> Option<f64> {
         let age_days = self.get_channel_age_days(short_channel_id)?;
         let fund = self.get_fund(short_channel_id)?;
         let gross_revenue_msat = self.get_channel_total_fees(short_channel_id) as i64 * 1000;
-        Some(annualized_channel_roic_percent(
+        Some(annualized_channel_capacity_return_percent(
             gross_revenue_msat,
             fund.amount_msat,
             age_days,
@@ -1684,7 +1693,7 @@ mod tests {
     }
 
     #[test]
-    fn indirect_roic_is_safe_for_zero_capacity_and_missing_channels() {
+    fn indirect_capacity_contribution_is_safe_for_zero_capacity_and_missing_channels() {
         let store = test_store(
             vec![fund(INCOMING_SCID, 0)],
             vec![forward(
@@ -1697,12 +1706,18 @@ mod tests {
             vec![],
         );
 
-        assert_eq!(store.get_channel_indirect_roic(INCOMING_SCID), Some(0.0));
-        assert_eq!(store.get_channel_indirect_roic("unknown-scid"), None);
+        assert_eq!(
+            store.get_channel_indirect_capacity_contribution(INCOMING_SCID),
+            Some(0.0)
+        );
+        assert_eq!(
+            store.get_channel_indirect_capacity_contribution("unknown-scid"),
+            None
+        );
     }
 
     #[test]
-    fn indirect_roic_does_not_change_net_roic_or_rebalance_cost() {
+    fn indirect_capacity_contribution_does_not_change_net_return_or_rebalance_cost() {
         let rebalance_parts = vec![RebalancePart {
             payment_id: "rebalance-payment".to_string(),
             part_id: 0,
@@ -1738,11 +1753,18 @@ mod tests {
             store.get_channel_net_routing_revenue_msat(OUTGOING_SCID),
             8_000
         );
-        let net_roic = store.get_channel_net_roic(OUTGOING_SCID).unwrap();
-        let indirect_roic = store.get_channel_indirect_roic(INCOMING_SCID).unwrap();
-        assert!((net_roic - 0.0008).abs() < f64::EPSILON);
-        assert!((indirect_roic - 0.001).abs() < f64::EPSILON);
-        assert_eq!(store.get_channel_indirect_roic(OUTGOING_SCID), Some(0.0));
+        let net_capacity_return = store
+            .get_channel_net_capacity_return(OUTGOING_SCID)
+            .unwrap();
+        let indirect_capacity_contribution = store
+            .get_channel_indirect_capacity_contribution(INCOMING_SCID)
+            .unwrap();
+        assert!((net_capacity_return - 0.0008).abs() < f64::EPSILON);
+        assert!((indirect_capacity_contribution - 0.001).abs() < f64::EPSILON);
+        assert_eq!(
+            store.get_channel_indirect_capacity_contribution(OUTGOING_SCID),
+            Some(0.0)
+        );
     }
 
     #[test]

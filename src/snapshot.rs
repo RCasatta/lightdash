@@ -11,7 +11,7 @@ use crate::history;
 use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts, DatasetMetadata};
 use crate::store::{RebalancePart, Store};
 
-pub(crate) const SCHEMA_VERSION: u32 = 4;
+pub(crate) const SCHEMA_VERSION: u32 = 5;
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct SnapshotManifest {
@@ -97,9 +97,9 @@ pub(crate) struct ChannelSnapshot {
     pub rebalance_effective_fee_ppm: Option<f64>,
     pub rebalance_source_cost_msat: u64,
     pub net_routing_revenue_msat: i64,
-    pub gross_roic_percent: Option<f64>,
-    pub net_roic_percent: Option<f64>,
-    pub indirect_roic_percent: Option<f64>,
+    pub gross_capacity_return_percent: Option<f64>,
+    pub net_capacity_return_percent: Option<f64>,
+    pub indirect_capacity_contribution_percent: Option<f64>,
 }
 
 #[derive(Serialize)]
@@ -118,8 +118,8 @@ struct ClosedChannelSnapshot {
     last_stable_connection_at: Option<String>,
     close_cause: String,
     age_days: Option<i64>,
-    net_roic_percent: Option<f64>,
-    indirect_roic_percent: Option<f64>,
+    net_capacity_return_percent: Option<f64>,
+    indirect_capacity_contribution_percent: Option<f64>,
 }
 
 #[derive(Serialize)]
@@ -391,17 +391,17 @@ fn build_channel_snapshot(
         ),
         rebalance_source_cost_msat: rebalances.source_cost_msat,
         net_routing_revenue_msat,
-        gross_roic_percent: annualized_roic_percent(
+        gross_capacity_return_percent: annualized_capacity_return_percent(
             gross_revenue_msat,
             channel.amount_msat,
             age_days,
         ),
-        net_roic_percent: annualized_roic_percent(
+        net_capacity_return_percent: annualized_capacity_return_percent(
             net_routing_revenue_msat,
             channel.amount_msat,
             age_days,
         ),
-        indirect_roic_percent: annualized_roic_percent(
+        indirect_capacity_contribution_percent: annualized_capacity_return_percent(
             indirect_revenue_msat,
             channel.amount_msat,
             age_days,
@@ -465,7 +465,7 @@ fn ratio_ppm(numerator: f64, denominator: f64) -> Option<f64> {
     }
 }
 
-fn annualized_roic_percent(
+fn annualized_capacity_return_percent(
     revenue_msat: i64,
     capacity_msat: u64,
     age_days: Option<i64>,
@@ -517,12 +517,12 @@ fn build_closed_channel_snapshot(
         last_stable_connection_at: channel.last_stable_connection.and_then(format_timestamp),
         close_cause: channel.close_cause.clone(),
         age_days,
-        net_roic_percent: annualized_roic_percent(
+        net_capacity_return_percent: annualized_capacity_return_percent(
             forwarding_fees_sat as i64 * 1000 - rebalance_target_cost_msat as i64,
             channel.total_msat,
             age_days,
         ),
-        indirect_roic_percent: annualized_roic_percent(
+        indirect_capacity_contribution_percent: annualized_capacity_return_percent(
             indirect_fees_sat as i64 * 1000,
             channel.total_msat,
             age_days,
@@ -607,7 +607,7 @@ fn format_datetime(datetime: DateTime<Utc>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{annualized_roic_percent, ratio_ppm};
+    use super::{annualized_capacity_return_percent, ratio_ppm};
 
     #[test]
     fn ratio_ppm_returns_none_for_no_volume() {
@@ -616,15 +616,18 @@ mod tests {
     }
 
     #[test]
-    fn annualized_roic_preserves_negative_net_revenue() {
+    fn annualized_capacity_return_preserves_negative_net_revenue() {
         assert_eq!(
-            annualized_roic_percent(-1_000, 100_000, Some(365)),
+            annualized_capacity_return_percent(-1_000, 100_000, Some(365)),
             Some(-1.0)
         );
     }
 
     #[test]
-    fn annualized_roic_is_null_without_channel_age() {
-        assert_eq!(annualized_roic_percent(1_000, 100_000, None), None);
+    fn annualized_capacity_return_is_null_without_channel_age() {
+        assert_eq!(
+            annualized_capacity_return_percent(1_000, 100_000, None),
+            None
+        );
     }
 }

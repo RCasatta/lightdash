@@ -180,7 +180,7 @@ fn render_channels_page(manifest: &SnapshotManifest) -> String {
                     button type="button" class="preset-button" data-view="all" { "All" }
                     button type="button" class="preset-button" data-view="mature" { "Age 1y+" }
                     button type="button" class="preset-button" data-view="low-balance" { "Low balance" }
-                    button type="button" class="preset-button" data-view="negative-roic" { "Negative ROIC" }
+                    button type="button" class="preset-button" data-view="negative-capacity-return" { "Negative capacity return" }
                     button type="button" class="preset-button" data-view="disconnected" { "Disconnected" }
                     button type="button" class="preset-button" data-view="no-forwards" { "No forwards" }
                 }
