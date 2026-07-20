@@ -1,6 +1,12 @@
 (() => {
     "use strict";
 
+    const channelRoot = document.querySelector("[data-channel-root]");
+    if (channelRoot) {
+        initializeChannelDetail();
+        return;
+    }
+
     const root = document.querySelector("[data-table-root]");
     if (!root) return;
 
@@ -47,6 +53,318 @@
         buildColumnPanel();
         bindControls();
         await loadRows();
+    }
+
+    async function initializeChannelDetail() {
+        const error = document.querySelector("#channel-error");
+        const content = document.querySelector("#channel-content");
+        const channelKey = new URLSearchParams(location.search).get("channel");
+        if (!channelKey) {
+            showChannelError("No channel was selected. Open a channel from the channels table.");
+            return;
+        }
+
+        try {
+            const manifest = await fetchJson("data/manifest.json");
+            const channels = await fetchJson("data/channels.json");
+            const channel = channels.find(row => row.short_channel_id === channelKey || row.channel_id === channelKey);
+            if (!channel) throw new Error(`Channel ${channelKey} is not present in this snapshot`);
+
+            const [forwards, rebalances] = await Promise.all([
+                fetchJsonLines("data/settled-forwards.jsonl"),
+                fetchJsonLines("data/rebalances.jsonl")
+            ]);
+            const channelFields = manifest.datasets?.channels?.fields || {};
+            const channelForwards = forwards
+                .filter(row => involvesChannel(row, channel))
+                .sort(newestFirst("received_at"));
+            const channelRebalances = rebalances
+                .filter(row => row.source_channel_id === channel.short_channel_id || row.target_channel_id === channel.short_channel_id)
+                .sort(newestFirst("resolved_at"));
+
+            renderChannelHeader(channel);
+            renderChannelMetrics(channel);
+            renderChannelDetails(channel, channelForwards, channelRebalances, channelFields);
+            renderForwardTable("channel-forwards", channelForwards, channel);
+            renderRebalanceTable("channel-rebalances", channelRebalances, channel);
+            content.hidden = false;
+            try {
+                await renderChannelHistory(manifest, channel);
+            } catch (historyError) {
+                document.querySelector("#history-note").textContent = `Historical data could not be loaded: ${historyError.message}`;
+                renderEmptyChart("liquidity-chart");
+                renderEmptyChart("fee-chart");
+                renderEmptyChart("htlc-chart");
+            }
+        } catch (caught) {
+            showChannelError(`${caught.message}. Serve Dashboard2 over HTTP and regenerate it from a current snapshot.`);
+        }
+
+        function showChannelError(message) {
+            error.textContent = message;
+            error.hidden = false;
+        }
+    }
+
+    function renderChannelHeader(channel) {
+        document.querySelector("#channel-title").textContent = channel.peer_alias;
+        document.querySelector("#channel-subtitle").textContent = channel.short_channel_id || channel.channel_id;
+        document.title = `${channel.peer_alias} · Channel · Lightdash`;
+    }
+
+    function renderChannelMetrics(channel) {
+        const metrics = [
+            ["Local balance", formatNumber(channel.local_balance_percent, 1, "%"), `${formatMsat(channel.local_balance_msat)} locally controlled`],
+            ["Capacity", formatMsat(channel.capacity_msat), `${formatMsat(channel.capacity_msat - channel.local_balance_msat)} remote balance`],
+            ["Forwards", formatNumber(channel.settled_forward_count, 0), `${formatSat(channel.forwarding_fees_sat)} earned`],
+            ["Net capacity return", formatNumber(channel.net_capacity_return_percent, 2, "%"), `${formatMsat(channel.net_routing_revenue_msat)} net routing revenue`]
+        ];
+        const fragment = document.createDocumentFragment();
+        metrics.forEach(([label, value, note]) => {
+            const card = document.createElement("article");
+            card.className = "metric-card";
+            card.append(textElement("p", label, "metric-label"), textElement("p", value, "metric-value"), textElement("p", note, "metric-note"));
+            fragment.appendChild(card);
+        });
+        document.querySelector("#channel-metrics").replaceChildren(fragment);
+    }
+
+    function renderChannelDetails(channel, forwards, rebalances, fields) {
+        const identity = document.querySelector("#channel-identity");
+        const peerLink = document.createElement("a");
+        peerLink.href = `https://mempool.space/lightning/node/${encodeURIComponent(channel.peer_id)}`;
+        peerLink.target = "_blank";
+        peerLink.rel = "noreferrer";
+        peerLink.textContent = abbreviateValue(channel.peer_id);
+        peerLink.title = channel.peer_id;
+        peerLink.className = "monospace";
+        appendDetail(identity, "Channel ID", channel.channel_id, fields.channel_id, true);
+        appendDetail(identity, "Short channel ID", channel.short_channel_id, fields.short_channel_id, true);
+        appendDetail(identity, "Peer ID", peerLink, fields.peer_id);
+        appendDetail(identity, "State", channel.state, fields.state);
+        appendDetail(identity, "Connected", channel.connected ? "Yes" : "No", fields.connected);
+        appendDetail(identity, "Uptime", channel.uptime_ratio == null ? null : formatNumber(channel.uptime_ratio * 100, 2, "%"), fields.uptime_ratio);
+        appendDetail(identity, "Age", channel.age_days == null ? null : `${formatNumber(channel.age_days, 0)} days`, fields.age_days);
+        appendDetail(identity, "Funding outpoint", `${channel.funding_txid}:${channel.funding_output}`, fields.funding_txid, true);
+
+        const policy = document.querySelector("#channel-policy");
+        appendDetail(policy, "Fee rate", formatNumber(channel.outbound_fee_ppm, 0, " ppm"), fields.outbound_fee_ppm);
+        appendDetail(policy, "Inbound fee rate", formatNumber(channel.inbound_fee_ppm, 0, " ppm"), fields.inbound_fee_ppm);
+        appendDetail(policy, "Base fee", formatMsat(channel.outbound_base_fee_msat), fields.outbound_base_fee_msat);
+        appendDetail(policy, "Minimum HTLC", formatMsat(channel.outbound_htlc_min_msat), fields.outbound_htlc_min_msat);
+        appendDetail(policy, "Maximum HTLC", formatMsat(channel.outbound_htlc_max_msat), fields.outbound_htlc_max_msat);
+        appendDetail(policy, "CLTV delta", channel.outbound_delay_blocks == null ? null : `${channel.outbound_delay_blocks} blocks`, fields.outbound_delay_blocks);
+        appendDetail(policy, "Last fee adjustment", channel.last_fee_adjustment_at, fields.last_fee_adjustment_at);
+        appendDetail(policy, "Historical fee rate", formatNumber(channel.historical_effective_fee_ppm, 0, " ppm"), fields.historical_effective_fee_ppm);
+        appendDetail(policy, "Time-decayed fee rate", formatNumber(channel.time_decayed_variable_fee_ppm, 0, " ppm"), fields.time_decayed_variable_fee_ppm);
+
+        const inbound = forwards.filter(row => row.in_channel === channel.short_channel_id);
+        const outbound = forwards.filter(row => row.out_channel === channel.short_channel_id);
+        const targetRebalances = rebalances.filter(row => row.target_channel_id === channel.short_channel_id);
+        const activity = document.querySelector("#channel-activity");
+        appendDetail(activity, "Last inbound forward", inbound[0]?.received_at, fields.settled_forward_count);
+        appendDetail(activity, "Last outbound forward", outbound[0]?.received_at, fields.settled_forward_count);
+        appendDetail(activity, "Routed outbound", formatSat(channel.routed_out_sat), fields.routed_out_sat);
+        appendDetail(activity, "Forwarding fees", formatSat(channel.forwarding_fees_sat), fields.forwarding_fees_sat);
+        appendDetail(activity, "Indirect fees", formatSat(channel.indirect_fees_sat), fields.indirect_fees_sat);
+        appendDetail(activity, "Rebalance cost", formatMsat(channel.rebalance_target_cost_msat), fields.rebalance_target_cost_msat);
+        appendDetail(activity, "Rebalance fee rate", formatNumber(channel.rebalance_effective_fee_ppm, 0, " ppm"), fields.rebalance_effective_fee_ppm);
+        appendDetail(activity, "Rebalance parts", formatNumber(targetRebalances.length, 0), null);
+        appendDetail(activity, "Rebalance payments", formatNumber(new Set(targetRebalances.map(row => row.payment_id)).size, 0), null);
+        appendDetail(activity, "First rebalance", targetRebalances.at(-1)?.resolved_at, null);
+        appendDetail(activity, "Last rebalance", targetRebalances[0]?.resolved_at, null);
+        appendDetail(activity, "Net routing revenue", formatMsat(channel.net_routing_revenue_msat), fields.net_routing_revenue_msat);
+    }
+
+    async function renderChannelHistory(manifest, channel) {
+        const policyMetadata = manifest.datasets?.channel_policy_history;
+        const liquidityMetadata = manifest.datasets?.channel_liquidity_history;
+        const note = document.querySelector("#history-note");
+        if (!policyMetadata || !liquidityMetadata) {
+            note.textContent = "Historical archives were not included in this snapshot.";
+            renderEmptyChart("liquidity-chart");
+            renderEmptyChart("fee-chart");
+            renderEmptyChart("htlc-chart");
+            return;
+        }
+
+        const [policies, liquidity] = await Promise.all([
+            fetchJsonLines(`data/${policyMetadata.path}`, policyMetadata.format === "gzip-jsonl"),
+            fetchJsonLines(`data/${liquidityMetadata.path}`, liquidityMetadata.format === "gzip-jsonl")
+        ]);
+        const policyRows = policies.filter(row => row.short_channel_id === channel.short_channel_id);
+        const liquidityRows = liquidity.filter(row => row.channel_id === channel.channel_id);
+        lineChart("liquidity-chart", [{ label: "Local", color: "#f6a723", rows: liquidityRows, value: row => row.local_balance_percent }], "%");
+        lineChart("fee-chart", [
+            { label: "Local", color: "#f6a723", rows: policyRows.filter(row => row.direction === "local"), value: row => row.fee_ppm },
+            { label: "Remote", color: "#64b5f6", rows: policyRows.filter(row => row.direction === "remote"), value: row => row.fee_ppm }
+        ], " ppm");
+        lineChart("htlc-chart", [{ label: "Local", color: "#50d890", rows: policyRows.filter(row => row.direction === "local"), value: row => row.htlc_max_msat / 1000 }], " sats");
+        note.textContent = `Change-point history: ${formatNumber(liquidityRows.length, 0)} liquidity observations and ${formatNumber(policyRows.length, 0)} policy observations.`;
+    }
+
+    function lineChart(id, series, suffix) {
+        const host = document.querySelector(`#${id}`);
+        const points = series.flatMap(item => item.rows.map(row => ({ x: Date.parse(row.observed_at), y: item.value(row) }))).filter(point => Number.isFinite(point.x) && Number.isFinite(point.y));
+        if (points.length === 0) return renderEmptyChart(id);
+        const width = 760;
+        const height = 260;
+        const pad = { left: 58, right: 18, top: 24, bottom: 34 };
+        const minX = Math.min(...points.map(point => point.x));
+        const maxX = Math.max(...points.map(point => point.x));
+        const minY = Math.min(0, ...points.map(point => point.y));
+        const maxY = Math.max(...points.map(point => point.y));
+        const x = value => pad.left + (value - minX) / Math.max(1, maxX - minX) * (width - pad.left - pad.right);
+        const y = value => height - pad.bottom - (value - minY) / Math.max(1, maxY - minY) * (height - pad.top - pad.bottom);
+        const svg = svgElement("svg", { viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": "Historical line chart" });
+        svg.appendChild(svgElement("line", { x1: pad.left, y1: y(minY), x2: width - pad.right, y2: y(minY), class: "chart-axis" }));
+        svg.appendChild(svgText(pad.left - 8, y(maxY) + 4, formatCompact(maxY, suffix), "end"));
+        svg.appendChild(svgText(pad.left - 8, y(minY) + 4, formatCompact(minY, suffix), "end"));
+        svg.appendChild(svgText(pad.left, height - 10, new Date(minX).toISOString().slice(0, 10), "start"));
+        svg.appendChild(svgText(width - pad.right, height - 10, new Date(maxX).toISOString().slice(0, 10), "end"));
+        series.forEach(item => {
+            const rows = item.rows.map(row => ({ x: Date.parse(row.observed_at), y: item.value(row) })).filter(point => Number.isFinite(point.x) && Number.isFinite(point.y)).sort((a, b) => a.x - b.x);
+            if (!rows.length) return;
+            const path = rows.map((point, index) => `${index ? "L" : "M"}${x(point.x).toFixed(1)},${y(point.y).toFixed(1)}`).join(" ");
+            svg.appendChild(svgElement("path", { d: path, fill: "none", stroke: item.color, "stroke-width": 2.5, "stroke-linejoin": "round" }));
+        });
+        const legend = document.createElement("div");
+        legend.className = "chart-legend";
+        series.filter(item => item.rows.length).forEach(item => {
+            const entry = document.createElement("span");
+            const swatch = document.createElement("i");
+            swatch.style.background = item.color;
+            entry.append(swatch, document.createTextNode(item.label));
+            legend.appendChild(entry);
+        });
+        host.replaceChildren(svg, legend);
+    }
+
+    function renderForwardTable(id, rows, channel) {
+        renderSimpleTable(id, ["Direction", "Other channel", "Amount", "Fee", "Fee PPM", "Received", "Elapsed"], rows.slice(0, 100).map(row => [
+            row.out_channel === channel.short_channel_id ? "Outbound" : "Inbound",
+            row.out_channel === channel.short_channel_id ? row.in_channel : row.out_channel,
+            formatMsat(row.out_msat),
+            formatMsat(row.fee_msat),
+            formatNumber(row.fee_ppm, 1, " ppm"),
+            row.received_at,
+            formatNumber(row.elapsed_seconds, 1, " s")
+        ]), rows.length);
+    }
+
+    function renderRebalanceTable(id, rows, channel) {
+        renderSimpleTable(id, ["Direction", "Payment", "Debit", "Credit", "Fees", "Resolved"], rows.slice(0, 100).map(row => [
+            row.target_channel_id === channel.short_channel_id ? "Inbound" : "Outbound",
+            row.payment_id,
+            formatMsat(row.debit_msat),
+            formatMsat(row.credit_msat),
+            formatMsat(row.fees_msat),
+            row.resolved_at
+        ]), rows.length);
+    }
+
+    function renderSimpleTable(id, headings, rows, total) {
+        const table = document.querySelector(`#${id}`);
+        const header = document.createElement("tr");
+        headings.forEach(label => header.appendChild(textElement("th", label)));
+        const body = document.createDocumentFragment();
+        rows.forEach(values => {
+            const row = document.createElement("tr");
+            values.forEach(value => row.appendChild(textElement("td", value ?? "—")));
+            body.appendChild(row);
+        });
+        table.querySelector("thead").replaceChildren(header);
+        table.querySelector("tbody").replaceChildren(body);
+        table.hidden = total === 0;
+        document.querySelector(`#${id}-empty`).hidden = total !== 0;
+        document.querySelector(`#${id}-status`).textContent = total > 100 ? `Showing the latest 100 of ${formatNumber(total, 0)} records.` : `${formatNumber(total, 0)} records.`;
+    }
+
+    function appendDetail(list, label, value, metadata, monospace = false) {
+        const wrapper = document.createElement("div");
+        const term = textElement("dt", label);
+        if (metadata) term.title = metadataTitle(metadata);
+        const detail = document.createElement("dd");
+        if (monospace) detail.classList.add("monospace");
+        detail.append(value instanceof Node ? value : document.createTextNode(value ?? "—"));
+        wrapper.append(term, detail);
+        list.appendChild(wrapper);
+    }
+
+    async function fetchJson(path) {
+        const response = await fetch(path, { cache: "no-store" });
+        if (!response.ok) throw new Error(`Loading ${path} returned HTTP ${response.status}`);
+        return response.json();
+    }
+
+    async function fetchJsonLines(path, gzip = false) {
+        const response = await fetch(path, { cache: "no-store" });
+        if (!response.ok) throw new Error(`Loading ${path} returned HTTP ${response.status}`);
+        let text;
+        if (gzip) {
+            if (!("DecompressionStream" in window)) throw new Error("This browser cannot decompress snapshot history");
+            const bytes = new Uint8Array(await response.arrayBuffer());
+            const isGzip = bytes[0] === 0x1f && bytes[1] === 0x8b;
+            text = isGzip
+                ? await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).text()
+                : new TextDecoder().decode(bytes);
+        } else {
+            text = await response.text();
+        }
+        return text.split("\n").filter(Boolean).map(line => JSON.parse(line));
+    }
+
+    function involvesChannel(row, channel) {
+        return row.in_channel === channel.short_channel_id || row.out_channel === channel.short_channel_id;
+    }
+
+    function newestFirst(key) {
+        return (left, right) => Date.parse(right[key] || 0) - Date.parse(left[key] || 0);
+    }
+
+    function textElement(tag, text, className = "") {
+        const element = document.createElement(tag);
+        element.textContent = text ?? "—";
+        if (className) element.className = className;
+        return element;
+    }
+
+    function svgElement(tag, attributes) {
+        const element = document.createElementNS("http://www.w3.org/2000/svg", tag);
+        Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, value));
+        return element;
+    }
+
+    function svgText(x, y, value, anchor) {
+        const element = svgElement("text", { x, y, "text-anchor": anchor, class: "chart-label" });
+        element.textContent = value;
+        return element;
+    }
+
+    function renderEmptyChart(id) {
+        document.querySelector(`#${id}`).replaceChildren(textElement("p", "No history available", "chart-empty"));
+    }
+
+    function formatMsat(value) {
+        return value == null ? "—" : `${formatNumber(Number(value) / 1000, Number(value) % 1000 ? 3 : 0)} sats`;
+    }
+
+    function formatSat(value) {
+        return value == null ? "—" : `${formatNumber(value, 0)} sats`;
+    }
+
+    function formatNumber(value, decimals = 0, suffix = "") {
+        if (value == null || !Number.isFinite(Number(value))) return "—";
+        return `${new Intl.NumberFormat(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(Number(value))}${suffix}`;
+    }
+
+    function formatCompact(value, suffix) {
+        return `${new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(value)}${suffix}`;
+    }
+
+    function abbreviateValue(value) {
+        if (!value || value.length <= 28) return value;
+        return `${value.slice(0, 14)}…${value.slice(-10)}`;
     }
 
     function tableConfig(kind, referenceTime) {
@@ -472,6 +790,16 @@
             appendBadge(cell, rawValue ? "Yes" : "No", rawValue ? "connected" : "disconnected");
         } else if (item.badge) {
             appendBadge(cell, humanize(rawValue), `status-${rawValue || "unknown"}`);
+        } else if (config.datasetKey === "channels" && item.key === "short_channel_id") {
+            const link = document.createElement("a");
+            link.href = `channel.html?channel=${encodeURIComponent(row.short_channel_id || row.channel_id)}`;
+            link.textContent = formatValue(item, rawValue);
+            cell.appendChild(link);
+        } else if (config.datasetKey === "settled_forwards" && ["in_channel", "out_channel"].includes(item.key) && rawValue) {
+            const link = document.createElement("a");
+            link.href = `channel.html?channel=${encodeURIComponent(rawValue)}`;
+            link.textContent = String(rawValue);
+            cell.appendChild(link);
         } else {
             cell.textContent = formatValue(item, rawValue);
         }

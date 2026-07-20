@@ -11,7 +11,7 @@ use crate::history;
 use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts, DatasetMetadata};
 use crate::store::{RebalancePart, Store};
 
-pub(crate) const SCHEMA_VERSION: u32 = 5;
+pub(crate) const SCHEMA_VERSION: u32 = 6;
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct SnapshotManifest {
@@ -74,6 +74,8 @@ pub(crate) struct RoicPeriodSnapshot {
 pub(crate) struct ChannelSnapshot {
     pub channel_id: String,
     pub short_channel_id: Option<String>,
+    pub funding_txid: String,
+    pub funding_output: u32,
     pub peer_id: String,
     pub peer_alias: String,
     pub connected: bool,
@@ -86,6 +88,11 @@ pub(crate) struct ChannelSnapshot {
     pub uptime_ratio: Option<f64>,
     pub outbound_fee_ppm: Option<u64>,
     pub inbound_fee_ppm: Option<u64>,
+    pub outbound_base_fee_msat: Option<u64>,
+    pub outbound_htlc_min_msat: Option<u64>,
+    pub outbound_htlc_max_msat: Option<u64>,
+    pub outbound_delay_blocks: Option<u64>,
+    pub last_fee_adjustment_at: Option<String>,
     pub settled_forward_count: usize,
     pub routed_out_sat: u64,
     pub forwarding_fees_sat: u64,
@@ -351,6 +358,8 @@ fn build_channel_snapshot(
     ChannelSnapshot {
         channel_id: channel.channel_id.clone(),
         short_channel_id: channel.short_channel_id.clone(),
+        funding_txid: channel.funding_txid.clone(),
+        funding_output: channel.funding_output,
         peer_id: channel.peer_id.clone(),
         peer_alias: store.get_node_alias(&channel.peer_id),
         connected: channel.connected,
@@ -371,6 +380,22 @@ fn build_channel_snapshot(
         inbound_fee_ppm: short_channel_id
             .and_then(|scid| store.get_channel(scid, &channel.peer_id))
             .map(|network_channel| network_channel.fee_per_millionth),
+        outbound_base_fee_msat: short_channel_id
+            .and_then(|scid| store.get_channel(scid, &store.info.id))
+            .map(|network_channel| network_channel.base_fee_millisatoshi),
+        outbound_htlc_min_msat: short_channel_id
+            .and_then(|scid| store.get_channel(scid, &store.info.id))
+            .map(|network_channel| network_channel.htlc_minimum_msat),
+        outbound_htlc_max_msat: short_channel_id
+            .and_then(|scid| store.get_channel(scid, &store.info.id))
+            .map(|network_channel| network_channel.htlc_maximum_msat),
+        outbound_delay_blocks: short_channel_id
+            .and_then(|scid| store.get_channel(scid, &store.info.id))
+            .map(|network_channel| network_channel.delay),
+        last_fee_adjustment_at: short_channel_id
+            .and_then(|scid| store.get_setchannel_timestamp(scid))
+            .and_then(|timestamp| u64::try_from(timestamp).ok())
+            .and_then(format_timestamp),
         settled_forward_count: forwards.settled_forward_count,
         routed_out_sat: forwards.routed_out_sat,
         forwarding_fees_sat: forwards.forwarding_fees_sat,

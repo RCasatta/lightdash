@@ -27,6 +27,7 @@ pub fn run_dashboard2(snapshot_directory: &str, output_directory: &str) -> Resul
     let summary_path = snapshot_file(snapshot_directory, &manifest.files.summary)?;
     let channels_path = snapshot_file(snapshot_directory, &manifest.files.channels)?;
     let forwards_path = snapshot_file(snapshot_directory, &manifest.files.settled_forwards)?;
+    let rebalances_path = snapshot_file(snapshot_directory, &manifest.files.rebalances)?;
     let summary: SummarySnapshot = read_json(&summary_path, "snapshot summary")?;
 
     let assets_directory = output_directory.join("assets");
@@ -44,11 +45,12 @@ pub fn run_dashboard2(snapshot_directory: &str, output_directory: &str) -> Resul
         &forwards_path,
         &data_directory.join("settled-forwards.jsonl"),
     )?;
+    copy_file(&rebalances_path, &data_directory.join("rebalances.jsonl"))?;
     copy_file(
         &snapshot_directory.join("manifest.json"),
         &data_directory.join("manifest.json"),
     )?;
-    for dataset_key in ["summary", "channels", "settled_forwards"] {
+    for dataset_key in ["summary", "channels", "settled_forwards", "rebalances"] {
         let dataset = manifest
             .datasets
             .get(dataset_key)
@@ -57,11 +59,24 @@ pub fn run_dashboard2(snapshot_directory: &str, output_directory: &str) -> Resul
         let schema_destination = snapshot_file(&data_directory, &dataset.schema_path)?;
         copy_file(&schema_source, &schema_destination)?;
     }
+    for dataset_key in ["channel_policy_history", "channel_liquidity_history"] {
+        let Some(dataset) = manifest.datasets.get(dataset_key) else {
+            continue;
+        };
+        let data_source = snapshot_file(snapshot_directory, &dataset.path)?;
+        let data_destination = snapshot_file(&data_directory, &dataset.path)?;
+        let schema_source = snapshot_file(snapshot_directory, &dataset.schema_path)?;
+        let schema_destination = snapshot_file(&data_directory, &dataset.schema_path)?;
+        copy_file(&data_source, &data_destination)?;
+        copy_file(&schema_source, &schema_destination)?;
+    }
 
     let overview = render_overview_page(&manifest, &summary);
     write_file(&output_directory.join("index.html"), &overview)?;
     let channels_page = render_channels_page(&manifest);
     write_file(&output_directory.join("channels.html"), &channels_page)?;
+    let channel_page = render_channel_page(&manifest);
+    write_file(&output_directory.join("channel.html"), &channel_page)?;
     let forwards_page = render_forwards_page(&manifest);
     write_file(&output_directory.join("forwards.html"), &forwards_page)?;
 
@@ -188,6 +203,83 @@ fn render_channels_page(manifest: &SnapshotManifest) -> String {
         ))
     };
     page_shell("Channels", "channels", manifest, content)
+}
+
+fn render_channel_page(manifest: &SnapshotManifest) -> String {
+    let content = html! {
+        section data-channel-root {
+            noscript {
+                div class="error-banner" { "Channel details require JavaScript." }
+            }
+            div id="channel-error" class="error-banner" hidden {}
+            div id="channel-content" hidden {
+                div class="detail-heading" {
+                    div {
+                        p class="eyebrow" { "Channel detail" }
+                        h1 id="channel-title" { "Channel" }
+                        p id="channel-subtitle" class="muted monospace" {}
+                    }
+                    a class="secondary-link" href="channels.html" { "Back to channels" }
+                }
+
+                div id="channel-metrics" class="metric-grid channel-metrics" {}
+
+                div class="detail-grid" {
+                    section class="panel detail-panel" aria-labelledby="identity-title" {
+                        h2 id="identity-title" { "Channel information" }
+                        dl id="channel-identity" class="detail-list" {}
+                    }
+                    section class="panel detail-panel" aria-labelledby="policy-title" {
+                        h2 id="policy-title" { "Current outbound policy" }
+                        dl id="channel-policy" class="detail-list" {}
+                    }
+                    section class="panel detail-panel" aria-labelledby="activity-title" {
+                        h2 id="activity-title" { "Routing and rebalancing" }
+                        dl id="channel-activity" class="detail-list" {}
+                    }
+                }
+
+                section class="panel detail-panel chart-section" {
+                    h2 { "Channel history" }
+                    p id="history-note" class="muted" { "Loading historical channel data…" }
+                    div class="chart-grid" {
+                        figure class="channel-chart" {
+                            figcaption { "Liquidity ratio" }
+                            div id="liquidity-chart" class="chart-host" {}
+                        }
+                        figure class="channel-chart" {
+                            figcaption { "Proportional fee" }
+                            div id="fee-chart" class="chart-host" {}
+                        }
+                        figure class="channel-chart" {
+                            figcaption { "Maximum HTLC" }
+                            div id="htlc-chart" class="chart-host" {}
+                        }
+                    }
+                }
+
+                (channel_activity_table("Settled forwards", "channel-forwards", "No settled forwards involve this channel."))
+                (channel_activity_table("Rebalances", "channel-rebalances", "No rebalances involve this channel."))
+            }
+        }
+    };
+    page_shell("Channel", "channels", manifest, content)
+}
+
+fn channel_activity_table(title: &str, id: &str, empty_message: &str) -> Markup {
+    html! {
+        section class="panel detail-panel activity-table-panel" {
+            h2 { (title) }
+            p id={(format!("{id}-status"))} class="muted" { "Loading…" }
+            div class="table-scroll" {
+                table id=(id) class="data-table compact-table" {
+                    thead {}
+                    tbody {}
+                }
+            }
+            p id={(format!("{id}-empty"))} class="muted" hidden { (empty_message) }
+        }
+    }
 }
 
 fn render_forwards_page(manifest: &SnapshotManifest) -> String {
@@ -481,6 +573,7 @@ mod tests {
         .unwrap();
         fs::write(snapshot.join("channels.json"), b"[]").unwrap();
         fs::write(snapshot.join("settled-forwards.jsonl"), b"").unwrap();
+        fs::write(snapshot.join("rebalances.jsonl"), b"").unwrap();
         for dataset in manifest.datasets.values() {
             fs::write(
                 snapshot.join(&dataset.schema_path),
@@ -493,6 +586,7 @@ mod tests {
 
         assert!(output.join("index.html").is_file());
         assert!(output.join("channels.html").is_file());
+        assert!(output.join("channel.html").is_file());
         assert!(output.join("forwards.html").is_file());
         assert!(output.join("assets/app.css").is_file());
         assert!(output.join("assets/app.js").is_file());
@@ -501,6 +595,7 @@ mod tests {
             "[]"
         );
         assert!(output.join("data/settled-forwards.jsonl").is_file());
+        assert!(output.join("data/rebalances.jsonl").is_file());
         assert!(output.join("data/summary.schema.json").is_file());
         assert!(output.join("data/channels.schema.json").is_file());
         assert!(output.join("data/settled-forwards.schema.json").is_file());
