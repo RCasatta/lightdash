@@ -1153,9 +1153,7 @@ impl Store {
         let short_channel_id = channel.short_channel_id.as_deref()?;
         let age_days_to_now = self.get_channel_age_days(short_channel_id)?;
 
-        let Some(last_stable_connection) = channel.last_stable_connection else {
-            return Some(age_days_to_now);
-        };
+        let last_stable_connection = channel.last_stable_connection?;
         let close_time = DateTime::from_timestamp(last_stable_connection as i64, 0)?;
         let days_since_close = self.now.signed_duration_since(close_time).num_days().max(0);
 
@@ -1610,6 +1608,30 @@ mod tests {
         assert_eq!(store.get_channel_indirect_fees(UNRELATED_SCID), 7);
         assert_eq!(store.get_channel_indirect_fees("unknown-scid"), 0);
         assert_eq!(store.get_channel_total_fees(OUTGOING_SCID), 17);
+    }
+
+    #[test]
+    fn closed_channel_lifetime_requires_a_closure_timestamp() {
+        let store = test_store(vec![], vec![], vec![]);
+        let mut channel = cmd::ClosedChannel {
+            channel_id: "closed-channel".to_string(),
+            peer_id: None,
+            short_channel_id: Some(INCOMING_SCID.to_string()),
+            opener: "local".to_string(),
+            closer: None,
+            total_htlcs_sent: None,
+            total_msat: 1_000_000,
+            funding_txid: "funding-txid".to_string(),
+            final_to_us_msat: 500_000,
+            last_commitment_txid: None,
+            last_stable_connection: None,
+            close_cause: "unknown".to_string(),
+        };
+
+        assert_eq!(store.get_closed_channel_age_days(&channel), None);
+
+        channel.last_stable_connection = Some((NOW_TIMESTAMP - 100 * 24 * 60 * 60) as u64);
+        assert_eq!(store.get_closed_channel_age_days(&channel), Some(265));
     }
 
     #[test]

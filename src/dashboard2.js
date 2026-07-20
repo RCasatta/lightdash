@@ -47,12 +47,47 @@
     initialize();
 
     async function initialize() {
+        configureDatasetViewControls();
+        if (config.rebalanceView) await renderRebalanceSummary();
         await loadMetadata();
         initializeFromUrl();
         buildFilterPanel();
         buildColumnPanel();
         bindControls();
         await loadRows();
+    }
+
+    function configureDatasetViewControls() {
+        document.querySelectorAll("[data-channel-view-link]").forEach(link => {
+            if (link.dataset.channelViewLink === config.channelView) link.setAttribute("aria-current", "page");
+        });
+        document.querySelectorAll("[data-channel-view-presets]").forEach(group => {
+            group.hidden = group.dataset.channelViewPresets !== config.channelView;
+        });
+        document.querySelectorAll("[data-rebalance-view-link]").forEach(link => {
+            if (link.dataset.rebalanceViewLink === config.rebalanceView) link.setAttribute("aria-current", "page");
+        });
+        document.querySelectorAll("[data-rebalance-view-presets]").forEach(group => {
+            group.hidden = group.dataset.rebalanceViewPresets !== config.rebalanceView;
+        });
+    }
+
+    async function renderRebalanceSummary() {
+        const rows = await fetchJson("data/rebalance-status.json");
+        const metrics = [
+            ["Managed channels", formatNumber(rows.length, 0), "Channels represented in the latest Sling status"],
+            ["Balanced", formatNumber(rows.filter(row => row.is_balanced).length, 0), "Statuses containing Balanced"],
+            ["No cheap route", formatNumber(rows.filter(row => row.has_no_cheap_route).length, 0), "Statuses containing NoCheapRoute"],
+            ["Successful rebalances", formatNumber(rows.filter(row => row.is_balanced).length, 0), "Balanced channels in the latest status"]
+        ];
+        const fragment = document.createDocumentFragment();
+        metrics.forEach(([label, value, note]) => {
+            const card = document.createElement("article");
+            card.className = "metric-card";
+            card.append(textElement("p", label, "metric-label"), textElement("p", value, "metric-value"), textElement("p", note, "metric-note"));
+            fragment.appendChild(card);
+        });
+        document.querySelector("#rebalance-summary").replaceChildren(fragment);
     }
 
     async function initializeChannelDetail() {
@@ -66,15 +101,20 @@
 
         try {
             const manifest = await fetchJson("data/manifest.json");
-            const channels = await fetchJson("data/channels.json");
-            const channel = channels.find(row => row.short_channel_id === channelKey || row.channel_id === channelKey);
+            const [channels, closedChannels] = await Promise.all([
+                fetchJson("data/channels.json"),
+                fetchJson("data/closed-channels.json")
+            ]);
+            let channel = channels.find(row => row.short_channel_id === channelKey || row.channel_id === channelKey);
+            const isClosed = !channel;
+            channel ||= closedChannels.find(row => row.short_channel_id === channelKey || row.channel_id === channelKey);
             if (!channel) throw new Error(`Channel ${channelKey} is not present in this snapshot`);
 
             const [forwards, rebalances] = await Promise.all([
                 fetchJsonLines("data/settled-forwards.jsonl"),
                 fetchJsonLines("data/rebalances.jsonl")
             ]);
-            const channelFields = manifest.datasets?.channels?.fields || {};
+            const channelFields = manifest.datasets?.[isClosed ? "closed_channels" : "channels"]?.fields || {};
             const channelForwards = forwards
                 .filter(row => involvesChannel(row, channel))
                 .sort(newestFirst("received_at"));
@@ -82,9 +122,9 @@
                 .filter(row => row.source_channel_id === channel.short_channel_id || row.target_channel_id === channel.short_channel_id)
                 .sort(newestFirst("resolved_at"));
 
-            renderChannelHeader(channel);
-            renderChannelMetrics(channel);
-            renderChannelDetails(channel, channelForwards, channelRebalances, channelFields);
+            renderChannelHeader(channel, isClosed);
+            renderChannelMetrics(channel, channelForwards, isClosed);
+            renderChannelDetails(channel, channelForwards, channelRebalances, channelFields, isClosed);
             renderForwardTable("channel-forwards", channelForwards, channel);
             renderRebalanceTable("channel-rebalances", channelRebalances, channel);
             content.hidden = false;
@@ -106,14 +146,26 @@
         }
     }
 
-    function renderChannelHeader(channel) {
-        document.querySelector("#channel-title").textContent = channel.peer_alias;
+    function renderChannelHeader(channel, isClosed) {
+        const peerName = channel.peer_alias || "Unknown peer";
+        document.querySelector("#channel-title").textContent = peerName;
         document.querySelector("#channel-subtitle").textContent = channel.short_channel_id || channel.channel_id;
-        document.title = `${channel.peer_alias} · Channel · Lightdash`;
+        document.querySelector(".detail-heading .eyebrow").textContent = isClosed ? "Closed channel detail" : "Channel detail";
+        const backLink = document.querySelector(".detail-heading .secondary-link");
+        backLink.href = isClosed ? "channels.html?view=closed" : "channels.html";
+        document.title = `${peerName} · Channel · Lightdash`;
     }
 
-    function renderChannelMetrics(channel) {
-        const metrics = [
+    function renderChannelMetrics(channel, forwards, isClosed) {
+        const outboundFeesMsat = forwards
+            .filter(row => row.out_channel === channel.short_channel_id)
+            .reduce((total, row) => total + Number(row.fee_msat || 0), 0);
+        const metrics = isClosed ? [
+            ["Final local balance", formatMsat(channel.final_local_balance_msat), "Balance attributed locally at closure"],
+            ["Capacity", formatMsat(channel.capacity_msat), "Capacity before closure"],
+            ["Settled forwards", formatNumber(forwards.length, 0), `${formatMsat(outboundFeesMsat)} earned outbound`],
+            ["Net capacity return", formatNumber(channel.net_capacity_return_percent, 2, "%"), channel.age_days == null ? "Lifetime unavailable without a closure timestamp" : `${formatNumber(channel.age_days, 0)} day approximate lifetime`]
+        ] : [
             ["Local balance", formatNumber(channel.local_balance_percent, 1, "%"), `${formatMsat(channel.local_balance_msat)} locally controlled`],
             ["Capacity", formatMsat(channel.capacity_msat), `${formatMsat(channel.capacity_msat - channel.local_balance_msat)} remote balance`],
             ["Forwards", formatNumber(channel.settled_forward_count, 0), `${formatSat(channel.forwarding_fees_sat)} earned`],
@@ -129,7 +181,11 @@
         document.querySelector("#channel-metrics").replaceChildren(fragment);
     }
 
-    function renderChannelDetails(channel, forwards, rebalances, fields) {
+    function renderChannelDetails(channel, forwards, rebalances, fields, isClosed) {
+        if (isClosed) {
+            renderClosedChannelDetails(channel, forwards, rebalances, fields);
+            return;
+        }
         const identity = document.querySelector("#channel-identity");
         const peerLink = document.createElement("a");
         peerLink.href = `https://mempool.space/lightning/node/${encodeURIComponent(channel.peer_id)}`;
@@ -174,6 +230,51 @@
         appendDetail(activity, "First rebalance", targetRebalances.at(-1)?.resolved_at, null);
         appendDetail(activity, "Last rebalance", targetRebalances[0]?.resolved_at, null);
         appendDetail(activity, "Net routing revenue", formatMsat(channel.net_routing_revenue_msat), fields.net_routing_revenue_msat);
+    }
+
+    function renderClosedChannelDetails(channel, forwards, rebalances, fields) {
+        const identity = document.querySelector("#channel-identity");
+        appendDetail(identity, "Channel ID", channel.channel_id, fields.channel_id, true);
+        appendDetail(identity, "Short channel ID", channel.short_channel_id, fields.short_channel_id, true);
+        if (channel.peer_id) {
+            const peerLink = document.createElement("a");
+            peerLink.href = `https://mempool.space/lightning/node/${encodeURIComponent(channel.peer_id)}`;
+            peerLink.target = "_blank";
+            peerLink.rel = "noreferrer";
+            peerLink.textContent = abbreviateValue(channel.peer_id);
+            peerLink.title = channel.peer_id;
+            peerLink.className = "monospace";
+            appendDetail(identity, "Peer ID", peerLink, fields.peer_id);
+        }
+        appendDetail(identity, "Status", "Closed", null);
+        appendDetail(identity, "Lifetime", channel.age_days == null ? null : `${formatNumber(channel.age_days, 0)} days`, fields.age_days);
+        appendDetail(identity, "Funding transaction", channel.funding_txid, fields.funding_txid, true);
+
+        document.querySelector("#policy-title").textContent = "Closure information";
+        const closure = document.querySelector("#channel-policy");
+        appendDetail(closure, "Opened by", channel.opener, fields.opener);
+        appendDetail(closure, "Closed by", channel.closer, fields.closer);
+        appendDetail(closure, "Close cause", channel.close_cause, fields.close_cause);
+        appendDetail(closure, "Last stable connection", channel.last_stable_connection_at, fields.last_stable_connection_at);
+        appendDetail(closure, "Last commitment transaction", channel.last_commitment_txid, fields.last_commitment_txid, true);
+        appendDetail(closure, "Final local balance", formatMsat(channel.final_local_balance_msat), fields.final_local_balance_msat);
+        appendDetail(closure, "HTLCs sent", formatNumber(channel.total_htlcs_sent, 0), fields.total_htlcs_sent);
+        appendDetail(closure, "Indirect capacity contribution", formatNumber(channel.indirect_capacity_contribution_percent, 2, "%"), fields.indirect_capacity_contribution_percent);
+
+        const inbound = forwards.filter(row => row.in_channel === channel.short_channel_id);
+        const outbound = forwards.filter(row => row.out_channel === channel.short_channel_id);
+        const targetRebalances = rebalances.filter(row => row.target_channel_id === channel.short_channel_id);
+        const outboundFeesMsat = outbound.reduce((total, row) => total + Number(row.fee_msat || 0), 0);
+        const activity = document.querySelector("#channel-activity");
+        appendDetail(activity, "Last inbound forward", inbound[0]?.received_at, null);
+        appendDetail(activity, "Last outbound forward", outbound[0]?.received_at, null);
+        appendDetail(activity, "Settled forwards", formatNumber(forwards.length, 0), null);
+        appendDetail(activity, "Outbound forwarding fees", formatMsat(outboundFeesMsat), null);
+        appendDetail(activity, "Rebalance parts", formatNumber(targetRebalances.length, 0), null);
+        appendDetail(activity, "Rebalance payments", formatNumber(new Set(targetRebalances.map(row => row.payment_id)).size, 0), null);
+        appendDetail(activity, "First rebalance", targetRebalances.at(-1)?.resolved_at, null);
+        appendDetail(activity, "Last rebalance", targetRebalances[0]?.resolved_at, null);
+        appendDetail(activity, "Net capacity return", formatNumber(channel.net_capacity_return_percent, 2, "%"), fields.net_capacity_return_percent);
     }
 
     async function renderChannelHistory(manifest, channel) {
@@ -368,8 +469,32 @@
     }
 
     function tableConfig(kind, referenceTime) {
+        const channelView = new URLSearchParams(location.search).get("view") === "closed" ? "closed" : "open";
+        const rebalanceView = new URLSearchParams(location.search).get("view") === "history" ? "history" : "status";
         const configs = {
-            channels: {
+            channels: channelView === "closed" ? {
+                channelView,
+                datasetKey: "closed_channels",
+                source: "data/closed-channels.json",
+                format: "json",
+                itemLabel: "closed channels",
+                fileBase: "lightdash-closed-channels",
+                storageKey: "lightdash.dashboard2.closedChannelColumns",
+                defaultSort: "last_stable_connection_at",
+                defaultDirection: "desc",
+                pageSize: 0,
+                emptyMessage: "No closed channels match the current filters.",
+                prepare: prepareClosedChannel,
+                presets: {
+                    all: {},
+                    mature: { age_days: { min: 365 } },
+                    "local-close": { closer: { eq: "local" } },
+                    "remote-close": { closer: { eq: "remote" } },
+                    "negative-capacity-return": { net_capacity_return_percent: { lt: 0 } }
+                },
+                columns: closedChannelColumns()
+            } : {
+                channelView,
                 datasetKey: "channels",
                 source: "data/channels.json",
                 format: "json",
@@ -411,6 +536,45 @@
                     "last-year": { received_at: { min: dateInputValue(referenceTime - 365 * 24 * 60 * 60 * 1000) } }
                 },
                 columns: forwardColumns()
+            },
+            rebalances: rebalanceView === "history" ? {
+                rebalanceView,
+                datasetKey: "rebalances",
+                source: "data/rebalances.jsonl",
+                format: "jsonl",
+                itemLabel: "successful rebalance parts",
+                fileBase: "lightdash-rebalances",
+                storageKey: "lightdash.dashboard2.rebalanceColumns",
+                defaultSort: "resolved_at",
+                defaultDirection: "desc",
+                pageSize: 100,
+                emptyMessage: "No successful rebalance parts match the current filters.",
+                prepare: prepareRebalance,
+                presets: {
+                    all: {},
+                    "last-month": { resolved_at: { min: dateInputValue(referenceTime - 30 * 24 * 60 * 60 * 1000) } },
+                    "last-year": { resolved_at: { min: dateInputValue(referenceTime - 365 * 24 * 60 * 60 * 1000) } }
+                },
+                columns: rebalanceColumns()
+            } : {
+                rebalanceView,
+                datasetKey: "rebalance_status",
+                source: "data/rebalance-status.json",
+                format: "json",
+                itemLabel: "rebalance statuses",
+                fileBase: "lightdash-rebalance-status",
+                storageKey: "lightdash.dashboard2.rebalanceStatusColumns",
+                defaultSort: "last_success_at",
+                defaultDirection: "desc",
+                pageSize: 100,
+                emptyMessage: "No rebalance statuses match the current filters.",
+                prepare: prepareRebalanceStatus,
+                presets: {
+                    all: {},
+                    balanced: { is_balanced: { eq: "true" } },
+                    "no-cheap-route": { has_no_cheap_route: { eq: "true" } }
+                },
+                columns: rebalanceStatusColumns()
             }
         };
         return configs[kind];
@@ -443,6 +607,26 @@
         ];
     }
 
+    function closedChannelColumns() {
+        return [
+            column("short_channel_id", "Channel", "text", { visible: true, monospace: true, value: row => row.short_channel_id || row.channel_id.slice(0, 16) }),
+            column("peer_alias", "Peer", "text", { visible: true }),
+            column("opener", "Opener", "enum", { visible: true, options: ["local", "remote"] }),
+            column("closer", "Closer", "enum", { visible: true, options: ["local", "remote"] }),
+            column("close_cause", "Close cause", "text", { visible: true }),
+            column("last_stable_connection_at", "Last stable connection", "date", { visible: true, value: row => row._lastStableConnectionAt }),
+            column("age_days", "Lifetime", "number", { visible: true, suffix: " d", decimals: 0 }),
+            column("capacity_msat", "Capacity", "number", { visible: true, transform: value => value / 1000, suffix: " sats", decimals: 0 }),
+            column("final_local_balance_msat", "Final local balance", "number", { visible: true, transform: value => value / 1000, suffix: " sats", decimals: 0 }),
+            column("total_htlcs_sent", "HTLCs sent", "number", { visible: true, decimals: 0 }),
+            column("net_capacity_return_percent", "Net capacity return", "number", { visible: true, suffix: "%", decimals: 2, signedClass: true }),
+            column("indirect_capacity_contribution_percent", "Indirect capacity contribution", "number", { suffix: "%", decimals: 2, signedClass: true }),
+            column("funding_txid", "Funding transaction", "text", { monospace: true }),
+            column("last_commitment_txid", "Last commitment transaction", "text", { monospace: true }),
+            column("peer_id", "Peer ID", "text", { monospace: true })
+        ];
+    }
+
     function forwardColumns() {
         return [
             column("received_at", "Received", "date", { visible: true, value: row => row._receivedAt }),
@@ -454,6 +638,37 @@
             column("elapsed_seconds", "Elapsed", "number", { visible: true, suffix: " s", decimals: 1 }),
             column("resolved_at", "Resolved", "date", { value: row => row._resolvedAt }),
             column("in_msat", "In amount", "number", { transform: value => value / 1000, suffix: " sats", decimals: 0 })
+        ];
+    }
+
+    function rebalanceStatusColumns() {
+        return [
+            column("short_channel_id", "Channel", "text", { visible: true, monospace: true }),
+            column("peer_alias", "Peer", "text", { visible: true }),
+            column("statuses", "Status", "text", { visible: true, value: row => row.statuses.join(", ") }),
+            column("rebalance_amount_sat", "Rebalance amount", "number", { visible: true, suffix: " sats", decimals: 0 }),
+            column("weighted_fee_ppm", "Weighted fee", "number", { visible: true, suffix: " ppm", decimals: 0 }),
+            column("last_channel_partner_id", "Last partner", "text", { visible: true, monospace: true }),
+            column("last_route_at", "Last route", "date", { visible: true, value: row => row._lastRouteAt }),
+            column("last_success_at", "Last success", "date", { visible: true, value: row => row._lastSuccessAt }),
+            column("is_balanced", "Balanced", "boolean"),
+            column("has_no_cheap_route", "No cheap route", "boolean"),
+            column("peer_id", "Peer ID", "text", { monospace: true })
+        ];
+    }
+
+    function rebalanceColumns() {
+        return [
+            column("resolved_at", "Time", "date", { visible: true, value: row => row._resolvedAt }),
+            column("target_channel_id", "Channel in", "text", { visible: true, monospace: true, value: row => row.target_channel_id || row.target_account }),
+            column("source_channel_id", "Channel out", "text", { visible: true, monospace: true, value: row => row.source_channel_id || row.source_account }),
+            column("credit_msat", "Rebalance amount", "number", { visible: true, transform: value => value / 1000, suffix: " sats", decimals: 0 }),
+            column("fee_ppm", "Rebalance PPM", "number", { visible: true, suffix: " ppm", decimals: 1 }),
+            column("target_historical_fee_ppm", "Channel in historical PPM", "number", { visible: true, suffix: " ppm", decimals: 1 }),
+            column("fees_msat", "Fees", "number", { transform: value => value / 1000, suffix: " sats", decimals: 3 }),
+            column("payment_id", "Payment", "text", { monospace: true }),
+            column("part_id", "Part", "number", { decimals: 0 }),
+            column("debit_msat", "Debit", "number", { transform: value => value / 1000, suffix: " sats", decimals: 3 })
         ];
     }
 
@@ -477,6 +692,22 @@
 
     function prepareForward(row) {
         row._receivedAt = parseDate(row.received_at);
+        row._resolvedAt = parseDate(row.resolved_at);
+        return row;
+    }
+
+    function prepareClosedChannel(row) {
+        row._lastStableConnectionAt = parseDate(row.last_stable_connection_at);
+        return row;
+    }
+
+    function prepareRebalanceStatus(row) {
+        row._lastRouteAt = parseDate(row.last_route_at);
+        row._lastSuccessAt = parseDate(row.last_success_at);
+        return row;
+    }
+
+    function prepareRebalance(row) {
         row._resolvedAt = parseDate(row.resolved_at);
         return row;
     }
@@ -790,7 +1021,7 @@
             appendBadge(cell, rawValue ? "Yes" : "No", rawValue ? "connected" : "disconnected");
         } else if (item.badge) {
             appendBadge(cell, humanize(rawValue), `status-${rawValue || "unknown"}`);
-        } else if (config.datasetKey === "channels" && item.key === "short_channel_id") {
+        } else if (["channels", "closed_channels"].includes(config.datasetKey) && item.key === "short_channel_id") {
             const link = document.createElement("a");
             link.href = `channel.html?channel=${encodeURIComponent(row.short_channel_id || row.channel_id)}`;
             link.textContent = formatValue(item, rawValue);
@@ -799,6 +1030,16 @@
             const link = document.createElement("a");
             link.href = `channel.html?channel=${encodeURIComponent(rawValue)}`;
             link.textContent = String(rawValue);
+            cell.appendChild(link);
+        } else if (config.datasetKey === "rebalance_status" && ["short_channel_id", "last_channel_partner_id"].includes(item.key) && rawValue) {
+            const link = document.createElement("a");
+            link.href = `channel.html?channel=${encodeURIComponent(rawValue)}`;
+            link.textContent = String(rawValue);
+            cell.appendChild(link);
+        } else if (config.datasetKey === "rebalances" && ["target_channel_id", "source_channel_id"].includes(item.key) && row[item.key]) {
+            const link = document.createElement("a");
+            link.href = `channel.html?channel=${encodeURIComponent(row[item.key])}`;
+            link.textContent = String(row[item.key]);
             cell.appendChild(link);
         } else {
             cell.textContent = formatValue(item, rawValue);
@@ -899,7 +1140,7 @@
 
     function initializeFromUrl() {
         const params = new URLSearchParams(location.search);
-        const view = params.get("view");
+        const view = params.get("preset") || params.get("view");
         if (view && presets[view]) {
             state.view = view;
             state.filters = cloneFilters(presets[view]);
@@ -929,7 +1170,12 @@
 
     function updateUrl() {
         const params = new URLSearchParams();
-        if (state.view !== "all" && state.view !== "custom") params.set("view", state.view);
+        if (config.channelView === "closed") params.set("view", "closed");
+        if (config.rebalanceView === "history") params.set("view", "history");
+        const hasDatasetView = config.channelView === "closed" || config.rebalanceView === "history";
+        if (state.view !== "all" && state.view !== "custom") {
+            params.set(hasDatasetView ? "preset" : "view", state.view);
+        }
         if (state.query) params.set("q", state.query);
         if (state.sort !== config.defaultSort) params.set("sort", state.sort);
         if (state.direction !== config.defaultDirection) params.set("dir", state.direction);

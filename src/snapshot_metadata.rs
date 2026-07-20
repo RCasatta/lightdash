@@ -40,6 +40,7 @@ pub(crate) struct DatasetCounts {
     pub settled_forwards: usize,
     pub other_forwards: usize,
     pub rebalances: usize,
+    pub rebalance_status: usize,
 }
 
 pub(crate) fn build_dataset_metadata(
@@ -117,6 +118,18 @@ pub(crate) fn build_dataset_metadata(
                 counts.rebalances,
                 None,
                 rebalance_fields(),
+            ),
+        ),
+        (
+            "rebalance_status".to_string(),
+            dataset(
+                &files.rebalance_status,
+                "rebalance-status.schema.json",
+                "json-array",
+                "Latest per-channel Sling rebalance status and outcome summary.",
+                counts.rebalance_status,
+                Some("short_channel_id"),
+                rebalance_status_fields(),
             ),
         ),
     ])
@@ -257,7 +270,7 @@ fn closed_channel_fields() -> BTreeMap<String, FieldMetadata> {
         ("last_commitment_txid".into(), field("string", true, None, "Last commitment transaction ID when reported.")),
         ("last_stable_connection_at".into(), field("string", true, Some("rfc3339_utc"), "Timestamp of the last stable peer connection, used as an approximate close time.")),
         ("close_cause".into(), field("string", false, None, "Core Lightning close cause.")),
-        ("age_days".into(), warning(field("integer", true, Some("day"), "Approximate lifetime from opening block to last stable connection, or snapshot time when unavailable."), "Opening age assumes 144 blocks per day; last stable connection is only a proxy for closure time.")),
+        ("age_days".into(), warning(field("integer", true, Some("day"), "Approximate lifetime from the short-channel opening block to the last stable connection; null when no closure-time proxy is available."), "Opening age assumes 144 blocks per day; last stable connection is only a proxy for closure time.")),
         ("net_capacity_return_percent".into(), formula(field("number", true, Some("percent"), "Annualized lifetime capacity return after target-attributed rebalance costs."), "net_routing_revenue_msat / capacity_msat * 365 / age_days * 100")),
         ("indirect_capacity_contribution_percent".into(), warning(field("number", true, Some("percent"), "Annualized incoming-side fee attribution relative to full capacity over the closed channel lifetime."), "Do not aggregate as additional node revenue.")),
     ])
@@ -359,6 +372,30 @@ fn rebalance_fields() -> BTreeMap<String, FieldMetadata> {
             ),
         ),
         (
+            "fee_ppm".into(),
+            formula(
+                field(
+                    "number",
+                    true,
+                    Some("ppm"),
+                    "Effective fee rate paid for this rebalance part.",
+                ),
+                "fees_msat * 1000000 / credit_msat",
+            ),
+        ),
+        (
+            "target_historical_fee_ppm".into(),
+            formula(
+                field(
+                    "number",
+                    true,
+                    Some("ppm"),
+                    "All-time effective outbound forwarding fee rate of the credited channel at snapshot time.",
+                ),
+                "target_channel.forwarding_fees_sat * 1000000 / target_channel.routed_out_sat",
+            ),
+        ),
+        (
             "timestamp".into(),
             field(
                 "integer",
@@ -376,5 +413,21 @@ fn rebalance_fields() -> BTreeMap<String, FieldMetadata> {
                 "UTC representation of timestamp.",
             ),
         ),
+    ])
+}
+
+fn rebalance_status_fields() -> BTreeMap<String, FieldMetadata> {
+    BTreeMap::from([
+        ("short_channel_id".into(), source(field("string", false, None, "Channel managed by the Sling job."), "sling-stats.scid")),
+        ("peer_id".into(), source(field("string", false, None, "Public key of the channel peer."), "sling-stats.pubkey")),
+        ("peer_alias".into(), source(field("string", false, None, "Alias reported for the channel peer."), "sling-stats.alias")),
+        ("last_channel_partner_id".into(), source(field("string", true, None, "Short channel ID of the other channel used by the most recent successful rebalance."), "sling-stats <scid> true successes_in_time_window.last_channel_partner")),
+        ("statuses".into(), source(field("array", false, None, "Current Sling job status strings."), "sling-stats.status")),
+        ("is_balanced".into(), formula(field("boolean", false, None, "Whether any current status contains `Balanced`."), "any(statuses contains 'Balanced')")),
+        ("has_no_cheap_route".into(), formula(field("boolean", false, None, "Whether any current status contains `NoCheapRoute`."), "any(statuses contains 'NoCheapRoute')")),
+        ("rebalance_amount_sat".into(), source(field("integer", false, Some("sat"), "Latest rebalance amount reported by Sling, normalized from its formatted string."), "sling-stats.rebamount")),
+        ("weighted_fee_ppm".into(), source(field("integer", false, Some("ppm"), "Weighted fee rate reported by Sling."), "sling-stats.w_feeppm")),
+        ("last_route_at".into(), source(field("string", true, Some("rfc3339_utc"), "Time of the most recent route attempt, or null when Sling reports `Never`."), "sling-stats.last_route_taken")),
+        ("last_success_at".into(), source(field("string", true, Some("rfc3339_utc"), "Time of the most recent successful rebalance, or null when Sling reports `Never`."), "sling-stats.last_success_reb")),
     ])
 }

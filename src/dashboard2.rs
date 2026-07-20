@@ -26,8 +26,11 @@ pub fn run_dashboard2(snapshot_directory: &str, output_directory: &str) -> Resul
 
     let summary_path = snapshot_file(snapshot_directory, &manifest.files.summary)?;
     let channels_path = snapshot_file(snapshot_directory, &manifest.files.channels)?;
+    let closed_channels_path = snapshot_file(snapshot_directory, &manifest.files.closed_channels)?;
     let forwards_path = snapshot_file(snapshot_directory, &manifest.files.settled_forwards)?;
     let rebalances_path = snapshot_file(snapshot_directory, &manifest.files.rebalances)?;
+    let rebalance_status_path =
+        snapshot_file(snapshot_directory, &manifest.files.rebalance_status)?;
     let summary: SummarySnapshot = read_json(&summary_path, "snapshot summary")?;
 
     let assets_directory = output_directory.join("assets");
@@ -42,15 +45,30 @@ pub fn run_dashboard2(snapshot_directory: &str, output_directory: &str) -> Resul
     copy_file(&summary_path, &data_directory.join("summary.json"))?;
     copy_file(&channels_path, &data_directory.join("channels.json"))?;
     copy_file(
+        &closed_channels_path,
+        &data_directory.join("closed-channels.json"),
+    )?;
+    copy_file(
         &forwards_path,
         &data_directory.join("settled-forwards.jsonl"),
     )?;
     copy_file(&rebalances_path, &data_directory.join("rebalances.jsonl"))?;
     copy_file(
+        &rebalance_status_path,
+        &data_directory.join("rebalance-status.json"),
+    )?;
+    copy_file(
         &snapshot_directory.join("manifest.json"),
         &data_directory.join("manifest.json"),
     )?;
-    for dataset_key in ["summary", "channels", "settled_forwards", "rebalances"] {
+    for dataset_key in [
+        "summary",
+        "channels",
+        "closed_channels",
+        "settled_forwards",
+        "rebalances",
+        "rebalance_status",
+    ] {
         let dataset = manifest
             .datasets
             .get(dataset_key)
@@ -79,6 +97,8 @@ pub fn run_dashboard2(snapshot_directory: &str, output_directory: &str) -> Resul
     write_file(&output_directory.join("channel.html"), &channel_page)?;
     let forwards_page = render_forwards_page(&manifest);
     write_file(&output_directory.join("forwards.html"), &forwards_page)?;
+    let rebalances_page = render_rebalances_page(&manifest);
+    write_file(&output_directory.join("rebalances.html"), &rebalances_page)?;
 
     log::info!(
         "Dashboard2 generated successfully in {} from snapshot {}",
@@ -191,13 +211,26 @@ fn render_channels_page(manifest: &SnapshotManifest) -> String {
             "Loading channel data…",
             false,
             html! {
-                div class="preset-group" role="group" aria-label="Channel views" {
-                    button type="button" class="preset-button" data-view="all" { "All" }
-                    button type="button" class="preset-button" data-view="mature" { "Age 1y+" }
-                    button type="button" class="preset-button" data-view="low-balance" { "Low balance" }
-                    button type="button" class="preset-button" data-view="negative-capacity-return" { "Negative capacity return" }
-                    button type="button" class="preset-button" data-view="disconnected" { "Disconnected" }
-                    button type="button" class="preset-button" data-view="no-forwards" { "No forwards" }
+                div class="channel-view-controls" {
+                    nav class="dataset-switch" aria-label="Channel status" {
+                        a href="channels.html" data-channel-view-link="open" { "Open" }
+                        a href="channels.html?view=closed" data-channel-view-link="closed" { "Closed" }
+                    }
+                    div class="preset-group" role="group" aria-label="Open channel views" data-channel-view-presets="open" {
+                        button type="button" class="preset-button" data-view="all" { "All" }
+                        button type="button" class="preset-button" data-view="mature" { "Age 1y+" }
+                        button type="button" class="preset-button" data-view="low-balance" { "Low balance" }
+                        button type="button" class="preset-button" data-view="negative-capacity-return" { "Negative capacity return" }
+                        button type="button" class="preset-button" data-view="disconnected" { "Disconnected" }
+                        button type="button" class="preset-button" data-view="no-forwards" { "No forwards" }
+                    }
+                    div class="preset-group" role="group" aria-label="Closed channel views" data-channel-view-presets="closed" hidden {
+                        button type="button" class="preset-button" data-view="all" { "All" }
+                        button type="button" class="preset-button" data-view="mature" { "Age 1y+" }
+                        button type="button" class="preset-button" data-view="local-close" { "Closed locally" }
+                        button type="button" class="preset-button" data-view="remote-close" { "Closed remotely" }
+                        button type="button" class="preset-button" data-view="negative-capacity-return" { "Negative capacity return" }
+                    }
                 }
             }
         ))
@@ -303,6 +336,39 @@ fn render_forwards_page(manifest: &SnapshotManifest) -> String {
         ))
     };
     page_shell("Forwards", "forwards", manifest, content)
+}
+
+fn render_rebalances_page(manifest: &SnapshotManifest) -> String {
+    let content = html! {
+        div id="rebalance-summary" class="metric-grid channel-metrics" aria-live="polite" {}
+        (dynamic_table_panel(
+            "Rebalances",
+            "rebalances",
+            "data/rebalance-status.json",
+            "json",
+            "Loading rebalance data…",
+            true,
+            html! {
+                div class="channel-view-controls" {
+                    nav class="dataset-switch" aria-label="Rebalance dataset" {
+                        a href="rebalances.html" data-rebalance-view-link="status" { "Latest status" }
+                        a href="rebalances.html?view=history" data-rebalance-view-link="history" { "Successful parts" }
+                    }
+                    div class="preset-group" role="group" aria-label="Rebalance status views" data-rebalance-view-presets="status" {
+                        button type="button" class="preset-button" data-view="all" { "All" }
+                        button type="button" class="preset-button" data-view="balanced" { "Balanced" }
+                        button type="button" class="preset-button" data-view="no-cheap-route" { "No cheap route" }
+                    }
+                    div class="preset-group" role="group" aria-label="Successful rebalance views" data-rebalance-view-presets="history" hidden {
+                        button type="button" class="preset-button" data-view="all" { "All" }
+                        button type="button" class="preset-button" data-view="last-month" { "Last month" }
+                        button type="button" class="preset-button" data-view="last-year" { "Last year" }
+                    }
+                }
+            }
+        ))
+    };
+    page_shell("Rebalances", "rebalances", manifest, content)
 }
 
 fn dynamic_table_panel(
@@ -422,6 +488,7 @@ fn page_shell(
                         a href="index.html" aria-current=(if active_page == "overview" { "page" } else { "false" }) { "Overview" }
                         a href="channels.html" aria-current=(if active_page == "channels" { "page" } else { "false" }) { "Channels" }
                         a href="forwards.html" aria-current=(if active_page == "forwards" { "page" } else { "false" }) { "Forwards" }
+                        a href="rebalances.html" aria-current=(if active_page == "rebalances" { "page" } else { "false" }) { "Rebalances" }
                     }
                     div class="freshness" {
                         span { "Snapshot" }
@@ -513,6 +580,7 @@ mod tests {
             settled_forwards: "settled-forwards.jsonl".to_string(),
             other_forwards: "other-forwards.jsonl".to_string(),
             rebalances: "rebalances.jsonl".to_string(),
+            rebalance_status: "rebalance-status.json".to_string(),
             history_manifest: None,
         };
         let manifest = SnapshotManifest {
@@ -528,6 +596,7 @@ mod tests {
                     settled_forwards: 0,
                     other_forwards: 0,
                     rebalances: 0,
+                    rebalance_status: 0,
                 },
             ),
             files,
@@ -572,8 +641,10 @@ mod tests {
         )
         .unwrap();
         fs::write(snapshot.join("channels.json"), b"[]").unwrap();
+        fs::write(snapshot.join("closed-channels.json"), b"[]").unwrap();
         fs::write(snapshot.join("settled-forwards.jsonl"), b"").unwrap();
         fs::write(snapshot.join("rebalances.jsonl"), b"").unwrap();
+        fs::write(snapshot.join("rebalance-status.json"), b"[]").unwrap();
         for dataset in manifest.datasets.values() {
             fs::write(
                 snapshot.join(&dataset.schema_path),
@@ -588,16 +659,20 @@ mod tests {
         assert!(output.join("channels.html").is_file());
         assert!(output.join("channel.html").is_file());
         assert!(output.join("forwards.html").is_file());
+        assert!(output.join("rebalances.html").is_file());
         assert!(output.join("assets/app.css").is_file());
         assert!(output.join("assets/app.js").is_file());
         assert_eq!(
             fs::read_to_string(output.join("data/channels.json")).unwrap(),
             "[]"
         );
+        assert!(output.join("data/closed-channels.json").is_file());
         assert!(output.join("data/settled-forwards.jsonl").is_file());
         assert!(output.join("data/rebalances.jsonl").is_file());
+        assert!(output.join("data/rebalance-status.json").is_file());
         assert!(output.join("data/summary.schema.json").is_file());
         assert!(output.join("data/channels.schema.json").is_file());
+        assert!(output.join("data/closed-channels.schema.json").is_file());
         assert!(output.join("data/settled-forwards.schema.json").is_file());
 
         fs::remove_dir_all(root).unwrap();

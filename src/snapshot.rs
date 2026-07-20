@@ -3,7 +3,7 @@ use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
 use std::path::Path;
 
-use chrono::{DateTime, SecondsFormat, Utc};
+use chrono::{DateTime, NaiveDateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::cmd::{self, ClosedChannel, Forward, Fund};
@@ -11,7 +11,7 @@ use crate::history;
 use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts, DatasetMetadata};
 use crate::store::{RebalancePart, Store};
 
-pub(crate) const SCHEMA_VERSION: u32 = 6;
+pub(crate) const SCHEMA_VERSION: u32 = 8;
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct SnapshotManifest {
@@ -31,6 +31,7 @@ pub(crate) struct SnapshotFiles {
     pub settled_forwards: String,
     pub other_forwards: String,
     pub rebalances: String,
+    pub rebalance_status: String,
     pub history_manifest: Option<String>,
 }
 
@@ -156,8 +157,39 @@ struct RebalanceSnapshot<'a> {
     debit_msat: u64,
     credit_msat: u64,
     fees_msat: u64,
+    fee_ppm: Option<f64>,
+    target_historical_fee_ppm: Option<f64>,
     timestamp: Option<u64>,
     resolved_at: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct RawRebalanceStatus {
+    alias: String,
+    #[serde(default)]
+    last_channel_partner: Option<String>,
+    last_route_taken: String,
+    last_success_reb: String,
+    pubkey: String,
+    rebamount: String,
+    scid: String,
+    status: Vec<String>,
+    w_feeppm: u64,
+}
+
+#[derive(Serialize)]
+struct RebalanceStatusSnapshot {
+    short_channel_id: String,
+    peer_id: String,
+    peer_alias: String,
+    last_channel_partner_id: Option<String>,
+    statuses: Vec<String>,
+    is_balanced: bool,
+    has_no_cheap_route: bool,
+    rebalance_amount_sat: u64,
+    weighted_fee_ppm: u64,
+    last_route_at: Option<String>,
+    last_success_at: Option<String>,
 }
 
 #[derive(Default)]
@@ -193,8 +225,10 @@ pub fn run_snapshot(
         settled_forwards: "settled-forwards.jsonl".to_string(),
         other_forwards: "other-forwards.jsonl".to_string(),
         rebalances: "rebalances.jsonl".to_string(),
+        rebalance_status: "rebalance-status.json".to_string(),
         history_manifest: None,
     };
+    let rebalance_status = build_rebalance_status_snapshot()?;
     let settled_forward_count = store.settled_forwards().len();
     let mut datasets = build_dataset_metadata(
         &files,
@@ -204,6 +238,7 @@ pub fn run_snapshot(
             settled_forwards: settled_forward_count,
             other_forwards: store.forwards_len() - settled_forward_count,
             rebalances: store.rebalance_parts().count(),
+            rebalance_status: rebalance_status.len(),
         },
     );
     let include_history =
@@ -281,8 +316,11 @@ pub fn run_snapshot(
     )?;
     write_json_lines(
         directory.join("rebalances.jsonl"),
-        store.rebalance_parts().map(build_rebalance_snapshot),
+        store
+            .rebalance_parts()
+            .map(|part| build_rebalance_snapshot(store, part)),
     )?;
+    write_json(directory.join("rebalance-status.json"), &rebalance_status)?;
 
     log::info!("Snapshot generated successfully in {}", directory.display());
     Ok(())
@@ -582,7 +620,7 @@ fn build_forward_snapshot(forward: &Forward) -> ForwardSnapshot<'_> {
     }
 }
 
-fn build_rebalance_snapshot(part: &RebalancePart) -> RebalanceSnapshot<'_> {
+fn build_rebalance_snapshot<'a>(store: &Store, part: &'a RebalancePart) -> RebalanceSnapshot<'a> {
     RebalanceSnapshot {
         payment_id: &part.payment_id,
         part_id: part.part_id,
@@ -593,9 +631,65 @@ fn build_rebalance_snapshot(part: &RebalancePart) -> RebalanceSnapshot<'_> {
         debit_msat: part.debit_msat,
         credit_msat: part.credit_msat,
         fees_msat: part.fees_msat,
+        fee_ppm: ratio_ppm(part.fees_msat as f64, part.credit_msat as f64),
+        target_historical_fee_ppm: part
+            .target_channel_id
+            .as_deref()
+            .and_then(|scid| store.get_channel_effective_fee_ppm(scid)),
         timestamp: part.timestamp,
         resolved_at: part.timestamp.and_then(format_timestamp),
     }
+}
+
+fn build_rebalance_status_snapshot() -> io::Result<Vec<RebalanceStatusSnapshot>> {
+    let raw: Vec<RawRebalanceStatus> = serde_json::from_value(crate::sling::current_sling_stats())
+        .map_err(|e| io::Error::other(format!("parsing current Sling status failed: {e}")))?;
+
+    raw.into_iter()
+        .map(|entry| {
+            let rebalance_amount_sat =
+                entry
+                    .rebamount
+                    .replace(',', "")
+                    .parse::<u64>()
+                    .map_err(|e| {
+                        io::Error::other(format!(
+                            "parsing Sling rebalance amount `{}` failed: {e}",
+                            entry.rebamount
+                        ))
+                    })?;
+            let is_balanced = entry
+                .status
+                .iter()
+                .any(|status| status.contains("Balanced"));
+            let has_no_cheap_route = entry
+                .status
+                .iter()
+                .any(|status| status.contains("NoCheapRoute"));
+            Ok(RebalanceStatusSnapshot {
+                short_channel_id: entry.scid,
+                peer_id: entry.pubkey,
+                peer_alias: entry.alias,
+                last_channel_partner_id: entry.last_channel_partner,
+                statuses: entry.status,
+                is_balanced,
+                has_no_cheap_route,
+                rebalance_amount_sat,
+                weighted_fee_ppm: entry.w_feeppm,
+                last_route_at: parse_sling_timestamp(&entry.last_route_taken),
+                last_success_at: parse_sling_timestamp(&entry.last_success_reb),
+            })
+        })
+        .collect()
+}
+
+fn parse_sling_timestamp(value: &str) -> Option<String> {
+    if value == "Never" {
+        return None;
+    }
+    NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S")
+        .ok()
+        .map(|timestamp| format_datetime(timestamp.and_utc()))
 }
 
 fn write_json(path: impl AsRef<Path>, value: &impl Serialize) -> io::Result<()> {
