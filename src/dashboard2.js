@@ -729,14 +729,18 @@
     function forwardColumns() {
         return [
             column("received_at", "Received", "date", { visible: true, value: row => row._receivedAt }),
+            column("in_peer_alias", "In peer", "text", { visible: true }),
             column("in_channel", "In channel", "text", { visible: true, monospace: true }),
+            column("out_peer_alias", "Out peer", "text", { visible: true }),
             column("out_channel", "Out channel", "text", { visible: true, monospace: true }),
             column("out_msat", "Out amount", "number", { visible: true, transform: value => value / 1000, suffix: " sats", decimals: 0 }),
             column("fee_msat", "Fee", "number", { visible: true, transform: value => value / 1000, suffix: " sats", decimals: 3 }),
             column("fee_ppm", "Fee PPM", "number", { visible: true, suffix: " ppm", decimals: 1 }),
             column("elapsed_seconds", "Elapsed", "number", { visible: true, suffix: " s", decimals: 1 }),
             column("resolved_at", "Resolved", "date", { value: row => row._resolvedAt }),
-            column("in_msat", "In amount", "number", { transform: value => value / 1000, suffix: " sats", decimals: 0 })
+            column("in_msat", "In amount", "number", { transform: value => value / 1000, suffix: " sats", decimals: 0 }),
+            column("in_peer_id", "In peer ID", "text", { monospace: true }),
+            column("out_peer_id", "Out peer ID", "text", { monospace: true })
         ];
     }
 

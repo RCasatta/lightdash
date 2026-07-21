@@ -280,6 +280,10 @@ fn forward_fields() -> BTreeMap<String, FieldMetadata> {
     BTreeMap::from([
         ("in_channel".into(), source(field("string", false, None, "Short channel ID of the incoming side of the forwarding attempt."), "listforwards.in_channel")),
         ("out_channel".into(), source(field("string", true, None, "Short channel ID selected as the outgoing side, when available."), "listforwards.out_channel")),
+        ("in_peer_id".into(), source(field("string", true, None, "Public key of the peer connected through the incoming channel, when resolvable."), "listfunds, listclosedchannels, or listchannels joined by in_channel")),
+        ("in_peer_alias".into(), source(field("string", true, None, "Gossip alias of the incoming-channel peer, or an abbreviated peer ID when no alias is advertised."), "listnodes joined through in_peer_id")),
+        ("out_peer_id".into(), source(field("string", true, None, "Public key of the peer connected through the outgoing channel, when resolvable."), "listfunds, listclosedchannels, or listchannels joined by out_channel")),
+        ("out_peer_alias".into(), source(field("string", true, None, "Gossip alias of the outgoing-channel peer, or an abbreviated peer ID when no alias is advertised."), "listnodes joined through out_peer_id")),
         ("status".into(), source(field("string", false, None, "Core Lightning forwarding status, such as settled, failed, local_failed, offered, or pending."), "listforwards.status")),
         ("in_msat".into(), source(field("integer", false, Some("msat"), "Amount received on the incoming channel."), "listforwards.in_msat")),
         ("out_msat".into(), source(field("integer", true, Some("msat"), "Amount offered on the outgoing channel, when assigned."), "listforwards.out_msat")),

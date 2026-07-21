@@ -11,7 +11,7 @@ use crate::history;
 use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts, DatasetMetadata};
 use crate::store::{RebalancePart, Store};
 
-pub(crate) const SCHEMA_VERSION: u32 = 8;
+pub(crate) const SCHEMA_VERSION: u32 = 9;
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct SnapshotManifest {
@@ -134,6 +134,10 @@ struct ClosedChannelSnapshot {
 struct ForwardSnapshot<'a> {
     in_channel: &'a str,
     out_channel: Option<&'a str>,
+    in_peer_id: Option<String>,
+    in_peer_alias: Option<String>,
+    out_peer_id: Option<String>,
+    out_peer_alias: Option<String>,
     status: &'a str,
     in_msat: u64,
     out_msat: Option<u64>,
@@ -303,7 +307,7 @@ pub fn run_snapshot(
             .forwards
             .iter()
             .filter(|forward| forward.status == "settled")
-            .map(build_forward_snapshot),
+            .map(|forward| build_forward_snapshot(store, forward)),
     )?;
     write_json_lines(
         directory.join("other-forwards.jsonl"),
@@ -312,7 +316,7 @@ pub fn run_snapshot(
             .forwards
             .iter()
             .filter(|forward| forward.status != "settled")
-            .map(build_forward_snapshot),
+            .map(|forward| build_forward_snapshot(store, forward)),
     )?;
     write_json_lines(
         directory.join("rebalances.jsonl"),
@@ -593,7 +597,7 @@ fn build_closed_channel_snapshot(
     }
 }
 
-fn build_forward_snapshot(forward: &Forward) -> ForwardSnapshot<'_> {
+fn build_forward_snapshot<'a>(store: &Store, forward: &'a Forward) -> ForwardSnapshot<'a> {
     let fee_ppm = match (forward.fee_msat, forward.out_msat) {
         (Some(fee_msat), Some(out_msat)) if out_msat > 0 => {
             Some(fee_msat as f64 * 1_000_000.0 / out_msat as f64)
@@ -603,10 +607,20 @@ fn build_forward_snapshot(forward: &Forward) -> ForwardSnapshot<'_> {
     let elapsed_seconds = forward
         .resolved_time
         .map(|resolved_time| resolved_time - forward.received_time);
+    let (in_peer_id, in_peer_alias) = forward_peer(store, &forward.in_channel);
+    let (out_peer_id, out_peer_alias) = forward
+        .out_channel
+        .as_deref()
+        .map(|short_channel_id| forward_peer(store, short_channel_id))
+        .unwrap_or((None, None));
 
     ForwardSnapshot {
         in_channel: &forward.in_channel,
         out_channel: forward.out_channel.as_deref(),
+        in_peer_id,
+        in_peer_alias,
+        out_peer_id,
+        out_peer_alias,
         status: &forward.status,
         in_msat: forward.in_msat,
         out_msat: forward.out_msat,
@@ -618,6 +632,29 @@ fn build_forward_snapshot(forward: &Forward) -> ForwardSnapshot<'_> {
         fail_reason: forward.failreason.as_deref(),
         fail_code: forward.failcode,
     }
+}
+
+fn forward_peer(store: &Store, short_channel_id: &str) -> (Option<String>, Option<String>) {
+    let peer_id = store
+        .get_fund(short_channel_id)
+        .map(|channel| channel.peer_id.clone())
+        .or_else(|| {
+            store
+                .closed_channels
+                .closedchannels
+                .iter()
+                .find(|channel| channel.short_channel_id.as_deref() == Some(short_channel_id))
+                .and_then(|channel| channel.peer_id.clone())
+        })
+        .or_else(|| {
+            store
+                .get_channel(short_channel_id, &store.info.id)
+                .map(|channel| channel.destination.clone())
+        });
+    let peer_alias = peer_id
+        .as_deref()
+        .map(|peer_id| store.get_node_alias(peer_id));
+    (peer_id, peer_alias)
 }
 
 fn build_rebalance_snapshot<'a>(store: &Store, part: &'a RebalancePart) -> RebalanceSnapshot<'a> {
