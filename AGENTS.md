@@ -166,6 +166,10 @@ state, pagination where appropriate, and filtered exports. Column descriptions
 and tooltips must come from snapshot metadata instead of duplicated prose in
 HTML or JavaScript.
 
+For Dashboard2 presentation, truncate sats and PPM to whole numbers, format
+numbers with `en-US` comma grouping, and right-align numeric columns with
+tabular digits. Keep sorting and filtering based on raw numeric values.
+
 ## Code Style Guidelines
 
 ### General Conventions
