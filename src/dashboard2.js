@@ -306,7 +306,14 @@
 
     function lineChart(id, series, suffix) {
         const host = document.querySelector(`#${id}`);
-        const points = series.flatMap(item => item.rows.map(row => ({ x: Date.parse(row.observed_at), y: item.value(row) }))).filter(point => Number.isFinite(point.x) && Number.isFinite(point.y));
+        const normalizedSeries = series.map(item => ({
+            ...item,
+            points: item.rows
+                .map(row => ({ x: Date.parse(row.observed_at), y: item.value(row) }))
+                .filter(point => Number.isFinite(point.x) && Number.isFinite(point.y))
+                .sort((a, b) => a.x - b.x)
+        }));
+        const points = normalizedSeries.flatMap(item => item.points);
         if (points.length === 0) return renderEmptyChart(id);
         const width = 760;
         const height = 260;
@@ -323,22 +330,105 @@
         svg.appendChild(svgText(pad.left - 8, y(minY) + 4, formatCompact(minY, suffix), "end"));
         svg.appendChild(svgText(pad.left, height - 10, new Date(minX).toISOString().slice(0, 10), "start"));
         svg.appendChild(svgText(width - pad.right, height - 10, new Date(maxX).toISOString().slice(0, 10), "end"));
-        series.forEach(item => {
-            const rows = item.rows.map(row => ({ x: Date.parse(row.observed_at), y: item.value(row) })).filter(point => Number.isFinite(point.x) && Number.isFinite(point.y)).sort((a, b) => a.x - b.x);
-            if (!rows.length) return;
-            const path = rows.map((point, index) => `${index ? "L" : "M"}${x(point.x).toFixed(1)},${y(point.y).toFixed(1)}`).join(" ");
+        normalizedSeries.forEach(item => {
+            if (!item.points.length) return;
+            const path = item.points.map((point, index) => `${index ? "L" : "M"}${x(point.x).toFixed(1)},${y(point.y).toFixed(1)}`).join(" ");
             svg.appendChild(svgElement("path", { d: path, fill: "none", stroke: item.color, "stroke-width": 2.5, "stroke-linejoin": "round" }));
+        });
+        const guide = svgElement("line", {
+            y1: pad.top,
+            y2: height - pad.bottom,
+            class: "chart-guide",
+            visibility: "hidden"
+        });
+        svg.appendChild(guide);
+        const markers = normalizedSeries.map(item => {
+            const marker = svgElement("circle", {
+                r: 5,
+                fill: item.color,
+                stroke: "#0b1017",
+                "stroke-width": 2,
+                class: "chart-marker",
+                visibility: "hidden"
+            });
+            svg.appendChild(marker);
+            return { item, marker };
         });
         const legend = document.createElement("div");
         legend.className = "chart-legend";
-        series.filter(item => item.rows.length).forEach(item => {
+        normalizedSeries.filter(item => item.points.length).forEach(item => {
             const entry = document.createElement("span");
             const swatch = document.createElement("i");
             swatch.style.background = item.color;
             entry.append(swatch, document.createTextNode(item.label));
             legend.appendChild(entry);
         });
-        host.replaceChildren(svg, legend);
+        const tooltip = document.createElement("div");
+        tooltip.className = "chart-tooltip";
+        tooltip.hidden = true;
+        host.replaceChildren(svg, legend, tooltip);
+
+        svg.addEventListener("pointermove", event => {
+            const svgBounds = svg.getBoundingClientRect();
+            const hostBounds = host.getBoundingClientRect();
+            const pointerX = Math.min(
+                width - pad.right,
+                Math.max(pad.left, (event.clientX - svgBounds.left) / svgBounds.width * width)
+            );
+            const timestamp = minX + (pointerX - pad.left) / (width - pad.left - pad.right) * (maxX - minX);
+            guide.setAttribute("x1", pointerX);
+            guide.setAttribute("x2", pointerX);
+            guide.setAttribute("visibility", "visible");
+
+            const tooltipRows = [];
+            markers.forEach(({ item, marker }) => {
+                const point = nearestChartPoint(item.points, timestamp);
+                marker.setAttribute("visibility", point ? "visible" : "hidden");
+                if (!point) return;
+                marker.setAttribute("cx", x(point.x));
+                marker.setAttribute("cy", y(point.y));
+                tooltipRows.push({ item, point });
+            });
+
+            const title = textElement("strong", new Date(timestamp).toISOString().replace("T", " ").replace(".000Z", "Z"));
+            const rows = tooltipRows.map(({ item, point }) => {
+                const row = document.createElement("div");
+                const swatch = document.createElement("i");
+                swatch.style.background = item.color;
+                const value = textElement("span", `${item.label}: ${formatChartTooltipValue(point.y, suffix)}`);
+                const observed = textElement("time", new Date(point.x).toISOString().replace("T", " ").replace(".000Z", "Z"));
+                row.append(swatch, value, observed);
+                return row;
+            });
+            tooltip.replaceChildren(title, ...rows);
+            tooltip.hidden = false;
+            const left = event.clientX - hostBounds.left + 14;
+            let top = event.clientY - hostBounds.top + 14;
+            if (top + tooltip.offsetHeight > hostBounds.height) {
+                top = event.clientY - hostBounds.top - tooltip.offsetHeight - 14;
+            }
+            tooltip.style.left = `${Math.max(8, Math.min(left, hostBounds.width - tooltip.offsetWidth - 8))}px`;
+            tooltip.style.top = `${Math.max(8, top)}px`;
+        });
+
+        svg.addEventListener("pointerleave", () => {
+            guide.setAttribute("visibility", "hidden");
+            markers.forEach(({ marker }) => { marker.setAttribute("visibility", "hidden"); });
+            tooltip.hidden = true;
+        });
+    }
+
+    function nearestChartPoint(points, timestamp) {
+        return points.reduce((nearest, point) => (
+            nearest === null || Math.abs(point.x - timestamp) < Math.abs(nearest.x - timestamp)
+                ? point
+                : nearest
+        ), null);
+    }
+
+    function formatChartTooltipValue(value, suffix) {
+        const decimals = suffix === " sats" ? 0 : suffix === " ppm" ? 1 : 2;
+        return formatNumber(value, decimals, suffix);
     }
 
     function renderForwardTable(id, rows, channel) {
