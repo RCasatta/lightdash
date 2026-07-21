@@ -393,13 +393,13 @@
     }
 
     async function fetchJson(path) {
-        const response = await fetch(path, { cache: "no-store" });
+        const response = await fetchSnapshot(path);
         if (!response.ok) throw new Error(`Loading ${path} returned HTTP ${response.status}`);
         return response.json();
     }
 
     async function fetchJsonLines(path, gzip = false) {
-        const response = await fetch(path, { cache: "no-store" });
+        const response = await fetchSnapshot(path);
         if (!response.ok) throw new Error(`Loading ${path} returned HTTP ${response.status}`);
         let text;
         if (gzip) {
@@ -413,6 +413,15 @@
             text = await response.text();
         }
         return text.split("\n").filter(Boolean).map(line => JSON.parse(line));
+    }
+
+    function fetchSnapshot(path) {
+        const snapshotVersion = document.body.dataset.snapshotTime;
+        const separator = path.includes("?") ? "&" : "?";
+        const versionedPath = snapshotVersion
+            ? `${path}${separator}snapshot=${encodeURIComponent(snapshotVersion)}`
+            : path;
+        return fetch(versionedPath, { cache: "force-cache" });
     }
 
     function involvesChannel(row, channel) {
@@ -480,7 +489,7 @@
                 itemLabel: "closed channels",
                 fileBase: "lightdash-closed-channels",
                 storageKey: "lightdash.dashboard2.closedChannelColumns",
-                defaultSort: "last_stable_connection_at",
+                defaultSort: "short_channel_id",
                 defaultDirection: "desc",
                 pageSize: 0,
                 emptyMessage: "No closed channels match the current filters.",
@@ -501,8 +510,8 @@
                 itemLabel: "channels",
                 fileBase: "lightdash-channels",
                 storageKey: "lightdash.dashboard2.channelColumns",
-                defaultSort: "local_balance_percent",
-                defaultDirection: "asc",
+                defaultSort: "short_channel_id",
+                defaultDirection: "desc",
                 pageSize: 0,
                 emptyMessage: "No channels match the current filters.",
                 prepare: row => row,
@@ -714,7 +723,7 @@
 
     async function loadMetadata() {
         try {
-            const response = await fetch("data/manifest.json", { cache: "no-store" });
+            const response = await fetchSnapshot("data/manifest.json");
             if (!response.ok) return;
             const manifest = await response.json();
             const fields = manifest.datasets?.[config.datasetKey]?.fields || {};
@@ -728,7 +737,7 @@
 
     async function loadRows() {
         try {
-            const response = await fetch(config.source, { cache: "no-store" });
+            const response = await fetchSnapshot(config.source);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const rows = config.format === "jsonl"
                 ? await readJsonLines(response)
@@ -1118,11 +1127,27 @@
             const b = item.value(right);
             if (a === null || a === undefined) return b === null || b === undefined ? 0 : 1;
             if (b === null || b === undefined) return -1;
+            if (item.key === "short_channel_id") {
+                const scidOrder = compareShortChannelIds(a, b);
+                if (scidOrder !== null) return scidOrder * multiplier;
+            }
             if (item.type === "number") return (item.transform(Number(a)) - item.transform(Number(b))) * multiplier;
             if (item.type === "date") return (Number(a) - Number(b)) * multiplier;
             if (item.type === "boolean") return (Number(a) - Number(b)) * multiplier;
             return String(a).localeCompare(String(b)) * multiplier;
         });
+    }
+
+    function compareShortChannelIds(left, right) {
+        const leftParts = String(left).split("x").map(Number);
+        const rightParts = String(right).split("x").map(Number);
+        if (leftParts.length !== 3 || rightParts.length !== 3 || [...leftParts, ...rightParts].some(value => !Number.isFinite(value))) {
+            return null;
+        }
+        for (let index = 0; index < 3; index += 1) {
+            if (leftParts[index] !== rightParts[index]) return leftParts[index] - rightParts[index];
+        }
+        return 0;
     }
 
     function syncFilterControls() {
