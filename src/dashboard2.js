@@ -204,15 +204,15 @@
         appendDetail(identity, "Funding outpoint", `${channel.funding_txid}:${channel.funding_output}`, fields.funding_txid, true);
 
         const policy = document.querySelector("#channel-policy");
-        appendDetail(policy, "Fee rate", formatNumber(channel.outbound_fee_ppm, 0, " ppm"), fields.outbound_fee_ppm);
-        appendDetail(policy, "Inbound fee rate", formatNumber(channel.inbound_fee_ppm, 0, " ppm"), fields.inbound_fee_ppm);
+        appendDetail(policy, "Fee rate", formatPpm(channel.outbound_fee_ppm), fields.outbound_fee_ppm);
+        appendDetail(policy, "Inbound fee rate", formatPpm(channel.inbound_fee_ppm), fields.inbound_fee_ppm);
         appendDetail(policy, "Base fee", formatMsat(channel.outbound_base_fee_msat), fields.outbound_base_fee_msat);
         appendDetail(policy, "Minimum HTLC", formatMsat(channel.outbound_htlc_min_msat), fields.outbound_htlc_min_msat);
         appendDetail(policy, "Maximum HTLC", formatMsat(channel.outbound_htlc_max_msat), fields.outbound_htlc_max_msat);
         appendDetail(policy, "CLTV delta", channel.outbound_delay_blocks == null ? null : `${channel.outbound_delay_blocks} blocks`, fields.outbound_delay_blocks);
         appendDetail(policy, "Last fee adjustment", channel.last_fee_adjustment_at, fields.last_fee_adjustment_at);
-        appendDetail(policy, "Historical fee rate", formatNumber(channel.historical_effective_fee_ppm, 0, " ppm"), fields.historical_effective_fee_ppm);
-        appendDetail(policy, "Time-decayed fee rate", formatNumber(channel.time_decayed_variable_fee_ppm, 0, " ppm"), fields.time_decayed_variable_fee_ppm);
+        appendDetail(policy, "Historical fee rate", formatPpm(channel.historical_effective_fee_ppm), fields.historical_effective_fee_ppm);
+        appendDetail(policy, "Time-decayed fee rate", formatPpm(channel.time_decayed_variable_fee_ppm), fields.time_decayed_variable_fee_ppm);
 
         const inbound = forwards.filter(row => row.in_channel === channel.short_channel_id);
         const outbound = forwards.filter(row => row.out_channel === channel.short_channel_id);
@@ -224,7 +224,7 @@
         appendDetail(activity, "Forwarding fees", formatSat(channel.forwarding_fees_sat), fields.forwarding_fees_sat);
         appendDetail(activity, "Indirect fees", formatSat(channel.indirect_fees_sat), fields.indirect_fees_sat);
         appendDetail(activity, "Rebalance cost", formatMsat(channel.rebalance_target_cost_msat), fields.rebalance_target_cost_msat);
-        appendDetail(activity, "Rebalance fee rate", formatNumber(channel.rebalance_effective_fee_ppm, 0, " ppm"), fields.rebalance_effective_fee_ppm);
+        appendDetail(activity, "Rebalance fee rate", formatPpm(channel.rebalance_effective_fee_ppm), fields.rebalance_effective_fee_ppm);
         appendDetail(activity, "Rebalance parts", formatNumber(targetRebalances.length, 0), null);
         appendDetail(activity, "Rebalance payments", formatNumber(new Set(targetRebalances.map(row => row.payment_id)).size, 0), null);
         appendDetail(activity, "First rebalance", targetRebalances.at(-1)?.resolved_at, null);
@@ -427,7 +427,8 @@
     }
 
     function formatChartTooltipValue(value, suffix) {
-        const decimals = suffix === " sats" ? 0 : suffix === " ppm" ? 1 : 2;
+        if (suffix === " ppm") return formatPpm(value);
+        const decimals = suffix === " sats" ? 0 : 2;
         return formatNumber(value, decimals, suffix);
     }
 
@@ -437,10 +438,10 @@
             row.out_channel === channel.short_channel_id ? row.in_channel : row.out_channel,
             formatMsat(row.out_msat),
             formatMsat(row.fee_msat),
-            formatNumber(row.fee_ppm, 1, " ppm"),
+            formatPpm(row.fee_ppm),
             row.received_at,
             formatNumber(row.elapsed_seconds, 1, " s")
-        ]), rows.length);
+        ]), rows.length, [2, 3, 4, 6]);
     }
 
     function renderRebalanceTable(id, rows, channel) {
@@ -451,17 +452,17 @@
             formatMsat(row.credit_msat),
             formatMsat(row.fees_msat),
             row.resolved_at
-        ]), rows.length);
+        ]), rows.length, [2, 3, 4]);
     }
 
-    function renderSimpleTable(id, headings, rows, total) {
+    function renderSimpleTable(id, headings, rows, total, numericColumns = []) {
         const table = document.querySelector(`#${id}`);
         const header = document.createElement("tr");
-        headings.forEach(label => header.appendChild(textElement("th", label)));
+        headings.forEach((label, index) => header.appendChild(textElement("th", label, numericColumns.includes(index) ? "number" : "")));
         const body = document.createDocumentFragment();
         rows.forEach(values => {
             const row = document.createElement("tr");
-            values.forEach(value => row.appendChild(textElement("td", value ?? "—")));
+            values.forEach((value, index) => row.appendChild(textElement("td", value ?? "—", numericColumns.includes(index) ? "number" : "")));
             body.appendChild(row);
         });
         table.querySelector("thead").replaceChildren(header);
@@ -546,7 +547,19 @@
     }
 
     function formatMsat(value) {
-        return value == null ? "—" : `${formatNumber(Number(value) / 1000, Number(value) % 1000 ? 3 : 0)} sats`;
+        return value == null ? "—" : `${formatNumber(msatToSat(value), 0)} sats`;
+    }
+
+    function msatToSat(value) {
+        return Math.trunc(Number(value) / 1000);
+    }
+
+    function ppmToInteger(value) {
+        return Math.trunc(Number(value));
+    }
+
+    function formatPpm(value) {
+        return value == null ? "—" : formatNumber(ppmToInteger(value), 0, " ppm");
     }
 
     function formatSat(value) {
@@ -559,7 +572,9 @@
     }
 
     function formatCompact(value, suffix) {
-        return `${new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(value)}${suffix}`;
+        const wholeValue = suffix === " ppm" ? ppmToInteger(value) : value;
+        const maximumFractionDigits = suffix === " ppm" ? 0 : 1;
+        return `${new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits }).format(wholeValue)}${suffix}`;
     }
 
     function abbreviateValue(value) {
@@ -686,12 +701,12 @@
             column("connected", "Connected", "boolean", { visible: true }),
             column("age_days", "Age", "number", { visible: true, suffix: " d", decimals: 0 }),
             column("local_balance_percent", "Local balance", "number", { visible: true, suffix: "%", decimals: 1 }),
-            column("capacity_msat", "Capacity", "number", { visible: true, transform: value => value / 1000, suffix: " sats", decimals: 0 }),
+            column("capacity_msat", "Capacity", "number", { visible: true, transform: msatToSat, suffix: " sats", decimals: 0 }),
             column("uptime_ratio", "Uptime", "number", { visible: true, transform: value => value * 100, suffix: "%", decimals: 1 }),
-            column("outbound_fee_ppm", "My PPM", "number", { visible: true, suffix: " ppm", decimals: 0 }),
-            column("historical_effective_fee_ppm", "Historical PPM", "number", { visible: true, suffix: " ppm", decimals: 0 }),
-            column("time_decayed_variable_fee_ppm", "TPPM", "number", { visible: true, suffix: " ppm", decimals: 0 }),
-            column("rebalance_effective_fee_ppm", "Rebalance PPM", "number", { suffix: " ppm", decimals: 0 }),
+            column("outbound_fee_ppm", "My PPM", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
+            column("historical_effective_fee_ppm", "Historical PPM", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
+            column("time_decayed_variable_fee_ppm", "TPPM", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
+            column("rebalance_effective_fee_ppm", "Rebalance PPM", "number", { transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
             column("settled_forward_count", "Forwards", "number", { visible: true, decimals: 0 }),
             column("routed_out_sat", "Routed out", "number", { suffix: " sats", decimals: 0 }),
             column("forwarding_fees_sat", "Fees", "number", { suffix: " sats", decimals: 0 }),
@@ -699,9 +714,9 @@
             column("gross_capacity_return_percent", "Gross capacity return", "number", { suffix: "%", decimals: 2, signedClass: true }),
             column("net_capacity_return_percent", "Net capacity return", "number", { visible: true, suffix: "%", decimals: 2, signedClass: true }),
             column("indirect_capacity_contribution_percent", "Indirect capacity contribution", "number", { visible: true, suffix: "%", decimals: 2, signedClass: true }),
-            column("rebalance_target_cost_msat", "Rebalance cost", "number", { transform: value => value / 1000, suffix: " sats", decimals: 0 }),
-            column("net_routing_revenue_msat", "Net revenue", "number", { transform: value => value / 1000, suffix: " sats", decimals: 0, signedClass: true }),
-            column("inbound_fee_ppm", "Inbound PPM", "number", { suffix: " ppm", decimals: 0 }),
+            column("rebalance_target_cost_msat", "Rebalance cost", "number", { transform: msatToSat, suffix: " sats", decimals: 0 }),
+            column("net_routing_revenue_msat", "Net revenue", "number", { transform: msatToSat, suffix: " sats", decimals: 0, signedClass: true }),
+            column("inbound_fee_ppm", "Inbound PPM", "number", { transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
             column("state", "State", "text")
         ];
     }
@@ -715,8 +730,8 @@
             column("close_cause", "Close cause", "text", { visible: true }),
             column("last_stable_connection_at", "Last stable connection", "date", { visible: true, value: row => row._lastStableConnectionAt }),
             column("age_days", "Lifetime", "number", { visible: true, suffix: " d", decimals: 0 }),
-            column("capacity_msat", "Capacity", "number", { visible: true, transform: value => value / 1000, suffix: " sats", decimals: 0 }),
-            column("final_local_balance_msat", "Final local balance", "number", { visible: true, transform: value => value / 1000, suffix: " sats", decimals: 0 }),
+            column("capacity_msat", "Capacity", "number", { visible: true, transform: msatToSat, suffix: " sats", decimals: 0 }),
+            column("final_local_balance_msat", "Final local balance", "number", { visible: true, transform: msatToSat, suffix: " sats", decimals: 0 }),
             column("total_htlcs_sent", "HTLCs sent", "number", { visible: true, decimals: 0 }),
             column("net_capacity_return_percent", "Net capacity return", "number", { visible: true, suffix: "%", decimals: 2, signedClass: true }),
             column("indirect_capacity_contribution_percent", "Indirect capacity contribution", "number", { suffix: "%", decimals: 2, signedClass: true }),
@@ -733,12 +748,12 @@
             column("in_channel", "In channel", "text", { visible: true, monospace: true }),
             column("out_peer_alias", "Out peer", "text", { visible: true }),
             column("out_channel", "Out channel", "text", { visible: true, monospace: true }),
-            column("out_msat", "Out amount", "number", { visible: true, transform: value => value / 1000, suffix: " sats", decimals: 0 }),
-            column("fee_msat", "Fee", "number", { visible: true, transform: value => value / 1000, suffix: " sats", decimals: 3 }),
-            column("fee_ppm", "Fee PPM", "number", { visible: true, suffix: " ppm", decimals: 1 }),
+            column("out_msat", "Out amount", "number", { visible: true, transform: msatToSat, suffix: " sats", decimals: 0 }),
+            column("fee_msat", "Fee", "number", { visible: true, transform: msatToSat, suffix: " sats", decimals: 0 }),
+            column("fee_ppm", "Fee PPM", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
             column("elapsed_seconds", "Elapsed", "number", { visible: true, suffix: " s", decimals: 1 }),
             column("resolved_at", "Resolved", "date", { value: row => row._resolvedAt }),
-            column("in_msat", "In amount", "number", { transform: value => value / 1000, suffix: " sats", decimals: 0 }),
+            column("in_msat", "In amount", "number", { transform: msatToSat, suffix: " sats", decimals: 0 }),
             column("in_peer_id", "In peer ID", "text", { monospace: true }),
             column("out_peer_id", "Out peer ID", "text", { monospace: true })
         ];
@@ -750,7 +765,7 @@
             column("peer_alias", "Peer", "text", { visible: true }),
             column("statuses", "Status", "text", { visible: true, value: row => row.statuses.join(", ") }),
             column("rebalance_amount_sat", "Rebalance amount", "number", { visible: true, suffix: " sats", decimals: 0 }),
-            column("weighted_fee_ppm", "Weighted fee", "number", { visible: true, suffix: " ppm", decimals: 0 }),
+            column("weighted_fee_ppm", "Weighted fee", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
             column("last_channel_partner_id", "Last partner", "text", { visible: true, monospace: true }),
             column("last_route_at", "Last route", "date", { visible: true, value: row => row._lastRouteAt }),
             column("last_success_at", "Last success", "date", { visible: true, value: row => row._lastSuccessAt }),
@@ -765,13 +780,13 @@
             column("resolved_at", "Time", "date", { visible: true, value: row => row._resolvedAt }),
             column("target_channel_id", "Channel in", "text", { visible: true, monospace: true, value: row => row.target_channel_id || row.target_account }),
             column("source_channel_id", "Channel out", "text", { visible: true, monospace: true, value: row => row.source_channel_id || row.source_account }),
-            column("credit_msat", "Rebalance amount", "number", { visible: true, transform: value => value / 1000, suffix: " sats", decimals: 0 }),
-            column("fee_ppm", "Rebalance PPM", "number", { visible: true, suffix: " ppm", decimals: 1 }),
-            column("target_historical_fee_ppm", "Channel in historical PPM", "number", { visible: true, suffix: " ppm", decimals: 1 }),
-            column("fees_msat", "Fees", "number", { transform: value => value / 1000, suffix: " sats", decimals: 3 }),
+            column("credit_msat", "Rebalance amount", "number", { visible: true, transform: msatToSat, suffix: " sats", decimals: 0 }),
+            column("fee_ppm", "Rebalance PPM", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
+            column("target_historical_fee_ppm", "Channel in historical PPM", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
+            column("fees_msat", "Fees", "number", { transform: msatToSat, suffix: " sats", decimals: 0 }),
             column("payment_id", "Payment", "text", { monospace: true }),
             column("part_id", "Part", "number", { decimals: 0 }),
-            column("debit_msat", "Debit", "number", { transform: value => value / 1000, suffix: " sats", decimals: 3 })
+            column("debit_msat", "Debit", "number", { transform: msatToSat, suffix: " sats", decimals: 0 })
         ];
     }
 
@@ -1071,6 +1086,7 @@
         visibleColumns.forEach(item => {
             const header = document.createElement("th");
             header.scope = "col";
+            if (item.type === "number") header.classList.add("number");
             header.setAttribute("aria-sort", state.sort === item.key ? (state.direction === "asc" ? "ascending" : "descending") : "none");
             const button = document.createElement("button");
             button.type = "button";
