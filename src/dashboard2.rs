@@ -532,7 +532,7 @@ fn format_number<T: ToString>(value: T) -> String {
     result.push_str(sign);
     for (index, character) in digits.chars().enumerate() {
         if index > 0 && (digits.len() - index) % 3 == 0 {
-            result.push('\u{202f}');
+            result.push(',');
         }
         result.push(character);
     }
@@ -555,8 +555,8 @@ mod tests {
 
     #[test]
     fn formats_grouped_numbers() {
-        assert_eq!(format_number(1_234_567), "1\u{202f}234\u{202f}567");
-        assert_eq!(format_number(-12_345), "-12\u{202f}345");
+        assert_eq!(format_number(1_234_567), "1,234,567");
+        assert_eq!(format_number(-12_345), "-12,345");
     }
 
     #[test]

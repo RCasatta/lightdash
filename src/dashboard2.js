@@ -1,6 +1,8 @@
 (() => {
     "use strict";
 
+    const NUMBER_LOCALE = "en-US";
+
     const channelRoot = document.querySelector("[data-channel-root]");
     if (channelRoot) {
         initializeChannelDetail();
@@ -568,13 +570,13 @@
 
     function formatNumber(value, decimals = 0, suffix = "") {
         if (value == null || !Number.isFinite(Number(value))) return "—";
-        return `${new Intl.NumberFormat(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(Number(value))}${suffix}`;
+        return `${new Intl.NumberFormat(NUMBER_LOCALE, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(Number(value))}${suffix}`;
     }
 
     function formatCompact(value, suffix) {
         const wholeValue = suffix === " ppm" ? ppmToInteger(value) : value;
         const maximumFractionDigits = suffix === " ppm" ? 0 : 1;
-        return `${new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits }).format(wholeValue)}${suffix}`;
+        return `${new Intl.NumberFormat(NUMBER_LOCALE, { notation: "compact", maximumFractionDigits }).format(wholeValue)}${suffix}`;
     }
 
     function abbreviateValue(value) {
@@ -1178,7 +1180,7 @@
         if (item.type === "date") return new Date(value).toISOString().replace("T", " ").replace(".000Z", "Z");
         if (item.type !== "number") return String(value);
         const transformed = item.transform(Number(value));
-        return `${new Intl.NumberFormat(undefined, {
+        return `${new Intl.NumberFormat(NUMBER_LOCALE, {
             minimumFractionDigits: item.decimals,
             maximumFractionDigits: item.decimals
         }).format(transformed)}${item.suffix}`;
@@ -1429,6 +1431,6 @@
     }
 
     function formatInteger(value) {
-        return new Intl.NumberFormat().format(value);
+        return new Intl.NumberFormat(NUMBER_LOCALE).format(value);
     }
 })();
