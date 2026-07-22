@@ -1353,7 +1353,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                         th style="text-align: right;" title="All-time target-attributed rebalance cost divided by all-time target credited rebalance liquidity." { "Hist Reb PPM" }
                         th style="text-align: right;" { "HTLC Max (sats)" }
                         th style="text-align: right;" { "Inbound PPM" }
-                        th style="text-align: right;" title="Annualized return relative to full channel capacity after subtracting target-attributed rebalance cost." { "Net capacity return %" }
+                        th style="text-align: right;" title="Annualized forwarding and lease return relative to full channel capacity after lease-fee and target-attributed rebalance costs." { "Net capacity return %" }
                         th style="text-align: right;" title="Annualized fee attribution relative to full capacity for settled forwards where this was the incoming channel. Revenue is earned on the paired outgoing channel; do not aggregate this attribution as unique node revenue." { "Indirect capacity contribution %" }
                     }
                 }
@@ -1511,7 +1511,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                         th style="text-align: right;" title="All-time target-attributed rebalance cost divided by all-time target credited rebalance liquidity." { "Hist Reb PPM" }
                         th style="text-align: right;" { "HTLC Max (sats)" }
                         th style="text-align: right;" { "Inbound PPM" }
-                        th style="text-align: right;" title="Annualized return relative to full channel capacity after subtracting target-attributed rebalance cost." { "Net capacity return %" }
+                        th style="text-align: right;" title="Annualized forwarding and lease return relative to full channel capacity after lease-fee and target-attributed rebalance costs." { "Net capacity return %" }
                         th style="text-align: right;" title="Annualized fee attribution relative to full capacity for settled forwards where this was the incoming channel. Revenue is earned on the paired outgoing channel; do not aggregate this attribution as unique node revenue." { "Indirect capacity contribution %" }
                         th style="text-align: right;" { "Age (days)" }
                     }
@@ -2366,6 +2366,11 @@ fn calculate_balance_target_kpis(channels: &[crate::cmd::Fund]) -> (f64, f64) {
 
 fn create_roic_page(directory: &str, store: &Store, now: &chrono::DateTime<chrono::Utc>) {
     let roic_data = store.get_roic_data();
+    let routing_roic_12_months = if roic_data.total_funds == 0 {
+        0.0
+    } else {
+        roic_data.fees_12_months as f64 * 100.0 / roic_data.total_funds as f64
+    };
 
     let roic_content = html! {
         (create_page_header("ROIC Analysis", false))
@@ -2398,13 +2403,19 @@ fn create_roic_page(directory: &str, store: &Store, now: &chrono::DateTime<chron
                     div class="metric-operator" { "=" }
                     div class="metric-result" {
                         div class="metric-value" {
-                            (format!("{:.2}%", roic_data.gross_roic_12_months))
+                            (format!("{routing_roic_12_months:.2}%"))
                         }
-                        div class="metric-subtitle" { "Gross ROIC" }
+                        div class="metric-subtitle" { "Routing ROIC" }
                     }
                 }
 
                 div class="metric-context" {
+                    div class="info-item" {
+                        span class="label" { "Gross ROIC Including Lease Earnings: " }
+                        span class="value" {
+                            (format!("{:.2}%", roic_data.gross_roic_12_months))
+                        }
+                    }
                     div class="info-item" {
                         span class="label" { "Net ROIC: " }
                         span class="value" {
@@ -2421,6 +2432,18 @@ fn create_roic_page(directory: &str, store: &Store, now: &chrono::DateTime<chron
                     div class="info-item" {
                         span class="label" { "Fees Last 12 Months: " }
                         span class="value" { (format!("{} sats", format_sats(roic_data.fees_12_months))) }
+                    }
+                    div class="info-item" {
+                        span class="label" { "Lease Earnings Last 12 Months: " }
+                        span class="value" {
+                            (format!("{} sats", format_sats(roic_data.lease_fee_earnings_12_months_msat / 1000)))
+                        }
+                    }
+                    div class="info-item" {
+                        span class="label" { "Lease Cost Last 12 Months: " }
+                        span class="value" {
+                            (format!("{} sats", format_sats(roic_data.lease_fee_cost_12_months_msat / 1000)))
+                        }
                     }
                     div class="info-item" {
                         span class="label" { "Rebalance Cost Last 12 Months: " }
@@ -2443,6 +2466,7 @@ fn create_roic_page(directory: &str, store: &Store, now: &chrono::DateTime<chron
                         tr {
                             th { "Period" }
                             th style="text-align: right;" { "Fees Earned (sats)" }
+                            th style="text-align: right;" { "Lease Earnings (sats)" }
                             th style="text-align: right;" { "Annualized Gross ROIC %" }
                         }
                     }
@@ -2450,21 +2474,25 @@ fn create_roic_page(directory: &str, store: &Store, now: &chrono::DateTime<chron
                         tr {
                             td { "Last 1 Month" }
                             td style="text-align: right;" { (format_sats(roic_data.fees_1_month)) }
+                            td style="text-align: right;" { (format_sats(roic_data.lease_fee_earnings_1_month_msat / 1000)) }
                             td style="text-align: right;" { (format!("{:.3}", roic_data.gross_roic_1_month)) }
                         }
                         tr {
                             td { "Last 3 Months" }
                             td style="text-align: right;" { (format_sats(roic_data.fees_3_months)) }
+                            td style="text-align: right;" { (format_sats(roic_data.lease_fee_earnings_3_months_msat / 1000)) }
                             td style="text-align: right;" { (format!("{:.3}", roic_data.gross_roic_3_months)) }
                         }
                         tr {
                             td { "Last 6 Months" }
                             td style="text-align: right;" { (format_sats(roic_data.fees_6_months)) }
+                            td style="text-align: right;" { (format_sats(roic_data.lease_fee_earnings_6_months_msat / 1000)) }
                             td style="text-align: right;" { (format!("{:.3}", roic_data.gross_roic_6_months)) }
                         }
                         tr {
                             td { "Last 12 Months" }
                             td style="text-align: right;" { (format_sats(roic_data.fees_12_months)) }
+                            td style="text-align: right;" { (format_sats(roic_data.lease_fee_earnings_12_months_msat / 1000)) }
                             td style="text-align: right;" { (format!("{:.3}", roic_data.gross_roic_12_months)) }
                         }
                     }
@@ -2520,20 +2548,20 @@ fn create_roic_page(directory: &str, store: &Store, now: &chrono::DateTime<chron
             div class="section" {
                 h3 class="section-title" { "ROIC Methodology" }
                 p {
-                    "Gross ROIC is calculated by taking the fees earned over a specific period, "
+                    "Gross ROIC is calculated by taking forwarding fees and earned lease fees over a specific period, "
                     "annualizing them (multiplying by 12/months), and dividing by the total channel funds. "
                     "This gives an annualized return on the capital deployed in channels."
                 }
                 p {
-                    "Formula: Gross ROIC% = (Fees Earned × 12 ÷ Period in Months × 100) ÷ Total Funds"
+                    "Formula: Gross ROIC% = ((Forwarding Fees + Lease Earnings) × 12 ÷ Period in Months × 100) ÷ Total Funds"
                 }
                 p {
                     "ROIC decomposition: Effective Fee Rate (bps) = Fees Earned × 10,000 ÷ Total Routed; "
                     "Capital Velocity = Total Routed ÷ Total Funds; "
-                    "Gross ROIC% = Effective Fee Rate × Capital Velocity ÷ 100."
+                    "Routing ROIC% = Effective Fee Rate × Capital Velocity ÷ 100. Lease earnings are added separately to obtain gross ROIC."
                 }
                 p {
-                    "Net ROIC subtracts Core Lightning bookkeeper rebalance fees from forwarding fees before dividing by total funds. "
+                    "Net ROIC adds earned lease fees, then subtracts paid lease fees and Core Lightning bookkeeper rebalance fees before dividing by total funds. "
                     "On-chain fees are not included."
                 }
             }
@@ -2692,7 +2720,7 @@ fn create_closed_channels_page(
                             th { "Funding / Closing" }
                             th style="text-align: right;" { "Opening Block" }
                             th style="text-align: right;" { "Final Amount (sats)" }
-                            th style="text-align: right;" title="Annualized all-time return relative to full channel capacity after subtracting target-attributed rebalance cost. Lifetime uses last stable connection when available." { "Net capacity return %" }
+                            th style="text-align: right;" title="Annualized all-time forwarding and lease return relative to full channel capacity after lease-fee and target-attributed rebalance costs. Lifetime uses last stable connection when available." { "Net capacity return %" }
                             th style="text-align: right;" title="Annualized all-time incoming-side fee attribution relative to full channel capacity. Revenue is earned on the paired outgoing channel; do not aggregate this attribution as unique node revenue." { "Indirect capacity contribution %" }
                             th style="text-align: right;" { "Total HTLCs Sent" }
                         }

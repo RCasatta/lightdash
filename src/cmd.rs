@@ -165,6 +165,15 @@ pub fn bkpr_list_account_events() -> BkprListAccountEvents {
     serde_json::from_value(v).unwrap()
 }
 
+pub fn bkpr_list_income() -> BkprListIncome {
+    let v = if using_test_data() {
+        cmd_result("cat", &["test-json/bkpr-listincome"])
+    } else {
+        cmd_result("lightning-cli", &["bkpr-listincome"])
+    };
+    serde_json::from_value(v).unwrap()
+}
+
 pub fn get_info() -> GetInfo {
     let v = if using_test_data() {
         cmd_result("cat", &["test-json/getinfo"])
@@ -440,6 +449,23 @@ pub struct ListClosedChannels {
 #[derive(Deserialize, Debug)]
 pub struct BkprListAccountEvents {
     pub events: Vec<BkprAccountEvent>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct BkprListIncome {
+    pub income_events: Vec<BkprIncomeEvent>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct BkprIncomeEvent {
+    pub account: String,
+    #[serde(default)]
+    pub tag: String,
+    #[serde(default)]
+    pub credit_msat: u64,
+    #[serde(default)]
+    pub debit_msat: u64,
+    pub timestamp: u64,
 }
 
 #[derive(Deserialize, Debug, Clone)]

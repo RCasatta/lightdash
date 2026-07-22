@@ -18,6 +18,13 @@ Prefer extending the snapshot-driven flow for new Dashboard2 features. Do not
 make Dashboard2 query `Store` or invoke `lightning-cli`; it must remain a pure
 snapshot consumer.
 
+## Local Core Lightning Reference
+
+A local checkout of the Core Lightning API and command reference may be
+available at `~/references/apis/core-lightning`. Check this reference when
+working with `lightning-cli`, RPC methods, command syntax, or version-specific
+Core Lightning behavior before consulting external documentation.
+
 ## Build Commands
 
 ```bash

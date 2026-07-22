@@ -28,6 +28,7 @@ pub struct Store {
     pub nodes: cmd::ListNodes,
     pub closed_channels: cmd::ListClosedChannels,
     rebalance_parts: Vec<RebalancePart>,
+    income_events: Vec<cmd::BkprIncomeEvent>,
     // Cached computed data
     nodes_by_id: HashMap<String, cmd::Node>,
     channels_by_id: HashMap<(String, String), cmd::Channel>,
@@ -37,6 +38,12 @@ pub struct Store {
     setchannel_timestamps: HashMap<String, i64>,
     now: DateTime<Utc>,
     pub avail_map: HashMap<String, f64>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LeaseFeeTotals {
+    pub earned_msat: u64,
+    pub paid_msat: u64,
 }
 
 fn account_to_channel_map(
@@ -86,7 +93,7 @@ fn is_rebalance_candidate_event(event: &cmd::BkprAccountEvent) -> bool {
 }
 
 fn annualized_channel_capacity_return_percent(
-    revenue_msat: i64,
+    revenue_msat: i128,
     channel_capacity_msat: u64,
     age_days: i64,
 ) -> f64 {
@@ -283,6 +290,7 @@ impl Store {
         let funds = cmd::list_funds();
         let forwards = cmd::list_forwards();
         let account_events = cmd::bkpr_list_account_events();
+        let income_events = cmd::bkpr_list_income().income_events;
         let nodes = cmd::list_nodes();
         let closed_channels = cmd::list_closed_channels();
         log::debug!("Data fetched successfully");
@@ -411,6 +419,7 @@ impl Store {
             nodes,
             closed_channels,
             rebalance_parts,
+            income_events,
             nodes_by_id,
             channels_by_id,
             node_channel_counts,
@@ -675,15 +684,17 @@ impl Store {
 
     /// Calculate annualized gross ROIC for the given time period.
     pub fn calculate_gross_roic_percent(&self, months: i64) -> f64 {
-        let fees_earned = self.fees_earned_last_months(months);
         let total_funds = self.total_channel_funds_sats();
 
         if total_funds == 0 {
             return 0.0;
         }
 
+        let lease_fees = self.lease_fee_totals_last_months(months);
+        let gross_revenue_msat =
+            self.fees_earned_last_months(months) as u128 * 1000 + lease_fees.earned_msat as u128;
         let annualization_factor = 12.0 / months as f64;
-        (fees_earned as f64 * 100.0 * annualization_factor) / total_funds as f64
+        (gross_revenue_msat as f64 / 1000.0 * 100.0 * annualization_factor) / total_funds as f64
     }
 
     pub fn calculate_net_roic_percent(&self, months: i64) -> f64 {
@@ -692,10 +703,37 @@ impl Store {
             return 0.0;
         }
 
-        let net_fees_msat = self.fees_earned_last_months(months) as i64 * 1000
-            - self.rebalance_cost_last_months_msat(months) as i64;
+        let lease_fees = self.lease_fee_totals_last_months(months);
+        let net_fees_msat = self.fees_earned_last_months(months) as i128 * 1000
+            + lease_fees.earned_msat as i128
+            - lease_fees.paid_msat as i128
+            - self.rebalance_cost_last_months_msat(months) as i128;
         let annualization_factor = 12.0 / months as f64;
         (net_fees_msat as f64 / 1000.0 * 100.0 * annualization_factor) / total_funds as f64
+    }
+
+    pub fn lease_fee_totals_last_months(&self, months: i64) -> LeaseFeeTotals {
+        let period_seconds = months.saturating_mul(30).saturating_mul(24 * 60 * 60);
+        let start_timestamp = self.now.timestamp().saturating_sub(period_seconds);
+        self.sum_lease_fees(|event| {
+            let timestamp = i64::try_from(event.timestamp).unwrap_or(i64::MAX);
+            timestamp >= start_timestamp && timestamp <= self.now.timestamp()
+        })
+    }
+
+    pub fn lease_fee_totals_for_account(&self, account: &str) -> LeaseFeeTotals {
+        self.sum_lease_fees(|event| event.account == account)
+    }
+
+    fn sum_lease_fees(&self, predicate: impl Fn(&cmd::BkprIncomeEvent) -> bool) -> LeaseFeeTotals {
+        self.income_events
+            .iter()
+            .filter(|event| event.tag == "lease_fee" && predicate(event))
+            .fold(LeaseFeeTotals::default(), |mut totals, event| {
+                totals.earned_msat = totals.earned_msat.saturating_add(event.credit_msat);
+                totals.paid_msat = totals.paid_msat.saturating_add(event.debit_msat);
+                totals
+            })
     }
 
     /// Get total amount transacted in sats for the last month
@@ -729,6 +767,10 @@ impl Store {
 
     /// Get ROIC data with gross and net annualized returns.
     pub fn get_roic_data(&self) -> RoicData {
+        let lease_fees_1_month = self.lease_fee_totals_last_months(1);
+        let lease_fees_3_months = self.lease_fee_totals_last_months(3);
+        let lease_fees_6_months = self.lease_fee_totals_last_months(6);
+        let lease_fees_12_months = self.lease_fee_totals_last_months(12);
         RoicData {
             fees_1_month: self.fees_earned_last_months(1),
             fees_3_months: self.fees_earned_last_months(3),
@@ -739,6 +781,11 @@ impl Store {
             gross_roic_3_months: self.calculate_gross_roic_percent(3),
             gross_roic_6_months: self.calculate_gross_roic_percent(6),
             gross_roic_12_months: self.calculate_gross_roic_percent(12),
+            lease_fee_earnings_1_month_msat: lease_fees_1_month.earned_msat,
+            lease_fee_earnings_3_months_msat: lease_fees_3_months.earned_msat,
+            lease_fee_earnings_6_months_msat: lease_fees_6_months.earned_msat,
+            lease_fee_earnings_12_months_msat: lease_fees_12_months.earned_msat,
+            lease_fee_cost_12_months_msat: lease_fees_12_months.paid_msat,
             transacted_last_month: self.transacted_last_month_sats(),
             routed_12_months: self.routed_last_months_sats(12),
             capital_velocity_12_months: self.calculate_capital_velocity(12),
@@ -1096,10 +1143,20 @@ impl Store {
             - self.get_channel_rebalance_target_cost_msat(short_channel_id) as i64
     }
 
+    pub fn get_channel_net_revenue_msat(&self, short_channel_id: &str) -> i128 {
+        let Some(fund) = self.get_fund(short_channel_id) else {
+            return self.get_channel_net_routing_revenue_msat(short_channel_id) as i128;
+        };
+        let lease_fees = self.lease_fee_totals_for_account(&fund.channel_id);
+        self.get_channel_net_routing_revenue_msat(short_channel_id) as i128
+            + lease_fees.earned_msat as i128
+            - lease_fees.paid_msat as i128
+    }
+
     pub fn get_channel_net_capacity_return(&self, short_channel_id: &str) -> Option<f64> {
         let age_days = self.get_channel_age_days(short_channel_id)?;
         let fund = self.get_fund(short_channel_id)?;
-        let net_revenue_msat = self.get_channel_net_routing_revenue_msat(short_channel_id);
+        let net_revenue_msat = self.get_channel_net_revenue_msat(short_channel_id);
         Some(annualized_channel_capacity_return_percent(
             net_revenue_msat,
             fund.amount_msat,
@@ -1113,7 +1170,7 @@ impl Store {
     ) -> Option<f64> {
         let age_days = self.get_channel_age_days(short_channel_id)?;
         let fund = self.get_fund(short_channel_id)?;
-        let indirect_fees_msat = self.get_channel_indirect_fees(short_channel_id) as i64 * 1000;
+        let indirect_fees_msat = self.get_channel_indirect_fees(short_channel_id) as i128 * 1000;
         Some(annualized_channel_capacity_return_percent(
             indirect_fees_msat,
             fund.amount_msat,
@@ -1127,7 +1184,10 @@ impl Store {
     ) -> Option<f64> {
         let short_channel_id = channel.short_channel_id.as_deref()?;
         let age_days = self.get_closed_channel_age_days(channel)?;
-        let net_revenue_msat = self.get_channel_net_routing_revenue_msat(short_channel_id);
+        let lease_fees = self.lease_fee_totals_for_account(&channel.channel_id);
+        let net_revenue_msat = self.get_channel_net_routing_revenue_msat(short_channel_id) as i128
+            + lease_fees.earned_msat as i128
+            - lease_fees.paid_msat as i128;
         Some(annualized_channel_capacity_return_percent(
             net_revenue_msat,
             channel.total_msat,
@@ -1141,7 +1201,7 @@ impl Store {
     ) -> Option<f64> {
         let short_channel_id = channel.short_channel_id.as_deref()?;
         let age_days = self.get_closed_channel_age_days(channel)?;
-        let indirect_fees_msat = self.get_channel_indirect_fees(short_channel_id) as i64 * 1000;
+        let indirect_fees_msat = self.get_channel_indirect_fees(short_channel_id) as i128 * 1000;
         Some(annualized_channel_capacity_return_percent(
             indirect_fees_msat,
             channel.total_msat,
@@ -1184,11 +1244,13 @@ impl Store {
             .find(|f| f.short_channel_id.as_deref() == Some(short_channel_id))
     }
 
-    /// Get the annualized gross return based on forwarding fees and full channel capacity.
+    /// Get the annualized gross return based on forwarding and earned lease fees.
     pub fn get_channel_gross_capacity_return(&self, short_channel_id: &str) -> Option<f64> {
         let age_days = self.get_channel_age_days(short_channel_id)?;
         let fund = self.get_fund(short_channel_id)?;
-        let gross_revenue_msat = self.get_channel_total_fees(short_channel_id) as i64 * 1000;
+        let lease_fees = self.lease_fee_totals_for_account(&fund.channel_id);
+        let gross_revenue_msat = self.get_channel_total_fees(short_channel_id) as i128 * 1000
+            + lease_fees.earned_msat as i128;
         Some(annualized_channel_capacity_return_percent(
             gross_revenue_msat,
             fund.amount_msat,
@@ -1551,6 +1613,7 @@ mod tests {
                 closedchannels: vec![],
             },
             rebalance_parts,
+            income_events: vec![],
             nodes_by_id: HashMap::new(),
             channels_by_id: HashMap::new(),
             node_channel_counts: HashMap::new(),
@@ -1560,6 +1623,75 @@ mod tests {
             now,
             avail_map: HashMap::new(),
         }
+    }
+
+    #[test]
+    fn lease_fees_are_included_in_node_and_channel_roic() {
+        let rebalance_parts = vec![RebalancePart {
+            payment_id: "rebalance-payment".to_string(),
+            part_id: 0,
+            source_account: "source-account".to_string(),
+            target_account: format!("channel-{OUTGOING_SCID}"),
+            source_channel_id: Some(INCOMING_SCID.to_string()),
+            target_channel_id: Some(OUTGOING_SCID.to_string()),
+            debit_msat: 1_002_000,
+            credit_msat: 1_000_000,
+            fees_msat: 2_000,
+            timestamp: Some(NOW_TIMESTAMP as u64 - 60),
+        }];
+        let mut store = test_store(
+            vec![fund(OUTGOING_SCID, 1_000_000_000)],
+            vec![forward(
+                INCOMING_SCID,
+                OUTGOING_SCID,
+                10_000,
+                "settled",
+                NOW_TIMESTAMP - 60,
+            )],
+            rebalance_parts,
+        );
+        store.income_events = vec![
+            cmd::BkprIncomeEvent {
+                account: format!("channel-{OUTGOING_SCID}"),
+                tag: "lease_fee".to_string(),
+                credit_msat: 50_000,
+                debit_msat: 0,
+                timestamp: NOW_TIMESTAMP as u64 - 60,
+            },
+            cmd::BkprIncomeEvent {
+                account: format!("channel-{OUTGOING_SCID}"),
+                tag: "lease_fee".to_string(),
+                credit_msat: 0,
+                debit_msat: 5_000,
+                timestamp: NOW_TIMESTAMP as u64 - 60,
+            },
+        ];
+
+        assert_eq!(
+            store.lease_fee_totals_last_months(1),
+            LeaseFeeTotals {
+                earned_msat: 50_000,
+                paid_msat: 5_000,
+            }
+        );
+        assert!((store.calculate_gross_roic_percent(1) - 0.144).abs() < f64::EPSILON);
+        assert!((store.calculate_net_roic_percent(1) - 0.1272).abs() < f64::EPSILON);
+        assert!(
+            (store
+                .get_channel_gross_capacity_return(OUTGOING_SCID)
+                .unwrap()
+                - 0.006)
+                .abs()
+                < f64::EPSILON
+        );
+        assert!(
+            (store
+                .get_channel_net_capacity_return(OUTGOING_SCID)
+                .unwrap()
+                - 0.0053)
+                .abs()
+                < f64::EPSILON
+        );
     }
 
     #[test]
@@ -2041,6 +2173,11 @@ pub struct RoicData {
     pub gross_roic_3_months: f64,
     pub gross_roic_6_months: f64,
     pub gross_roic_12_months: f64,
+    pub lease_fee_earnings_1_month_msat: u64,
+    pub lease_fee_earnings_3_months_msat: u64,
+    pub lease_fee_earnings_6_months_msat: u64,
+    pub lease_fee_earnings_12_months_msat: u64,
+    pub lease_fee_cost_12_months_msat: u64,
     pub transacted_last_month: u64,
     pub routed_12_months: u64,
     pub capital_velocity_12_months: f64,

@@ -11,7 +11,7 @@ use crate::history;
 use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts, DatasetMetadata};
 use crate::store::{RebalancePart, Store};
 
-pub(crate) const SCHEMA_VERSION: u32 = 9;
+pub(crate) const SCHEMA_VERSION: u32 = 10;
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct SnapshotManifest {
@@ -60,6 +60,8 @@ pub(crate) struct RoicSnapshot {
     pub routed_12_months_sat: u64,
     pub capital_velocity_12_months: f64,
     pub effective_fee_rate_12_months_bps: f64,
+    pub lease_fee_earnings_12_months_msat: u64,
+    pub lease_fee_cost_12_months_msat: u64,
     pub rebalance_cost_12_months_msat: u64,
     pub net_roic_12_months_percent: f64,
 }
@@ -68,6 +70,7 @@ pub(crate) struct RoicSnapshot {
 pub(crate) struct RoicPeriodSnapshot {
     pub months: i64,
     pub forwarding_fees_sat: u64,
+    pub lease_fee_earnings_msat: u64,
     pub annualized_gross_roic_percent: f64,
 }
 
@@ -104,7 +107,10 @@ pub(crate) struct ChannelSnapshot {
     pub rebalance_target_credit_msat: u64,
     pub rebalance_effective_fee_ppm: Option<f64>,
     pub rebalance_source_cost_msat: u64,
+    pub lease_fee_earnings_msat: u64,
+    pub lease_fee_cost_msat: u64,
     pub net_routing_revenue_msat: i64,
+    pub net_revenue_msat: i128,
     pub gross_capacity_return_percent: Option<f64>,
     pub net_capacity_return_percent: Option<f64>,
     pub indirect_capacity_contribution_percent: Option<f64>,
@@ -126,6 +132,9 @@ struct ClosedChannelSnapshot {
     last_stable_connection_at: Option<String>,
     close_cause: String,
     age_days: Option<i64>,
+    lease_fee_earnings_msat: u64,
+    lease_fee_cost_msat: u64,
+    net_revenue_msat: i128,
     net_capacity_return_percent: Option<f64>,
     indirect_capacity_contribution_percent: Option<f64>,
 }
@@ -354,16 +363,42 @@ fn build_summary(store: &Store) -> SummarySnapshot {
         net_routing_revenue_msat: store.net_routing_revenue_msat(),
         roic: RoicSnapshot {
             periods: [
-                (1, roic.fees_1_month, roic.gross_roic_1_month),
-                (3, roic.fees_3_months, roic.gross_roic_3_months),
-                (6, roic.fees_6_months, roic.gross_roic_6_months),
-                (12, roic.fees_12_months, roic.gross_roic_12_months),
+                (
+                    1,
+                    roic.fees_1_month,
+                    roic.lease_fee_earnings_1_month_msat,
+                    roic.gross_roic_1_month,
+                ),
+                (
+                    3,
+                    roic.fees_3_months,
+                    roic.lease_fee_earnings_3_months_msat,
+                    roic.gross_roic_3_months,
+                ),
+                (
+                    6,
+                    roic.fees_6_months,
+                    roic.lease_fee_earnings_6_months_msat,
+                    roic.gross_roic_6_months,
+                ),
+                (
+                    12,
+                    roic.fees_12_months,
+                    roic.lease_fee_earnings_12_months_msat,
+                    roic.gross_roic_12_months,
+                ),
             ]
             .into_iter()
             .map(
-                |(months, forwarding_fees_sat, annualized_gross_roic_percent)| RoicPeriodSnapshot {
+                |(
                     months,
                     forwarding_fees_sat,
+                    lease_fee_earnings_msat,
+                    annualized_gross_roic_percent,
+                )| RoicPeriodSnapshot {
+                    months,
+                    forwarding_fees_sat,
+                    lease_fee_earnings_msat,
                     annualized_gross_roic_percent,
                 },
             )
@@ -371,6 +406,8 @@ fn build_summary(store: &Store) -> SummarySnapshot {
             routed_12_months_sat: roic.routed_12_months,
             capital_velocity_12_months: roic.capital_velocity_12_months,
             effective_fee_rate_12_months_bps: roic.effective_fee_rate_12_months_bps,
+            lease_fee_earnings_12_months_msat: roic.lease_fee_earnings_12_months_msat,
+            lease_fee_cost_12_months_msat: roic.lease_fee_cost_12_months_msat,
             rebalance_cost_12_months_msat: roic.rebalance_cost_12_months_msat,
             net_roic_12_months_percent: roic.net_roic_12_months,
         },
@@ -393,9 +430,13 @@ fn build_channel_snapshot(
         .and_then(|scid| rebalance_metrics.get(scid))
         .unwrap_or(&empty_rebalances);
     let age_days = short_channel_id.and_then(|scid| store.get_channel_age_days(scid));
-    let gross_revenue_msat = forwards.forwarding_fees_sat as i64 * 1000;
-    let net_routing_revenue_msat = gross_revenue_msat - rebalances.target_cost_msat as i64;
-    let indirect_revenue_msat = forwards.indirect_fees_sat as i64 * 1000;
+    let lease_fees = store.lease_fee_totals_for_account(&channel.channel_id);
+    let gross_routing_revenue_msat = forwards.forwarding_fees_sat as i64 * 1000;
+    let net_routing_revenue_msat = gross_routing_revenue_msat - rebalances.target_cost_msat as i64;
+    let gross_revenue_msat = gross_routing_revenue_msat as i128 + lease_fees.earned_msat as i128;
+    let net_revenue_msat = net_routing_revenue_msat as i128 + lease_fees.earned_msat as i128
+        - lease_fees.paid_msat as i128;
+    let indirect_revenue_msat = forwards.indirect_fees_sat as i128 * 1000;
 
     ChannelSnapshot {
         channel_id: channel.channel_id.clone(),
@@ -457,14 +498,17 @@ fn build_channel_snapshot(
             rebalances.target_credit_msat as f64,
         ),
         rebalance_source_cost_msat: rebalances.source_cost_msat,
+        lease_fee_earnings_msat: lease_fees.earned_msat,
+        lease_fee_cost_msat: lease_fees.paid_msat,
         net_routing_revenue_msat,
+        net_revenue_msat,
         gross_capacity_return_percent: annualized_capacity_return_percent(
             gross_revenue_msat,
             channel.amount_msat,
             age_days,
         ),
         net_capacity_return_percent: annualized_capacity_return_percent(
-            net_routing_revenue_msat,
+            net_revenue_msat,
             channel.amount_msat,
             age_days,
         ),
@@ -533,7 +577,7 @@ fn ratio_ppm(numerator: f64, denominator: f64) -> Option<f64> {
 }
 
 fn annualized_capacity_return_percent(
-    revenue_msat: i64,
+    revenue_msat: i128,
     capacity_msat: u64,
     age_days: Option<i64>,
 ) -> Option<f64> {
@@ -565,6 +609,10 @@ fn build_closed_channel_snapshot(
         .map(|metrics| metrics.target_cost_msat)
         .unwrap_or_default();
     let age_days = store.get_closed_channel_age_days(channel);
+    let lease_fees = store.lease_fee_totals_for_account(&channel.channel_id);
+    let net_revenue_msat = forwarding_fees_sat as i128 * 1000 + lease_fees.earned_msat as i128
+        - lease_fees.paid_msat as i128
+        - rebalance_target_cost_msat as i128;
 
     ClosedChannelSnapshot {
         channel_id: channel.channel_id.clone(),
@@ -584,13 +632,16 @@ fn build_closed_channel_snapshot(
         last_stable_connection_at: channel.last_stable_connection.and_then(format_timestamp),
         close_cause: channel.close_cause.clone(),
         age_days,
+        lease_fee_earnings_msat: lease_fees.earned_msat,
+        lease_fee_cost_msat: lease_fees.paid_msat,
+        net_revenue_msat,
         net_capacity_return_percent: annualized_capacity_return_percent(
-            forwarding_fees_sat as i64 * 1000 - rebalance_target_cost_msat as i64,
+            net_revenue_msat,
             channel.total_msat,
             age_days,
         ),
         indirect_capacity_contribution_percent: annualized_capacity_return_percent(
-            indirect_fees_sat as i64 * 1000,
+            indirect_fees_sat as i128 * 1000,
             channel.total_msat,
             age_days,
         ),

@@ -166,8 +166,8 @@ fn render_overview_page(manifest: &SnapshotManifest, summary: &SummarySnapshot) 
             (metric_card("Current channels", &format_number(summary.current_channel_count), &format!("{} normal", format_number(summary.normal_channel_count))))
             (metric_card("Settled forwards", &format_number(summary.settled_forward_count), &format!("{} attempts recorded", format_number(summary.forward_attempt_count))))
             (metric_card("Forwarding fees", &format!("{} sats", format_number(summary.total_forwarding_fees_sat)), "All-time settled forwarding revenue"))
-            (metric_card("Gross ROIC", &format_optional_percent(gross_roic_12_months), "Trailing 12 months"))
-            (metric_card("Net ROIC", &format!("{:.2}%", summary.roic.net_roic_12_months_percent), "After trailing rebalance cost"))
+            (metric_card("Gross ROIC", &format_optional_percent(gross_roic_12_months), "Forwarding + lease earnings, trailing 12 months"))
+            (metric_card("Net ROIC", &format!("{:.2}%", summary.roic.net_roic_12_months_percent), "After lease and rebalance costs"))
         }
 
         section class="panel split-panel" {
@@ -190,6 +190,14 @@ fn render_overview_page(manifest: &SnapshotManifest, summary: &SummarySnapshot) 
                 div {
                     dt { "Capital velocity" }
                     dd { (format!("{:.2}×", summary.roic.capital_velocity_12_months)) }
+                }
+                div {
+                    dt { "Lease earnings, 12 months" }
+                    dd { (format!("{} sats", format_number(summary.roic.lease_fee_earnings_12_months_msat / 1000))) }
+                }
+                div {
+                    dt { "Lease costs, 12 months" }
+                    dd { (format!("{} sats", format_number(summary.roic.lease_fee_cost_12_months_msat / 1000))) }
                 }
                 div {
                     dt { "Rebalance cost, 12 months" }
@@ -620,11 +628,14 @@ mod tests {
                 periods: vec![RoicPeriodSnapshot {
                     months: 12,
                     forwarding_fees_sat: 0,
+                    lease_fee_earnings_msat: 0,
                     annualized_gross_roic_percent: 0.0,
                 }],
                 routed_12_months_sat: 0,
                 capital_velocity_12_months: 0.0,
                 effective_fee_rate_12_months_bps: 0.0,
+                lease_fee_earnings_12_months_msat: 0,
+                lease_fee_cost_12_months_msat: 0,
                 rebalance_cost_12_months_msat: 0,
                 net_roic_12_months_percent: 0.0,
             },
