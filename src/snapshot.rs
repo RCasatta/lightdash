@@ -11,7 +11,7 @@ use crate::history;
 use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts, DatasetMetadata};
 use crate::store::{RebalancePart, Store};
 
-pub(crate) const SCHEMA_VERSION: u32 = 11;
+pub(crate) const SCHEMA_VERSION: u32 = 12;
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct SnapshotManifest {
@@ -71,7 +71,14 @@ pub(crate) struct RoicPeriodSnapshot {
     pub months: i64,
     pub forwarding_fees_sat: u64,
     pub lease_fee_earnings_msat: u64,
+    pub average_channel_funds_sat: f64,
+    pub capital_history_coverage_ratio: f64,
     pub annualized_gross_roic_percent: f64,
+}
+
+struct AverageChannelFunds {
+    sats: f64,
+    coverage_ratio: f64,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -257,7 +264,7 @@ pub fn run_snapshot(
     );
     let include_history =
         !(without_history || cmd::using_test_data() && history_directory.is_none());
-    if include_history {
+    let channel_funds_history = if include_history {
         let imported = history::import_for_snapshot(directory, history_directory, &store.info.id)
             .map_err(io::Error::other)?;
         files.history_manifest = Some(imported.manifest_file);
@@ -268,11 +275,14 @@ pub fn run_snapshot(
                 )));
             }
         }
+        imported.channel_funds
     } else if without_history {
         log::info!("Processed history omitted by --without-history");
+        Vec::new()
     } else {
         log::info!("Processed history omitted in test-data mode");
-    }
+        Vec::new()
+    };
     let generated_at = format_datetime(store.snapshot_time());
     let manifest = SnapshotManifest {
         schema_version: SCHEMA_VERSION,
@@ -287,7 +297,7 @@ pub fn run_snapshot(
         write_json(directory.join(&dataset.schema_path), dataset)?;
     }
 
-    let summary = build_summary(store);
+    let summary = build_summary(store, &channel_funds_history);
     write_json(directory.join("summary.json"), &summary)?;
 
     let forward_metrics = aggregate_channel_forwards(store);
@@ -340,8 +350,55 @@ pub fn run_snapshot(
     Ok(())
 }
 
-fn build_summary(store: &Store) -> SummarySnapshot {
+fn build_summary(
+    store: &Store,
+    channel_funds_history: &[history::ChannelFundsHistoryPoint],
+) -> SummarySnapshot {
     let roic = store.get_roic_data();
+    let periods = [
+        (1, roic.fees_1_month, roic.lease_fee_earnings_1_month_msat),
+        (3, roic.fees_3_months, roic.lease_fee_earnings_3_months_msat),
+        (6, roic.fees_6_months, roic.lease_fee_earnings_6_months_msat),
+        (
+            12,
+            roic.fees_12_months,
+            roic.lease_fee_earnings_12_months_msat,
+        ),
+    ]
+    .into_iter()
+    .map(|(months, forwarding_fees_sat, lease_fee_earnings_msat)| {
+        let average = average_channel_funds(
+            channel_funds_history,
+            &store.snapshot_time(),
+            months,
+            roic.total_funds,
+        );
+        let gross_revenue_sat =
+            forwarding_fees_sat as f64 + lease_fee_earnings_msat as f64 / 1000.0;
+        let annualized_gross_roic_percent = if average.sats == 0.0 {
+            0.0
+        } else {
+            gross_revenue_sat * (12.0 / months as f64) / average.sats * 100.0
+        };
+        RoicPeriodSnapshot {
+            months,
+            forwarding_fees_sat,
+            lease_fee_earnings_msat,
+            average_channel_funds_sat: average.sats,
+            capital_history_coverage_ratio: average.coverage_ratio,
+            annualized_gross_roic_percent,
+        }
+    })
+    .collect::<Vec<_>>();
+    let average_12_months = periods
+        .iter()
+        .find(|period| period.months == 12)
+        .expect("twelve-month ROIC period exists")
+        .average_channel_funds_sat;
+    let net_revenue_12_months_msat = roic.fees_12_months as f64 * 1000.0
+        + roic.lease_fee_earnings_12_months_msat as f64
+        - roic.lease_fee_cost_12_months_msat as f64
+        - roic.rebalance_cost_12_months_msat as f64;
     SummarySnapshot {
         node_id: store.info.id.clone(),
         block_height: store.info.blockheight,
@@ -363,55 +420,81 @@ fn build_summary(store: &Store) -> SummarySnapshot {
         total_rebalance_cost_msat: store.total_rebalance_cost_msat(),
         net_routing_revenue_msat: store.net_routing_revenue_msat(),
         roic: RoicSnapshot {
-            periods: [
-                (
-                    1,
-                    roic.fees_1_month,
-                    roic.lease_fee_earnings_1_month_msat,
-                    roic.gross_roic_1_month,
-                ),
-                (
-                    3,
-                    roic.fees_3_months,
-                    roic.lease_fee_earnings_3_months_msat,
-                    roic.gross_roic_3_months,
-                ),
-                (
-                    6,
-                    roic.fees_6_months,
-                    roic.lease_fee_earnings_6_months_msat,
-                    roic.gross_roic_6_months,
-                ),
-                (
-                    12,
-                    roic.fees_12_months,
-                    roic.lease_fee_earnings_12_months_msat,
-                    roic.gross_roic_12_months,
-                ),
-            ]
-            .into_iter()
-            .map(
-                |(
-                    months,
-                    forwarding_fees_sat,
-                    lease_fee_earnings_msat,
-                    annualized_gross_roic_percent,
-                )| RoicPeriodSnapshot {
-                    months,
-                    forwarding_fees_sat,
-                    lease_fee_earnings_msat,
-                    annualized_gross_roic_percent,
-                },
-            )
-            .collect(),
+            periods,
             routed_12_months_sat: roic.routed_12_months,
-            capital_velocity_12_months: roic.capital_velocity_12_months,
+            capital_velocity_12_months: if average_12_months == 0.0 {
+                0.0
+            } else {
+                roic.routed_12_months as f64 / average_12_months
+            },
             effective_fee_rate_12_months_bps: roic.effective_fee_rate_12_months_bps,
             lease_fee_earnings_12_months_msat: roic.lease_fee_earnings_12_months_msat,
             lease_fee_cost_12_months_msat: roic.lease_fee_cost_12_months_msat,
             rebalance_cost_12_months_msat: roic.rebalance_cost_12_months_msat,
-            net_roic_12_months_percent: roic.net_roic_12_months,
+            net_roic_12_months_percent: if average_12_months == 0.0 {
+                0.0
+            } else {
+                net_revenue_12_months_msat / 1000.0 / average_12_months * 100.0
+            },
         },
+    }
+}
+
+fn average_channel_funds(
+    history: &[history::ChannelFundsHistoryPoint],
+    end: &DateTime<Utc>,
+    months: i64,
+    current_channel_funds_sat: u64,
+) -> AverageChannelFunds {
+    let window_seconds = months.saturating_mul(30).saturating_mul(24 * 60 * 60);
+    if window_seconds <= 0 {
+        return AverageChannelFunds {
+            sats: current_channel_funds_sat as f64,
+            coverage_ratio: 0.0,
+        };
+    }
+    let start = *end - chrono::Duration::seconds(window_seconds);
+    let mut current = history
+        .iter()
+        .filter(|point| point.observed_at <= start)
+        .max_by_key(|point| point.observed_at)
+        .map(|point| (start, point.channel_funds_msat));
+    let mut weighted_msat_seconds = 0_u128;
+    let mut covered_seconds = 0_u64;
+
+    for point in history
+        .iter()
+        .filter(|point| point.observed_at > start && point.observed_at <= *end)
+    {
+        if let Some((previous_at, previous_msat)) = current {
+            let seconds = point
+                .observed_at
+                .signed_duration_since(previous_at)
+                .num_seconds()
+                .max(0) as u64;
+            weighted_msat_seconds =
+                weighted_msat_seconds.saturating_add(previous_msat as u128 * seconds as u128);
+            covered_seconds = covered_seconds.saturating_add(seconds);
+        }
+        current = Some((point.observed_at, point.channel_funds_msat));
+    }
+    if let Some((previous_at, previous_msat)) = current {
+        let seconds = end.signed_duration_since(previous_at).num_seconds().max(0) as u64;
+        weighted_msat_seconds =
+            weighted_msat_seconds.saturating_add(previous_msat as u128 * seconds as u128);
+        covered_seconds = covered_seconds.saturating_add(seconds);
+    }
+
+    if covered_seconds == 0 {
+        AverageChannelFunds {
+            sats: current_channel_funds_sat as f64,
+            coverage_ratio: 0.0,
+        }
+    } else {
+        AverageChannelFunds {
+            sats: weighted_msat_seconds as f64 / covered_seconds as f64 / 1000.0,
+            coverage_ratio: covered_seconds as f64 / window_seconds as f64,
+        }
     }
 }
 
@@ -816,7 +899,11 @@ fn format_datetime(datetime: DateTime<Utc>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{annualized_capacity_return_percent, ratio_ppm};
+    use chrono::{Duration, TimeZone, Utc};
+
+    use crate::history::ChannelFundsHistoryPoint;
+
+    use super::{annualized_capacity_return_percent, average_channel_funds, ratio_ppm};
 
     #[test]
     fn ratio_ppm_returns_none_for_no_volume() {
@@ -838,5 +925,39 @@ mod tests {
             annualized_capacity_return_percent(1_000, 100_000, None),
             None
         );
+    }
+
+    #[test]
+    fn channel_funds_average_is_time_weighted_across_changes() {
+        let end = Utc.with_ymd_and_hms(2026, 7, 1, 0, 0, 0).unwrap();
+        let history = vec![
+            ChannelFundsHistoryPoint {
+                observed_at: end - Duration::days(31),
+                channel_funds_msat: 1_000_000,
+            },
+            ChannelFundsHistoryPoint {
+                observed_at: end - Duration::days(15),
+                channel_funds_msat: 3_000_000,
+            },
+        ];
+
+        let average = average_channel_funds(&history, &end, 1, 9_000);
+
+        assert_eq!(average.sats, 2_000.0);
+        assert_eq!(average.coverage_ratio, 1.0);
+    }
+
+    #[test]
+    fn channel_funds_average_reports_partial_history_coverage() {
+        let end = Utc.with_ymd_and_hms(2026, 7, 1, 0, 0, 0).unwrap();
+        let history = vec![ChannelFundsHistoryPoint {
+            observed_at: end - Duration::days(15),
+            channel_funds_msat: 3_000_000,
+        }];
+
+        let average = average_channel_funds(&history, &end, 1, 9_000);
+
+        assert_eq!(average.sats, 3_000.0);
+        assert_eq!(average.coverage_ratio, 0.5);
     }
 }

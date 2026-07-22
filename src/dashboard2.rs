@@ -142,12 +142,12 @@ fn write_file(path: &Path, content: &str) -> Result<(), String> {
 }
 
 fn render_overview_page(manifest: &SnapshotManifest, summary: &SummarySnapshot) -> String {
-    let gross_roic_12_months = summary
+    let period_12_months = summary
         .roic
         .periods
         .iter()
-        .find(|period| period.months == 12)
-        .map(|period| period.annualized_gross_roic_percent);
+        .find(|period| period.months == 12);
+    let gross_roic_12_months = period_12_months.map(|period| period.annualized_gross_roic_percent);
     let content = html! {
         section class="hero" {
             div {
@@ -179,6 +179,14 @@ fn render_overview_page(manifest: &SnapshotManifest, summary: &SummarySnapshot) 
                 }
             }
             dl class="detail-list" {
+                div {
+                    dt { "Average channel funds, 12 months" }
+                    dd { (period_12_months.map(|period| format!("{} sats", format_number(period.average_channel_funds_sat.round() as u64))).unwrap_or_else(|| "—".to_string())) }
+                }
+                div {
+                    dt { "Capital-history coverage" }
+                    dd { (period_12_months.map(|period| format!("{:.1}%", period.capital_history_coverage_ratio * 100.0)).unwrap_or_else(|| "—".to_string())) }
+                }
                 div {
                     dt { "Routed, 12 months" }
                     dd { (format!("{} sats", format_number(summary.roic.routed_12_months_sat))) }
@@ -629,6 +637,8 @@ mod tests {
                     months: 12,
                     forwarding_fees_sat: 0,
                     lease_fee_earnings_msat: 0,
+                    average_channel_funds_sat: 0.0,
+                    capital_history_coverage_ratio: 0.0,
                     annualized_gross_roic_percent: 0.0,
                 }],
                 routed_12_months_sat: 0,

@@ -1,11 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs::{self, File};
-use std::io::{self, BufWriter, Write};
+use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::time::UNIX_EPOCH;
 
 use chrono::{DateTime, SecondsFormat, Utc};
+use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use serde::de::DeserializeOwned;
@@ -14,17 +15,25 @@ use serde::{Deserialize, Serialize};
 use crate::cmd::{self, Channel, Fund, ListChannels, ListFunds};
 use crate::snapshot_metadata::{DatasetMetadata, FieldMetadata};
 
-const HISTORY_SCHEMA_VERSION: u32 = 1;
+const HISTORY_SCHEMA_VERSION: u32 = 2;
 const POLICY_FILE: &str = "channel-policy-history.jsonl.gz";
 const POLICY_SCHEMA_FILE: &str = "channel-policy-history.schema.json";
 const LIQUIDITY_FILE: &str = "channel-liquidity-history.jsonl.gz";
 const LIQUIDITY_SCHEMA_FILE: &str = "channel-liquidity-history.schema.json";
+const CHANNEL_FUNDS_FILE: &str = "channel-funds-history.jsonl.gz";
+const CHANNEL_FUNDS_SCHEMA_FILE: &str = "channel-funds-history.schema.json";
 pub(crate) const DEFAULT_PROCESSED_DIRECTORY: &str = "/var/lib/lightdash/history/processed";
 pub(crate) const SNAPSHOT_HISTORY_MANIFEST: &str = "history-manifest.json";
 
 pub(crate) struct ImportedHistory {
     pub manifest_file: String,
     pub datasets: BTreeMap<String, DatasetMetadata>,
+    pub channel_funds: Vec<ChannelFundsHistoryPoint>,
+}
+
+pub(crate) struct ChannelFundsHistoryPoint {
+    pub observed_at: DateTime<Utc>,
+    pub channel_funds_msat: u64,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -83,6 +92,13 @@ struct LiquidityHistoryRecord<'a> {
     channel_id: &'a str,
     #[serde(flatten)]
     values: &'a LiquidityValues,
+}
+
+#[derive(Deserialize, Serialize)]
+struct ChannelFundsHistoryRecord {
+    observed_at: String,
+    channel_funds_msat: u64,
+    normal_channel_count: usize,
 }
 
 pub fn run_rebuild(raw_directory: &str, output_directory: &str) -> Result<(), String> {
@@ -160,9 +176,11 @@ fn import_directory_for_snapshot(
     )
     .map_err(|e| format!("writing snapshot history manifest failed: {e}"))?;
 
+    let channel_funds = read_channel_funds_history(processed_directory, &manifest)?;
     Ok(ImportedHistory {
         manifest_file: SNAPSHOT_HISTORY_MANIFEST.to_string(),
         datasets: manifest.datasets,
+        channel_funds,
     })
 }
 
@@ -194,10 +212,41 @@ fn import_tar_for_snapshot(
     )
     .map_err(|e| format!("writing snapshot history manifest failed: {e}"))?;
 
+    let channel_funds = read_channel_funds_history(snapshot_directory, &manifest)?;
     Ok(ImportedHistory {
         manifest_file: SNAPSHOT_HISTORY_MANIFEST.to_string(),
         datasets: manifest.datasets,
+        channel_funds,
     })
+}
+
+fn read_channel_funds_history(
+    directory: &Path,
+    manifest: &HistoryManifest,
+) -> Result<Vec<ChannelFundsHistoryPoint>, String> {
+    let dataset = manifest
+        .datasets
+        .get("channel_funds_history")
+        .ok_or_else(|| "processed history is missing channel_funds_history".to_string())?;
+    let path = directory.join(&dataset.path);
+    let reader = BufReader::new(GzDecoder::new(
+        File::open(&path).map_err(|e| format!("opening `{}` failed: {e}", path.display()))?,
+    ));
+    reader
+        .lines()
+        .map(|line| {
+            let line = line.map_err(|e| format!("reading `{}` failed: {e}", path.display()))?;
+            let record: ChannelFundsHistoryRecord = serde_json::from_str(&line)
+                .map_err(|e| format!("parsing `{}` failed: {e}", path.display()))?;
+            let observed_at = DateTime::parse_from_rfc3339(&record.observed_at)
+                .map_err(|e| format!("invalid observed_at in `{}`: {e}", path.display()))?
+                .with_timezone(&Utc);
+            Ok(ChannelFundsHistoryPoint {
+                observed_at,
+                channel_funds_msat: record.channel_funds_msat,
+            })
+        })
+        .collect()
 }
 
 fn validate_history_manifest(
@@ -289,13 +338,19 @@ fn rebuild_history(
 
     let policy_temp = temporary_path(output_directory, POLICY_FILE);
     let liquidity_temp = temporary_path(output_directory, LIQUIDITY_FILE);
+    let channel_funds_temp = temporary_path(output_directory, CHANNEL_FUNDS_FILE);
     let policy_count = write_policy_history(&policy_temp, &channel_archives, node_id)?;
-    let liquidity_count = write_liquidity_history(&liquidity_temp, &funds_archives)?;
+    let (liquidity_count, channel_funds_count) =
+        write_liquidity_history(&liquidity_temp, &channel_funds_temp, &funds_archives)?;
 
     replace_file(&policy_temp, &output_directory.join(POLICY_FILE))?;
     replace_file(&liquidity_temp, &output_directory.join(LIQUIDITY_FILE))?;
+    replace_file(
+        &channel_funds_temp,
+        &output_directory.join(CHANNEL_FUNDS_FILE),
+    )?;
 
-    let datasets = history_dataset_metadata(policy_count, liquidity_count);
+    let datasets = history_dataset_metadata(policy_count, liquidity_count, channel_funds_count);
     write_json_atomic(
         &output_directory.join(POLICY_SCHEMA_FILE),
         datasets
@@ -307,6 +362,12 @@ fn rebuild_history(
         datasets
             .get("channel_liquidity_history")
             .expect("liquidity metadata exists"),
+    )?;
+    write_json_atomic(
+        &output_directory.join(CHANNEL_FUNDS_SCHEMA_FILE),
+        datasets
+            .get("channel_funds_history")
+            .expect("channel funds metadata exists"),
     )?;
 
     let manifest = HistoryManifest {
@@ -323,7 +384,7 @@ fn rebuild_history(
     write_json_atomic(&output_directory.join("manifest.json"), &manifest)?;
 
     log::info!(
-        "History rebuild completed with {policy_count} policy change points and {liquidity_count} liquidity change points in {}",
+        "History rebuild completed with {policy_count} policy, {liquidity_count} liquidity, and {channel_funds_count} channel-funds change points in {}",
         output_directory.display()
     );
     Ok(())
@@ -417,17 +478,49 @@ fn write_policy_history(
     Ok(record_count)
 }
 
-fn write_liquidity_history(path: &Path, archives: &[(u64, PathBuf)]) -> Result<usize, String> {
+fn write_liquidity_history(
+    path: &Path,
+    channel_funds_path: &Path,
+    archives: &[(u64, PathBuf)],
+) -> Result<(usize, usize), String> {
     let file =
         File::create(path).map_err(|e| format!("creating `{}` failed: {e}", path.display()))?;
     let mut writer = GzEncoder::new(BufWriter::new(file), Compression::default());
+    let channel_funds_file = File::create(channel_funds_path)
+        .map_err(|e| format!("creating `{}` failed: {e}", channel_funds_path.display()))?;
+    let mut channel_funds_writer =
+        GzEncoder::new(BufWriter::new(channel_funds_file), Compression::default());
     let mut previous: HashMap<String, LiquidityValues> = HashMap::new();
+    let mut previous_channel_funds = None;
     let mut record_count = 0;
+    let mut channel_funds_count = 0;
 
     for (index, (timestamp, archive)) in archives.iter().enumerate() {
         log_progress("funds", index, archives.len(), archive);
         let funds: ListFunds = read_xz_json(archive)?;
         let observed_at = format_timestamp(*timestamp)?;
+        let normal_channels = funds
+            .channels
+            .iter()
+            .filter(|fund| fund.state == "CHANNELD_NORMAL");
+        let channel_funds_msat = normal_channels
+            .clone()
+            .map(|fund| fund.our_amount_msat)
+            .sum();
+        let normal_channel_count = normal_channels.count();
+        let current_channel_funds = (channel_funds_msat, normal_channel_count);
+        if previous_channel_funds != Some(current_channel_funds) {
+            write_json_line(
+                &mut channel_funds_writer,
+                &ChannelFundsHistoryRecord {
+                    observed_at: observed_at.clone(),
+                    channel_funds_msat,
+                    normal_channel_count,
+                },
+            )?;
+            previous_channel_funds = Some(current_channel_funds);
+            channel_funds_count += 1;
+        }
         for fund in &funds.channels {
             let values = liquidity_values(fund);
             if previous.get(&fund.channel_id) == Some(&values) {
@@ -450,7 +543,13 @@ fn write_liquidity_history(path: &Path, archives: &[(u64, PathBuf)]) -> Result<u
     writer
         .flush()
         .map_err(|e| format!("flushing `{}` failed: {e}", path.display()))?;
-    Ok(record_count)
+    let mut channel_funds_writer = channel_funds_writer
+        .finish()
+        .map_err(|e| format!("finishing `{}` failed: {e}", channel_funds_path.display()))?;
+    channel_funds_writer
+        .flush()
+        .map_err(|e| format!("flushing `{}` failed: {e}", channel_funds_path.display()))?;
+    Ok((record_count, channel_funds_count))
 }
 
 fn policy_values(channel: &Channel) -> PolicyValues {
@@ -573,6 +672,7 @@ fn format_datetime(datetime: DateTime<Utc>) -> String {
 fn history_dataset_metadata(
     policy_count: usize,
     liquidity_count: usize,
+    channel_funds_count: usize,
 ) -> BTreeMap<String, DatasetMetadata> {
     BTreeMap::from([
         (
@@ -597,6 +697,18 @@ fn history_dataset_metadata(
                 record_count: liquidity_count,
                 primary_key: None,
                 fields: liquidity_fields(),
+            },
+        ),
+        (
+            "channel_funds_history".to_string(),
+            DatasetMetadata {
+                path: CHANNEL_FUNDS_FILE.to_string(),
+                schema_path: CHANNEL_FUNDS_SCHEMA_FILE.to_string(),
+                format: "gzip-jsonl".to_string(),
+                description: "Change points for total local balance in normal channels, derived from complete archived listfunds responses for time-weighted deployed-capital calculations.".to_string(),
+                record_count: channel_funds_count,
+                primary_key: None,
+                fields: channel_funds_fields(),
             },
         ),
     ])
@@ -769,6 +881,14 @@ fn liquidity_fields() -> BTreeMap<String, FieldMetadata> {
     ])
 }
 
+fn channel_funds_fields() -> BTreeMap<String, FieldMetadata> {
+    BTreeMap::from([
+        ("observed_at".into(), field("string", false, Some("rfc3339_utc"), "Time encoded in the source archive filename; the total remains in effect until the next change point.")),
+        ("channel_funds_msat".into(), formula(field("integer", false, Some("msat"), "Total local balance held in CHANNELD_NORMAL channels at this observation."), "sum(listfunds.channels[state = CHANNELD_NORMAL].our_amount_msat)")),
+        ("normal_channel_count".into(), formula(field("integer", false, Some("channel"), "Number of CHANNELD_NORMAL channels included in channel_funds_msat."), "count(listfunds.channels[state = CHANNELD_NORMAL])")),
+    ])
+}
+
 fn field(json_type: &str, nullable: bool, unit: Option<&str>, description: &str) -> FieldMetadata {
     FieldMetadata {
         json_type: json_type.to_string(),
@@ -826,12 +946,16 @@ mod tests {
             &raw.join("funds/1700003600.json.xz"),
             r#"{"channels":[{"peer_id":"peer","connected":true,"state":"CHANNELD_NORMAL","channel_id":"full-id","short_channel_id":"1x1x1","our_amount_msat":750000,"amount_msat":2000000,"funding_txid":"txid","funding_output":0}],"outputs":[]}"#,
         );
+        write_xz(
+            &raw.join("funds/1700007200.json.xz"),
+            r#"{"channels":[],"outputs":[]}"#,
+        );
 
         rebuild_history(&raw, &output, "local").unwrap();
 
         let manifest: Value =
             serde_json::from_slice(&fs::read(output.join("manifest.json")).unwrap()).unwrap();
-        assert_eq!(manifest["schema_version"], 1);
+        assert_eq!(manifest["schema_version"], 2);
         assert_eq!(
             manifest["datasets"]["channel_policy_history"]["record_count"],
             3
@@ -839,6 +963,10 @@ mod tests {
         assert_eq!(
             manifest["datasets"]["channel_liquidity_history"]["record_count"],
             2
+        );
+        assert_eq!(
+            manifest["datasets"]["channel_funds_history"]["record_count"],
+            3
         );
 
         let policy_lines = read_gzip_lines(&output.join("channel-policy-history.jsonl.gz"));
@@ -849,6 +977,12 @@ mod tests {
         let liquidity_lines = read_gzip_lines(&output.join("channel-liquidity-history.jsonl.gz"));
         assert_eq!(liquidity_lines.len(), 2);
         assert_eq!(liquidity_lines[1]["local_balance_percent"], 37.5);
+        let channel_funds_lines = read_gzip_lines(&output.join("channel-funds-history.jsonl.gz"));
+        assert_eq!(channel_funds_lines.len(), 3);
+        assert_eq!(channel_funds_lines[0]["channel_funds_msat"], 500_000);
+        assert_eq!(channel_funds_lines[1]["channel_funds_msat"], 750_000);
+        assert_eq!(channel_funds_lines[2]["channel_funds_msat"], 0);
+        assert_eq!(channel_funds_lines[2]["normal_channel_count"], 0);
         assert!(output.join("channel-policy-history.schema.json").is_file());
         assert!(output
             .join("channel-liquidity-history.schema.json")
@@ -859,6 +993,8 @@ mod tests {
         assert_eq!(
             tar_entry_names(&export),
             vec![
+                "channel-funds-history.jsonl.gz",
+                "channel-funds-history.schema.json",
                 "channel-liquidity-history.jsonl.gz",
                 "channel-liquidity-history.schema.json",
                 "channel-policy-history.jsonl.gz",
@@ -871,7 +1007,8 @@ mod tests {
         fs::create_dir_all(&local_snapshot).unwrap();
         let local_import =
             import_directory_for_snapshot(&output, &local_snapshot, "local").unwrap();
-        assert_eq!(local_import.datasets.len(), 2);
+        assert_eq!(local_import.datasets.len(), 3);
+        assert_eq!(local_import.channel_funds.len(), 3);
         assert!(local_snapshot.join(&local_import.manifest_file).is_file());
         assert!(local_snapshot
             .join("channel-policy-history.jsonl.gz")
@@ -880,7 +1017,8 @@ mod tests {
         let remote_snapshot = root.join("remote-snapshot");
         fs::create_dir_all(&remote_snapshot).unwrap();
         let remote_import = import_tar_for_snapshot(&export, &remote_snapshot, "local").unwrap();
-        assert_eq!(remote_import.datasets.len(), 2);
+        assert_eq!(remote_import.datasets.len(), 3);
+        assert_eq!(remote_import.channel_funds.len(), 3);
         assert!(remote_snapshot.join(&remote_import.manifest_file).is_file());
         assert!(remote_snapshot
             .join("channel-liquidity-history.schema.json")
