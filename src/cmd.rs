@@ -360,6 +360,8 @@ pub struct ListPeerChannelsChannel {
 pub struct Peer {
     pub id: String,
     pub num_channels: u64,
+    #[serde(default)]
+    pub features: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]

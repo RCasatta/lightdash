@@ -257,6 +257,7 @@ fn channel_fields() -> BTreeMap<String, FieldMetadata> {
         ("peer_id".into(), source(field("string", false, None, "Public key of the remote channel peer."), "listfunds.channels.peer_id")),
         ("peer_alias".into(), source(field("string", false, None, "Public gossip alias for the remote peer, or an abbreviated node ID when unavailable."), "listnodes.alias")),
         ("connected".into(), source(field("boolean", false, None, "Whether Core Lightning reports the peer connection as active."), "listfunds.channels.connected")),
+        ("peer_supports_splicing".into(), source(warning(field("boolean", true, None, "Whether the peer's negotiated INIT feature bitmap includes BOLT 9 option_splice (required bit 62 or optional bit 63)."), "Null means the peer INIT features were unavailable. This connection-negotiated capability can change after a reconnect or software upgrade and is not derived from listchannels channel features."), "listpeers.features")),
         ("state".into(), source(field("string", false, None, "Core Lightning channel state."), "listfunds.channels.state")),
         ("is_normal".into(), formula(field("boolean", false, None, "Whether the channel state equals CHANNELD_NORMAL."), "state == 'CHANNELD_NORMAL'")),
         ("capacity_msat".into(), source(field("integer", false, Some("msat"), "Full channel capacity owned jointly by both sides."), "listfunds.channels.amount_msat")),

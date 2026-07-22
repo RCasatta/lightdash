@@ -11,7 +11,7 @@ use crate::history;
 use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts, DatasetMetadata};
 use crate::store::{RebalancePart, Store};
 
-pub(crate) const SCHEMA_VERSION: u32 = 10;
+pub(crate) const SCHEMA_VERSION: u32 = 11;
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct SnapshotManifest {
@@ -83,6 +83,7 @@ pub(crate) struct ChannelSnapshot {
     pub peer_id: String,
     pub peer_alias: String,
     pub connected: bool,
+    pub peer_supports_splicing: Option<bool>,
     pub state: String,
     pub is_normal: bool,
     pub capacity_msat: u64,
@@ -446,6 +447,7 @@ fn build_channel_snapshot(
         peer_id: channel.peer_id.clone(),
         peer_alias: store.get_node_alias(&channel.peer_id),
         connected: channel.connected,
+        peer_supports_splicing: store.peer_supports_splicing(&channel.peer_id),
         state: channel.state.clone(),
         is_normal: channel.state == "CHANNELD_NORMAL",
         capacity_msat: channel.amount_msat,

@@ -701,6 +701,7 @@
             column("short_channel_id", "Channel", "text", { visible: true, monospace: true, value: row => row.short_channel_id || row.channel_id.slice(0, 16) }),
             column("peer_alias", "Peer", "text", { visible: true }),
             column("connected", "Connected", "boolean", { visible: true }),
+            column("peer_supports_splicing", "Splice", "boolean", { visible: true }),
             column("age_days", "Age", "number", { visible: true, suffix: " d", decimals: 0 }),
             column("local_balance_percent", "Local balance", "number", { visible: true, suffix: "%", decimals: 1 }),
             column("capacity_msat", "Capacity", "number", { visible: true, transform: msatToSat, suffix: " sats", decimals: 0 }),
@@ -1139,7 +1140,11 @@
             cell.classList.add(rawValue < 0 ? "negative" : "positive");
         }
         if (item.type === "boolean") {
-            appendBadge(cell, rawValue ? "Yes" : "No", rawValue ? "connected" : "disconnected");
+            if (rawValue === null || rawValue === undefined) {
+                cell.textContent = "—";
+            } else {
+                appendBadge(cell, rawValue ? "Yes" : "No", rawValue ? "connected" : "disconnected");
+            }
         } else if (item.badge) {
             appendBadge(cell, humanize(rawValue), `status-${rawValue || "unknown"}`);
         } else if (["channels", "closed_channels"].includes(config.datasetKey) && item.key === "short_channel_id") {

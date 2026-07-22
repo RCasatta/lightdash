@@ -541,6 +541,21 @@ impl Store {
         self.peers.peers.iter()
     }
 
+    /// Whether the peer's negotiated INIT features include BOLT 9 option_splice.
+    ///
+    /// Returns `None` when Core Lightning did not expose the peer's INIT features.
+    pub fn peer_supports_splicing(&self, peer_id: &str) -> Option<bool> {
+        let features = self
+            .peers
+            .peers
+            .iter()
+            .find(|peer| peer.id == peer_id)?
+            .features
+            .as_deref()?;
+
+        Some(feature_bit_is_set(features, 62) || feature_bit_is_set(features, 63))
+    }
+
     pub fn forwards_len(&self) -> usize {
         self.forwards.forwards.len()
     }
@@ -1529,6 +1544,22 @@ impl Store {
     }
 }
 
+fn feature_bit_is_set(features: &str, bit: usize) -> bool {
+    if features.len() % 2 != 0 {
+        return false;
+    }
+
+    let byte_from_end = bit / 8;
+    let Some(start) = features.len().checked_sub((byte_from_end + 1) * 2) else {
+        return false;
+    };
+    let Ok(byte) = u8::from_str_radix(&features[start..start + 2], 16) else {
+        return false;
+    };
+
+    byte & (1 << (bit % 8)) != 0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1537,6 +1568,16 @@ mod tests {
     const OUTGOING_SCID: &str = "147440x2x0";
     const UNRELATED_SCID: &str = "147440x3x0";
     const NOW_TIMESTAMP: i64 = 2_000_000_000;
+
+    #[test]
+    fn bolt_feature_bits_are_read_from_the_rightmost_byte() {
+        assert!(feature_bit_is_set("01", 0));
+        assert!(feature_bit_is_set("4000000000000000", 62));
+        assert!(feature_bit_is_set("8000000000000000", 63));
+        assert!(!feature_bit_is_set("0000000000000000", 62));
+        assert!(!feature_bit_is_set("01", 62));
+        assert!(!feature_bit_is_set("not-hex", 0));
+    }
 
     fn parse_events(json: &str) -> Vec<cmd::BkprAccountEvent> {
         serde_json::from_str::<cmd::BkprListAccountEvents>(json)
