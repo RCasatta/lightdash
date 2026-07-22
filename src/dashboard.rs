@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::fs;
 
 use crate::cmd;
+use crate::snapshot_metadata::field_tooltip;
 use crate::{
     common::*,
     store::{RebalancePart, Store},
@@ -36,6 +37,11 @@ struct RebalanceSnapshotEntry {
 struct RebalanceSnapshotFile {
     file_name: String,
     entries: Vec<RebalanceSnapshotEntry>,
+}
+
+fn snapshot_field_title(dataset_name: &str, field_name: &str) -> String {
+    field_tooltip(dataset_name, field_name)
+        .unwrap_or_else(|| panic!("missing snapshot metadata for {dataset_name}.{field_name}"))
 }
 
 fn has_balanced_status(entry: &RebalanceSnapshotEntry) -> bool {
@@ -1348,13 +1354,13 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                         th style="text-align: right;" { "Balance %" }
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
-                        th style="text-align: right;" title="All-time outbound forwarding fees divided by all-time outbound routed amount." { "Hist PPM" }
-                        th style="text-align: right;" title="Time-decayed PPM for outbound forwards: subtract our fixed 1000 msat (1 sat) base fee from each forward, then compute an amount-weighted average with a 1-week half-life." { "TPPM" }
-                        th style="text-align: right;" title="All-time target-attributed rebalance cost divided by all-time target credited rebalance liquidity." { "Hist Reb PPM" }
+                        th style="text-align: right;" title=(snapshot_field_title("channels", "historical_effective_fee_ppm")) { "Hist PPM" }
+                        th style="text-align: right;" title=(snapshot_field_title("channels", "time_decayed_variable_fee_ppm")) { "TPPM" }
+                        th style="text-align: right;" title=(snapshot_field_title("channels", "rebalance_effective_fee_ppm")) { "Hist Reb PPM" }
                         th style="text-align: right;" { "HTLC Max (sats)" }
                         th style="text-align: right;" { "Inbound PPM" }
-                        th style="text-align: right;" title="Annualized forwarding and lease return relative to full channel capacity after lease-fee and target-attributed rebalance costs." { "Net capacity return %" }
-                        th style="text-align: right;" title="Annualized fee attribution relative to full capacity for settled forwards where this was the incoming channel. Revenue is earned on the paired outgoing channel; do not aggregate this attribution as unique node revenue." { "Indirect capacity contribution %" }
+                        th style="text-align: right;" title=(snapshot_field_title("channels", "net_capacity_return_percent")) { "Net capacity return %" }
+                        th style="text-align: right;" title=(snapshot_field_title("channels", "indirect_capacity_contribution_percent")) { "Indirect capacity contribution %" }
                     }
                 }
                 tbody {
@@ -1506,13 +1512,13 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                         th style="text-align: right;" { "Balance %" }
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
-                        th style="text-align: right;" title="All-time outbound forwarding fees divided by all-time outbound routed amount." { "Hist PPM" }
-                        th style="text-align: right;" title="Time-decayed PPM for outbound forwards: subtract our fixed 1000 msat (1 sat) base fee from each forward, then compute an amount-weighted average with a 1-week half-life." { "TPPM" }
-                        th style="text-align: right;" title="All-time target-attributed rebalance cost divided by all-time target credited rebalance liquidity." { "Hist Reb PPM" }
+                        th style="text-align: right;" title=(snapshot_field_title("channels", "historical_effective_fee_ppm")) { "Hist PPM" }
+                        th style="text-align: right;" title=(snapshot_field_title("channels", "time_decayed_variable_fee_ppm")) { "TPPM" }
+                        th style="text-align: right;" title=(snapshot_field_title("channels", "rebalance_effective_fee_ppm")) { "Hist Reb PPM" }
                         th style="text-align: right;" { "HTLC Max (sats)" }
                         th style="text-align: right;" { "Inbound PPM" }
-                        th style="text-align: right;" title="Annualized forwarding and lease return relative to full channel capacity after lease-fee and target-attributed rebalance costs." { "Net capacity return %" }
-                        th style="text-align: right;" title="Annualized fee attribution relative to full capacity for settled forwards where this was the incoming channel. Revenue is earned on the paired outgoing channel; do not aggregate this attribution as unique node revenue." { "Indirect capacity contribution %" }
+                        th style="text-align: right;" title=(snapshot_field_title("channels", "net_capacity_return_percent")) { "Net capacity return %" }
+                        th style="text-align: right;" title=(snapshot_field_title("channels", "indirect_capacity_contribution_percent")) { "Indirect capacity contribution %" }
                         th style="text-align: right;" { "Age (days)" }
                     }
                 }
@@ -1902,7 +1908,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                     }
 
                     div class="info-item" {
-                        span class="label" title="Fees on settled forwards for which this was the incoming channel. Revenue is earned on the paired outgoing channel." { "Indirect Fees: " }
+                        span class="label" title=(snapshot_field_title("channels", "indirect_fees_sat")) { "Indirect Fees: " }
                         span class="value" { (format!("{} sats", format_sats(store.get_channel_indirect_fees(scid)))) }
                     }
 
@@ -1918,7 +1924,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                     }
 
                     div class="info-item" {
-                        span class="label" title="Time-decayed effective fee rate using a 1-week half-life, weighted by routed amount." {
+                        span class="label" title=(snapshot_field_title("channels", "time_decayed_variable_fee_ppm")) {
                             "TPPM: "
                         }
                         span class="value" {
@@ -2008,7 +2014,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                     }
 
                     div class="info-item" {
-                        span class="label" title="Annualized forwarding fees divided by full channel capacity." { "Gross capacity return: " }
+                        span class="label" title=(snapshot_field_title("channels", "gross_capacity_return_percent")) { "Gross capacity return: " }
                         span class="value" {
                             @if let Some(gross_capacity_return) = store.get_channel_gross_capacity_return(scid) {
                                 (format!("{gross_capacity_return:.2}%"))
@@ -2019,7 +2025,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                     }
 
                     div class="info-item" {
-                        span class="label" { "Net capacity return: " }
+                        span class="label" title=(snapshot_field_title("channels", "net_capacity_return_percent")) { "Net capacity return: " }
                         span class="value" {
                             @if let Some(net_capacity_return) = store.get_channel_net_capacity_return(scid) {
                                 (format!("{net_capacity_return:.2}%"))
@@ -2030,7 +2036,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                     }
 
                     div class="info-item" {
-                        span class="label" title="Annualized fee attribution relative to full capacity for settled forwards where this was the incoming channel. Revenue is earned on the paired outgoing channel; do not aggregate this attribution as unique node revenue." { "Indirect capacity contribution: " }
+                        span class="label" title=(snapshot_field_title("channels", "indirect_capacity_contribution_percent")) { "Indirect capacity contribution: " }
                         span class="value" {
                             @if let Some(indirect_capacity_contribution) = store.get_channel_indirect_capacity_contribution(scid) {
                                 (format!("{indirect_capacity_contribution:.2}%"))
@@ -2720,8 +2726,8 @@ fn create_closed_channels_page(
                             th { "Funding / Closing" }
                             th style="text-align: right;" { "Opening Block" }
                             th style="text-align: right;" { "Final Amount (sats)" }
-                            th style="text-align: right;" title="Annualized all-time forwarding and lease return relative to full channel capacity after lease-fee and target-attributed rebalance costs. Lifetime uses last stable connection when available." { "Net capacity return %" }
-                            th style="text-align: right;" title="Annualized all-time incoming-side fee attribution relative to full channel capacity. Revenue is earned on the paired outgoing channel; do not aggregate this attribution as unique node revenue." { "Indirect capacity contribution %" }
+                            th style="text-align: right;" title=(snapshot_field_title("closed_channels", "net_capacity_return_percent")) { "Net capacity return %" }
+                            th style="text-align: right;" title=(snapshot_field_title("closed_channels", "indirect_capacity_contribution_percent")) { "Indirect capacity contribution %" }
                             th style="text-align: right;" { "Total HTLCs Sent" }
                         }
                     }
@@ -3061,7 +3067,7 @@ fn create_rebalances_table_section(
                             th { "Channel Out" }
                             th style="text-align: right;" { "Reb Amount" }
                             th style="text-align: right;" { "Reb PPM" }
-                            th style="text-align: right;" title="All-time outbound forwarding fees divided by all-time outbound routed amount on the credited channel." {
+                            th style="text-align: right;" title=(snapshot_field_title("rebalances", "target_historical_fee_ppm")) {
                                 "Channel In Historical PPM"
                             }
                         }

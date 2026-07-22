@@ -135,6 +135,36 @@ pub(crate) fn build_dataset_metadata(
     ])
 }
 
+pub(crate) fn field_tooltip(dataset_name: &str, field_name: &str) -> Option<String> {
+    let fields = match dataset_name {
+        "summary" => summary_fields(),
+        "channels" => channel_fields(),
+        "closed_channels" => closed_channel_fields(),
+        "settled_forwards" | "other_forwards" => forward_fields(),
+        "rebalances" => rebalance_fields(),
+        "rebalance_status" => rebalance_status_fields(),
+        _ => return None,
+    };
+    let metadata = fields.get(field_name)?;
+    let mut parts = vec![metadata.description.clone()];
+    if let Some(unit) = &metadata.unit {
+        parts.push(format!("Unit: {unit}"));
+    }
+    if let Some(formula) = &metadata.formula {
+        parts.push(format!("Formula: {formula}"));
+    }
+    if let Some(source) = &metadata.source {
+        parts.push(format!("Source: {source}"));
+    }
+    if let Some(aggregation) = &metadata.aggregation {
+        parts.push(format!("Aggregation: {aggregation}"));
+    }
+    if let Some(warning) = &metadata.warning {
+        parts.push(format!("Warning: {warning}"));
+    }
+    Some(parts.join("\n"))
+}
+
 fn dataset(
     path: &str,
     schema_path: &str,
@@ -443,4 +473,19 @@ fn rebalance_status_fields() -> BTreeMap<String, FieldMetadata> {
         ("last_route_at".into(), source(field("string", true, Some("rfc3339_utc"), "Time of the most recent route attempt, or null when Sling reports `Never`."), "sling-stats.last_route_taken")),
         ("last_success_at".into(), source(field("string", true, Some("rfc3339_utc"), "Time of the most recent successful rebalance, or null when Sling reports `Never`."), "sling-stats.last_success_reb")),
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn field_tooltip_is_derived_from_snapshot_metadata() {
+        let tooltip = field_tooltip("channels", "net_capacity_return_percent").unwrap();
+
+        assert!(tooltip.contains("Annualized lifetime capacity return"));
+        assert!(tooltip.contains("Formula: net_revenue_msat / capacity_msat"));
+        assert!(tooltip.contains("Aggregation: Use capacity-weighting"));
+        assert_eq!(field_tooltip("channels", "unknown"), None);
+    }
 }
