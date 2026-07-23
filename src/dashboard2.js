@@ -679,7 +679,7 @@
                 format: "json",
                 itemLabel: "rebalance statuses",
                 fileBase: "lightdash-rebalance-status",
-                storageKey: "lightdash.dashboard2.rebalanceStatusColumns",
+                storageKey: "lightdash.dashboard2.rebalanceStatusColumns.v2",
                 defaultSort: "last_success_at",
                 defaultDirection: "desc",
                 pageSize: 100,
@@ -764,12 +764,13 @@
 
     function rebalanceStatusColumns() {
         return [
-            column("short_channel_id", "Channel", "text", { visible: true, monospace: true }),
+            column("short_channel_id", "Channel", "text", { monospace: true }),
             column("peer_alias", "Peer", "text", { visible: true }),
             column("statuses", "Status", "text", { visible: true, value: row => row.statuses.join(", ") }),
             column("rebalance_amount_sat", "Rebalance amount", "number", { visible: true, suffix: " sats", decimals: 0 }),
             column("weighted_fee_ppm", "Weighted fee", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
-            column("last_channel_partner_id", "Last partner", "text", { visible: true, monospace: true }),
+            column("last_channel_partner_alias", "Last partner", "text", { visible: true, value: row => row.last_channel_partner_alias || row.last_channel_partner_id }),
+            column("last_channel_partner_id", "Last partner channel", "text", { monospace: true }),
             column("last_route_at", "Last route", "date", { visible: true, value: row => row._lastRouteAt }),
             column("last_success_at", "Last success", "date", { visible: true, value: row => row._lastSuccessAt }),
             column("is_balanced", "Balanced", "boolean"),
@@ -1149,7 +1150,11 @@
             appendBadge(cell, humanize(rawValue), `status-${rawValue || "unknown"}`);
         } else if (config.datasetKey === "settled_forwards" && ["in_peer_alias", "out_peer_alias"].includes(item.key)) {
             const direction = item.key === "in_peer_alias" ? "in" : "out";
-            appendForwardPeer(cell, rawValue, row[`${direction}_channel`], direction);
+            appendPeerChannel(cell, rawValue, row[`${direction}_channel`], `${direction === "in" ? "incoming" : "outgoing"} channel`);
+        } else if (config.datasetKey === "rebalance_status" && item.key === "peer_alias") {
+            appendPeerChannel(cell, rawValue, row.short_channel_id, "managed channel");
+        } else if (config.datasetKey === "rebalance_status" && item.key === "last_channel_partner_alias") {
+            appendPeerChannel(cell, rawValue, row.last_channel_partner_id, "last partner channel");
         } else if (["channels", "closed_channels"].includes(config.datasetKey) && item.key === "short_channel_id") {
             const link = document.createElement("a");
             link.href = `channel.html?channel=${encodeURIComponent(row.short_channel_id || row.channel_id)}`;
@@ -1176,7 +1181,7 @@
         return cell;
     }
 
-    function appendForwardPeer(cell, alias, channel, direction) {
+    function appendPeerChannel(cell, alias, channel, channelLabel) {
         const label = document.createElement("span");
         label.textContent = alias === null || alias === undefined || alias === "" ? "—" : String(alias);
         cell.appendChild(label);
@@ -1186,7 +1191,7 @@
         link.className = "channel-shortcut";
         link.href = `channel.html?channel=${encodeURIComponent(channel)}`;
         link.textContent = "(C)";
-        link.title = `Open ${direction === "in" ? "incoming" : "outgoing"} channel ${channel}`;
+        link.title = `Open ${channelLabel} ${channel}`;
         link.setAttribute("aria-label", link.title);
         cell.appendChild(link);
     }

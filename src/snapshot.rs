@@ -11,7 +11,7 @@ use crate::history;
 use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts, DatasetMetadata};
 use crate::store::{RebalancePart, Store};
 
-pub(crate) const SCHEMA_VERSION: u32 = 12;
+pub(crate) const SCHEMA_VERSION: u32 = 13;
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct SnapshotManifest {
@@ -204,6 +204,7 @@ struct RebalanceStatusSnapshot {
     peer_id: String,
     peer_alias: String,
     last_channel_partner_id: Option<String>,
+    last_channel_partner_alias: Option<String>,
     statuses: Vec<String>,
     is_balanced: bool,
     has_no_cheap_route: bool,
@@ -249,7 +250,7 @@ pub fn run_snapshot(
         rebalance_status: "rebalance-status.json".to_string(),
         history_manifest: None,
     };
-    let rebalance_status = build_rebalance_status_snapshot()?;
+    let rebalance_status = build_rebalance_status_snapshot(store)?;
     let settled_forward_count = store.settled_forwards().len();
     let mut datasets = build_dataset_metadata(
         &files,
@@ -814,7 +815,7 @@ fn build_rebalance_snapshot<'a>(store: &Store, part: &'a RebalancePart) -> Rebal
     }
 }
 
-fn build_rebalance_status_snapshot() -> io::Result<Vec<RebalanceStatusSnapshot>> {
+fn build_rebalance_status_snapshot(store: &Store) -> io::Result<Vec<RebalanceStatusSnapshot>> {
     let raw: Vec<RawRebalanceStatus> = serde_json::from_value(crate::sling::current_sling_stats())
         .map_err(|e| io::Error::other(format!("parsing current Sling status failed: {e}")))?;
 
@@ -839,11 +840,16 @@ fn build_rebalance_status_snapshot() -> io::Result<Vec<RebalanceStatusSnapshot>>
                 .status
                 .iter()
                 .any(|status| status.contains("NoCheapRoute"));
+            let last_channel_partner_alias = entry
+                .last_channel_partner
+                .as_deref()
+                .and_then(|short_channel_id| forward_peer(store, short_channel_id).1);
             Ok(RebalanceStatusSnapshot {
                 short_channel_id: entry.scid,
                 peer_id: entry.pubkey,
                 peer_alias: entry.alias,
                 last_channel_partner_id: entry.last_channel_partner,
+                last_channel_partner_alias,
                 statuses: entry.status,
                 is_balanced,
                 has_no_cheap_route,

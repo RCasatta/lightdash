@@ -468,6 +468,7 @@ fn rebalance_status_fields() -> BTreeMap<String, FieldMetadata> {
         ("peer_id".into(), source(field("string", false, None, "Public key of the channel peer."), "sling-stats.pubkey")),
         ("peer_alias".into(), source(field("string", false, None, "Alias reported for the channel peer."), "sling-stats.alias")),
         ("last_channel_partner_id".into(), source(field("string", true, None, "Short channel ID of the other channel used by the most recent successful rebalance."), "sling-stats <scid> true successes_in_time_window.last_channel_partner")),
+        ("last_channel_partner_alias".into(), source(field("string", true, None, "Gossip alias of the peer on the other channel used by the most recent successful rebalance, or an abbreviated peer ID when no alias is advertised."), "listfunds, listclosedchannels, or listchannels joined through last_channel_partner_id")),
         ("statuses".into(), source(field("array", false, None, "Current Sling job status strings."), "sling-stats.status")),
         ("is_balanced".into(), formula(field("boolean", false, None, "Whether any current status contains `Balanced`."), "any(statuses contains 'Balanced')")),
         ("has_no_cheap_route".into(), formula(field("boolean", false, None, "Whether any current status contains `NoCheapRoute`."), "any(statuses contains 'NoCheapRoute')")),
