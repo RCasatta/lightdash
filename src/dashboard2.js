@@ -638,7 +638,7 @@
                 format: "jsonl",
                 itemLabel: "settled forwards",
                 fileBase: "lightdash-forwards",
-                storageKey: "lightdash.dashboard2.forwardColumns",
+                storageKey: "lightdash.dashboard2.forwardColumns.v2",
                 defaultSort: "received_at",
                 defaultDirection: "desc",
                 pageSize: 100,
@@ -748,9 +748,9 @@
         return [
             column("received_at", "Received", "date", { visible: true, value: row => row._receivedAt }),
             column("in_peer_alias", "In peer", "text", { visible: true }),
-            column("in_channel", "In channel", "text", { visible: true, monospace: true }),
+            column("in_channel", "In channel", "text", { monospace: true }),
             column("out_peer_alias", "Out peer", "text", { visible: true }),
-            column("out_channel", "Out channel", "text", { visible: true, monospace: true }),
+            column("out_channel", "Out channel", "text", { monospace: true }),
             column("out_msat", "Out amount", "number", { visible: true, transform: msatToSat, suffix: " sats", decimals: 0 }),
             column("fee_msat", "Fee", "number", { visible: true, transform: msatToSat, suffix: " sats", decimals: 0 }),
             column("fee_ppm", "Fee PPM", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
@@ -1147,6 +1147,9 @@
             }
         } else if (item.badge) {
             appendBadge(cell, humanize(rawValue), `status-${rawValue || "unknown"}`);
+        } else if (config.datasetKey === "settled_forwards" && ["in_peer_alias", "out_peer_alias"].includes(item.key)) {
+            const direction = item.key === "in_peer_alias" ? "in" : "out";
+            appendForwardPeer(cell, rawValue, row[`${direction}_channel`], direction);
         } else if (["channels", "closed_channels"].includes(config.datasetKey) && item.key === "short_channel_id") {
             const link = document.createElement("a");
             link.href = `channel.html?channel=${encodeURIComponent(row.short_channel_id || row.channel_id)}`;
@@ -1171,6 +1174,21 @@
             cell.textContent = formatValue(item, rawValue);
         }
         return cell;
+    }
+
+    function appendForwardPeer(cell, alias, channel, direction) {
+        const label = document.createElement("span");
+        label.textContent = alias === null || alias === undefined || alias === "" ? "—" : String(alias);
+        cell.appendChild(label);
+        if (!channel) return;
+
+        const link = document.createElement("a");
+        link.className = "channel-shortcut";
+        link.href = `channel.html?channel=${encodeURIComponent(channel)}`;
+        link.textContent = "(C)";
+        link.title = `Open ${direction === "in" ? "incoming" : "outgoing"} channel ${channel}`;
+        link.setAttribute("aria-label", link.title);
+        cell.appendChild(link);
     }
 
     function appendBadge(cell, label, className) {

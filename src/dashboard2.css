@@ -563,6 +563,13 @@ h2 {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+.data-table .channel-shortcut {
+    margin-left: 0.45rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.78em;
+    font-weight: 750;
+}
+
 .data-table .negative {
     color: var(--red);
 }
