@@ -175,6 +175,8 @@ struct RebalanceSnapshot<'a> {
     target_account: &'a str,
     source_channel_id: Option<&'a str>,
     target_channel_id: Option<&'a str>,
+    source_peer_alias: Option<String>,
+    target_peer_alias: Option<String>,
     debit_msat: u64,
     credit_msat: u64,
     fees_msat: u64,
@@ -802,6 +804,14 @@ fn build_rebalance_snapshot<'a>(store: &Store, part: &'a RebalancePart) -> Rebal
         target_account: &part.target_account,
         source_channel_id: part.source_channel_id.as_deref(),
         target_channel_id: part.target_channel_id.as_deref(),
+        source_peer_alias: part
+            .source_channel_id
+            .as_deref()
+            .and_then(|short_channel_id| forward_peer(store, short_channel_id).1),
+        target_peer_alias: part
+            .target_channel_id
+            .as_deref()
+            .and_then(|short_channel_id| forward_peer(store, short_channel_id).1),
         debit_msat: part.debit_msat,
         credit_msat: part.credit_msat,
         fees_msat: part.fees_msat,

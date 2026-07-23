@@ -391,6 +391,30 @@ fn rebalance_fields() -> BTreeMap<String, FieldMetadata> {
             ),
         ),
         (
+            "source_peer_alias".into(),
+            source(
+                field(
+                    "string",
+                    true,
+                    None,
+                    "Gossip alias of the peer on the source channel, or an abbreviated peer ID when no alias is advertised.",
+                ),
+                "listfunds, listclosedchannels, or listchannels joined through source_channel_id",
+            ),
+        ),
+        (
+            "target_peer_alias".into(),
+            source(
+                field(
+                    "string",
+                    true,
+                    None,
+                    "Gossip alias of the peer on the target channel, or an abbreviated peer ID when no alias is advertised.",
+                ),
+                "listfunds, listclosedchannels, or listchannels joined through target_channel_id",
+            ),
+        ),
+        (
             "debit_msat".into(),
             field(
                 "integer",

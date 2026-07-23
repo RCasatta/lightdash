@@ -660,7 +660,7 @@
                 format: "jsonl",
                 itemLabel: "successful rebalance parts",
                 fileBase: "lightdash-rebalances",
-                storageKey: "lightdash.dashboard2.rebalanceColumns",
+                storageKey: "lightdash.dashboard2.rebalanceColumns.v2",
                 defaultSort: "resolved_at",
                 defaultDirection: "desc",
                 pageSize: 100,
@@ -782,8 +782,10 @@
     function rebalanceColumns() {
         return [
             column("resolved_at", "Time", "date", { visible: true, value: row => row._resolvedAt }),
-            column("target_channel_id", "Channel in", "text", { visible: true, monospace: true, value: row => row.target_channel_id || row.target_account }),
-            column("source_channel_id", "Channel out", "text", { visible: true, monospace: true, value: row => row.source_channel_id || row.source_account }),
+            column("target_peer_alias", "Peer in", "text", { visible: true, value: row => row.target_peer_alias || row.target_channel_id || row.target_account }),
+            column("target_channel_id", "Channel in", "text", { monospace: true, value: row => row.target_channel_id || row.target_account }),
+            column("source_peer_alias", "Peer out", "text", { visible: true, value: row => row.source_peer_alias || row.source_channel_id || row.source_account }),
+            column("source_channel_id", "Channel out", "text", { monospace: true, value: row => row.source_channel_id || row.source_account }),
             column("credit_msat", "Rebalance amount", "number", { visible: true, transform: msatToSat, suffix: " sats", decimals: 0 }),
             column("fee_ppm", "Rebalance PPM", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
             column("target_historical_fee_ppm", "Channel in historical PPM", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
@@ -1155,6 +1157,9 @@
             appendPeerChannel(cell, rawValue, row.short_channel_id, "managed channel");
         } else if (config.datasetKey === "rebalance_status" && item.key === "last_channel_partner_alias") {
             appendPeerChannel(cell, rawValue, row.last_channel_partner_id, "last partner channel");
+        } else if (config.datasetKey === "rebalances" && ["target_peer_alias", "source_peer_alias"].includes(item.key)) {
+            const direction = item.key === "target_peer_alias" ? "target" : "source";
+            appendPeerChannel(cell, rawValue, row[`${direction}_channel_id`], `${direction} channel`);
         } else if (["channels", "closed_channels"].includes(config.datasetKey) && item.key === "short_channel_id") {
             const link = document.createElement("a");
             link.href = `channel.html?channel=${encodeURIComponent(row.short_channel_id || row.channel_id)}`;
