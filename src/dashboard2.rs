@@ -185,6 +185,38 @@ fn render_overview_page(manifest: &SnapshotManifest, summary: &SummarySnapshot) 
 
         section class="panel split-panel" {
             div {
+                p class="eyebrow" { "Benchmarks" }
+                h2 { "Liquidity and fee positioning" }
+                p class="muted" {
+                    "Current channel balance distribution and announced variable routing fees."
+                }
+            }
+            dl class="detail-list" {
+                div {
+                    dt { "Channel balance target std dev" }
+                    dd { (format!("{:.2} pp from 50%", summary.channel_balance_target_stddev_percentage_points)) }
+                }
+                div {
+                    dt { "Network average fee" }
+                    dd { (format_fee_ppm(summary.network_average_fee_ppm)) }
+                }
+                div {
+                    dt { "Network median fee" }
+                    dd { (format_fee_ppm(summary.network_median_fee_ppm)) }
+                }
+                div {
+                    dt { "Node average fee" }
+                    dd { (format_fee_ppm(summary.node_average_fee_ppm)) }
+                }
+                div {
+                    dt { "Node median fee" }
+                    dd { (format_fee_ppm(summary.node_median_fee_ppm)) }
+                }
+            }
+        }
+
+        section class="panel split-panel" {
+            div {
                 p class="eyebrow" { "Capital efficiency" }
                 h2 { "ROIC decomposition" }
                 p class="muted" {
@@ -551,6 +583,10 @@ fn format_optional_percent(value: Option<f64>) -> String {
         .unwrap_or_else(|| "—".to_string())
 }
 
+fn format_fee_ppm(value: f64) -> String {
+    format!("{} ppm ({:.3}%)", value as u64, value / 10_000.0)
+}
+
 fn format_number<T: ToString>(value: T) -> String {
     let value = value.to_string();
     let (sign, digits) = value
@@ -644,6 +680,11 @@ mod tests {
             channel_funds_sat: 100,
             normal_channel_capacity_sat: 200,
             channel_funds_percent_of_capacity: Some(50.0),
+            channel_balance_target_stddev_percentage_points: 38.83,
+            network_average_fee_ppm: 728.0,
+            network_median_fee_ppm: 220.0,
+            node_average_fee_ppm: 748.0,
+            node_median_fee_ppm: 388.0,
             total_forwarding_fees_sat: 0,
             total_rebalance_cost_msat: 0,
             net_routing_revenue_msat: 0,
@@ -716,6 +757,11 @@ mod tests {
         assert!(overview.contains("100 of 200 sats normal-channel capacity"));
         assert!(overview.contains("On-chain balance"));
         assert!(overview.contains("123,456 sats"));
+        assert!(overview.contains("38.83 pp from 50%"));
+        assert!(overview.contains("728 ppm (0.073%)"));
+        assert!(overview.contains("220 ppm (0.022%)"));
+        assert!(overview.contains("748 ppm (0.075%)"));
+        assert!(overview.contains("388 ppm (0.039%)"));
 
         fs::remove_dir_all(root).unwrap();
     }

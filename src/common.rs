@@ -33,6 +33,23 @@ pub fn format_sats_str(amount: &str) -> String {
         .unwrap_or_else(|_| amount.replace(',', &SATS_GROUP_SEPARATOR.to_string()))
 }
 
+pub fn channel_balance_target_stddev_percentage_points(channels: &[crate::cmd::Fund]) -> f64 {
+    if channels.is_empty() {
+        return 0.0;
+    }
+
+    let mean_squared_distance = channels
+        .iter()
+        .map(|channel| {
+            let distance_from_target = channel.perc_float() - 0.5;
+            distance_from_target * distance_from_target
+        })
+        .sum::<f64>()
+        / channels.len() as f64;
+
+    mean_squared_distance.sqrt() * 100.0
+}
+
 /// Helper struct to compute the average fee of the channels of a node
 #[derive(Default)]
 pub struct ChannelFee {
@@ -112,7 +129,12 @@ pub fn format_duration(duration: Duration) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_sats, format_sats_str, format_signed_sats};
+    use crate::cmd::Fund;
+
+    use super::{
+        channel_balance_target_stddev_percentage_points, format_sats, format_sats_str,
+        format_signed_sats,
+    };
 
     #[test]
     fn formats_sats_with_thin_space_groups() {
@@ -135,5 +157,30 @@ mod tests {
     fn formats_sats_strings_with_thin_space_groups() {
         assert_eq!(format_sats_str("25,799"), "25\u{2009}799");
         assert_eq!(format_sats_str("25799"), "25\u{2009}799");
+    }
+
+    #[test]
+    fn channel_balance_target_stddev_measures_distance_from_fifty_percent() {
+        let channels = [fund(250, 1_000), fund(750, 1_000)];
+
+        assert_eq!(
+            channel_balance_target_stddev_percentage_points(&channels),
+            25.0
+        );
+        assert_eq!(channel_balance_target_stddev_percentage_points(&[]), 0.0);
+    }
+
+    fn fund(our_amount_msat: u64, amount_msat: u64) -> Fund {
+        Fund {
+            peer_id: "peer".to_string(),
+            connected: true,
+            state: "CHANNELD_NORMAL".to_string(),
+            channel_id: "channel".to_string(),
+            short_channel_id: Some("1x1x1".to_string()),
+            our_amount_msat,
+            amount_msat,
+            funding_txid: "txid".to_string(),
+            funding_output: 0,
+        }
     }
 }

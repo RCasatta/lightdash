@@ -7,11 +7,12 @@ use chrono::{DateTime, NaiveDateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::cmd::{self, ClosedChannel, Forward, Fund};
+use crate::common::channel_balance_target_stddev_percentage_points;
 use crate::history;
 use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts, DatasetMetadata};
 use crate::store::{RebalancePart, Store};
 
-pub(crate) const SCHEMA_VERSION: u32 = 14;
+pub(crate) const SCHEMA_VERSION: u32 = 15;
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct SnapshotManifest {
@@ -50,6 +51,11 @@ pub(crate) struct SummarySnapshot {
     pub channel_funds_sat: u64,
     pub normal_channel_capacity_sat: u64,
     pub channel_funds_percent_of_capacity: Option<f64>,
+    pub channel_balance_target_stddev_percentage_points: f64,
+    pub network_average_fee_ppm: f64,
+    pub network_median_fee_ppm: f64,
+    pub node_average_fee_ppm: f64,
+    pub node_median_fee_ppm: f64,
     pub total_forwarding_fees_sat: u64,
     pub total_rebalance_cost_msat: u64,
     pub net_routing_revenue_msat: i64,
@@ -404,11 +410,13 @@ fn build_summary(
         + roic.lease_fee_earnings_12_months_msat as f64
         - roic.lease_fee_cost_12_months_msat as f64
         - roic.rebalance_cost_12_months_msat as f64;
-    let normal_channel_capacity_sat = store
-        .normal_channels()
+    let normal_channels = store.normal_channels();
+    let normal_channel_capacity_sat = normal_channels
         .iter()
         .map(|channel| channel.amount_msat / 1000)
         .sum();
+    let (network_average_fee_ppm, network_median_fee_ppm) = store.network_channel_fees();
+    let (node_average_fee_ppm, node_median_fee_ppm) = store.node_channel_fees();
     SummarySnapshot {
         node_id: store.info.id.clone(),
         block_height: store.info.blockheight,
@@ -431,6 +439,12 @@ fn build_summary(
             roic.total_funds,
             normal_channel_capacity_sat,
         ),
+        channel_balance_target_stddev_percentage_points:
+            channel_balance_target_stddev_percentage_points(&normal_channels),
+        network_average_fee_ppm,
+        network_median_fee_ppm,
+        node_average_fee_ppm,
+        node_median_fee_ppm,
         total_forwarding_fees_sat: store.total_forwarding_fees_sat(),
         total_rebalance_cost_msat: store.total_rebalance_cost_msat(),
         net_routing_revenue_msat: store.net_routing_revenue_msat(),
