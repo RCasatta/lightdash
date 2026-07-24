@@ -11,7 +11,7 @@ use crate::history;
 use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts, DatasetMetadata};
 use crate::store::{RebalancePart, Store};
 
-pub(crate) const SCHEMA_VERSION: u32 = 13;
+pub(crate) const SCHEMA_VERSION: u32 = 14;
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct SnapshotManifest {
@@ -48,6 +48,8 @@ pub(crate) struct SummarySnapshot {
     pub settled_forward_count: usize,
     pub onchain_balance_msat: u64,
     pub channel_funds_sat: u64,
+    pub normal_channel_capacity_sat: u64,
+    pub channel_funds_percent_of_capacity: Option<f64>,
     pub total_forwarding_fees_sat: u64,
     pub total_rebalance_cost_msat: u64,
     pub net_routing_revenue_msat: i64,
@@ -402,6 +404,11 @@ fn build_summary(
         + roic.lease_fee_earnings_12_months_msat as f64
         - roic.lease_fee_cost_12_months_msat as f64
         - roic.rebalance_cost_12_months_msat as f64;
+    let normal_channel_capacity_sat = store
+        .normal_channels()
+        .iter()
+        .map(|channel| channel.amount_msat / 1000)
+        .sum();
     SummarySnapshot {
         node_id: store.info.id.clone(),
         block_height: store.info.blockheight,
@@ -419,6 +426,11 @@ fn build_summary(
             .map(|output| output.amount_msat)
             .sum(),
         channel_funds_sat: roic.total_funds,
+        normal_channel_capacity_sat,
+        channel_funds_percent_of_capacity: percentage(
+            roic.total_funds,
+            normal_channel_capacity_sat,
+        ),
         total_forwarding_fees_sat: store.total_forwarding_fees_sat(),
         total_rebalance_cost_msat: store.total_rebalance_cost_msat(),
         net_routing_revenue_msat: store.net_routing_revenue_msat(),
@@ -677,6 +689,10 @@ fn annualized_capacity_return_percent(
     Some((revenue_msat as f64 / capacity_msat as f64) * (365.0 / age_days as f64) * 100.0)
 }
 
+fn percentage(numerator: u64, denominator: u64) -> Option<f64> {
+    (denominator != 0).then(|| numerator as f64 / denominator as f64 * 100.0)
+}
+
 fn build_closed_channel_snapshot(
     store: &Store,
     channel: &ClosedChannel,
@@ -919,7 +935,7 @@ mod tests {
 
     use crate::history::ChannelFundsHistoryPoint;
 
-    use super::{annualized_capacity_return_percent, average_channel_funds, ratio_ppm};
+    use super::{annualized_capacity_return_percent, average_channel_funds, percentage, ratio_ppm};
 
     #[test]
     fn ratio_ppm_returns_none_for_no_volume() {
@@ -941,6 +957,12 @@ mod tests {
             annualized_capacity_return_percent(1_000, 100_000, None),
             None
         );
+    }
+
+    #[test]
+    fn percentage_reports_share_and_handles_zero_capacity() {
+        assert_eq!(percentage(1, 2), Some(50.0));
+        assert_eq!(percentage(0, 0), None);
     }
 
     #[test]

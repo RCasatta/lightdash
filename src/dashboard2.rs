@@ -162,7 +162,20 @@ fn render_overview_page(manifest: &SnapshotManifest, summary: &SummarySnapshot) 
         }
 
         section class="metric-grid" aria-label="Node summary" {
-            (metric_card("Channel funds", &format!("{} sats", format_number(summary.channel_funds_sat)), "Capital currently deployed"))
+            (metric_card(
+                "Local liquidity",
+                &format_optional_percent(summary.channel_funds_percent_of_capacity),
+                &format!(
+                    "{} of {} sats normal-channel capacity",
+                    format_number(summary.channel_funds_sat),
+                    format_number(summary.normal_channel_capacity_sat),
+                ),
+            ))
+            (metric_card(
+                "On-chain balance",
+                &format!("{} sats", format_number(summary.onchain_balance_msat / 1000)),
+                "Spendable wallet outputs",
+            ))
             (metric_card("Current channels", &format_number(summary.current_channel_count), &format!("{} normal", format_number(summary.normal_channel_count))))
             (metric_card("Settled forwards", &format_number(summary.settled_forward_count), &format!("{} attempts recorded", format_number(summary.forward_attempt_count))))
             (metric_card("Forwarding fees", &format!("{} sats", format_number(summary.total_forwarding_fees_sat)), "All-time settled forwarding revenue"))
@@ -627,8 +640,10 @@ mod tests {
             closed_channel_count: 0,
             forward_attempt_count: 0,
             settled_forward_count: 0,
-            onchain_balance_msat: 0,
-            channel_funds_sat: 0,
+            onchain_balance_msat: 123_456_000,
+            channel_funds_sat: 100,
+            normal_channel_capacity_sat: 200,
+            channel_funds_percent_of_capacity: Some(50.0),
             total_forwarding_fees_sat: 0,
             total_rebalance_cost_msat: 0,
             net_routing_revenue_msat: 0,
@@ -695,6 +710,12 @@ mod tests {
         assert!(output.join("data/channels.schema.json").is_file());
         assert!(output.join("data/closed-channels.schema.json").is_file());
         assert!(output.join("data/settled-forwards.schema.json").is_file());
+        let overview = fs::read_to_string(output.join("index.html")).unwrap();
+        assert!(overview.contains("Local liquidity"));
+        assert!(overview.contains("50.00%"));
+        assert!(overview.contains("100 of 200 sats normal-channel capacity"));
+        assert!(overview.contains("On-chain balance"));
+        assert!(overview.contains("123,456 sats"));
 
         fs::remove_dir_all(root).unwrap();
     }
