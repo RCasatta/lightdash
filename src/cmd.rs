@@ -352,8 +352,37 @@ pub struct ListPeerChannelsChannel {
     pub state: String,
     #[serde(default)]
     pub short_channel_id: Option<String>,
+    #[serde(default)]
+    pub channel_id: Option<String>,
+    #[serde(default)]
+    pub private: Option<bool>,
+    #[serde(default)]
+    pub updates: Option<PeerChannelUpdates>,
+    #[serde(default)]
+    pub fee_base_msat: Option<u64>,
+    #[serde(default)]
+    pub fee_proportional_millionths: Option<u64>,
+    #[serde(default)]
     pub to_us_msat: u64,
+    #[serde(default)]
     pub maximum_htlc_out_msat: u64,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct PeerChannelUpdates {
+    #[serde(default)]
+    pub local: Option<PeerChannelUpdate>,
+    #[serde(default)]
+    pub remote: Option<PeerChannelUpdate>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct PeerChannelUpdate {
+    pub htlc_minimum_msat: u64,
+    pub htlc_maximum_msat: u64,
+    pub cltv_expiry_delta: u64,
+    pub fee_base_msat: u64,
+    pub fee_proportional_millionths: u64,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -722,7 +751,7 @@ pub struct ListDatastore {
 
 #[cfg(test)]
 mod command_tests {
-    use super::{build_remote_command, normalize_remote_home_path, shell_quote};
+    use super::{build_remote_command, normalize_remote_home_path, shell_quote, ListPeerChannels};
 
     #[test]
     fn remote_lightning_cli_command_is_shell_quoted() {
@@ -750,6 +779,49 @@ mod command_tests {
         assert_eq!(
             normalize_remote_home_path("/srv/availdb.json"),
             "/srv/availdb.json"
+        );
+    }
+
+    #[test]
+    fn listpeerchannels_deserializes_private_channel_policies() {
+        let response: ListPeerChannels = serde_json::from_str(
+            r#"{
+                "channels": [{
+                    "state": "CHANNELD_NORMAL",
+                    "channel_id": "channel-id",
+                    "short_channel_id": "1x2x3",
+                    "private": true,
+                    "updates": {
+                        "local": {
+                            "htlc_minimum_msat": 1000,
+                            "htlc_maximum_msat": 2000000,
+                            "cltv_expiry_delta": 34,
+                            "fee_base_msat": 1000,
+                            "fee_proportional_millionths": 823
+                        },
+                        "remote": {
+                            "htlc_minimum_msat": 0,
+                            "htlc_maximum_msat": 1900000,
+                            "cltv_expiry_delta": 72,
+                            "fee_base_msat": 100000,
+                            "fee_proportional_millionths": 0
+                        }
+                    }
+                }]
+            }"#,
+        )
+        .unwrap();
+
+        let channel = &response.channels[0];
+        assert_eq!(channel.private, Some(true));
+        let updates = channel.updates.as_ref().unwrap();
+        assert_eq!(
+            updates.local.as_ref().unwrap().fee_proportional_millionths,
+            823
+        );
+        assert_eq!(
+            updates.remote.as_ref().unwrap().fee_proportional_millionths,
+            0
         );
     }
 }

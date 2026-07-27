@@ -22,6 +22,7 @@ pub struct RebalancePart {
 pub struct Store {
     pub info: cmd::GetInfo,
     pub channels: cmd::ListChannels,
+    pub peer_channels: cmd::ListPeerChannels,
     pub peers: cmd::ListPeers,
     pub funds: cmd::ListFunds,
     pub forwards: cmd::ListForwards,
@@ -286,6 +287,7 @@ impl Store {
         let now = Utc::now();
         let info = cmd::get_info();
         let channels = cmd::list_channels();
+        let peer_channels = cmd::list_peer_channels();
         let peers = cmd::list_peers();
         let funds = cmd::list_funds();
         let forwards = cmd::list_forwards();
@@ -413,6 +415,7 @@ impl Store {
         let store = Self {
             info,
             channels,
+            peer_channels,
             peers,
             funds,
             forwards,
@@ -535,6 +538,14 @@ impl Store {
 
     pub fn channels(&self) -> impl Iterator<Item = &cmd::Channel> {
         self.channels.channels.iter()
+    }
+
+    /// Get a local channel's peer-specific state and policies by stable channel ID.
+    pub fn get_peer_channel(&self, channel_id: &str) -> Option<&cmd::ListPeerChannelsChannel> {
+        self.peer_channels
+            .channels
+            .iter()
+            .find(|channel| channel.channel_id.as_deref() == Some(channel_id))
     }
 
     pub fn peers(&self) -> impl Iterator<Item = &cmd::Peer> {
@@ -1643,6 +1654,7 @@ mod tests {
                 blockheight: 200_000,
             },
             channels: cmd::ListChannels { channels: vec![] },
+            peer_channels: cmd::ListPeerChannels { channels: vec![] },
             peers: cmd::ListPeers { peers: vec![] },
             funds: cmd::ListFunds {
                 channels: funds,

@@ -12,7 +12,7 @@ use crate::history;
 use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts, DatasetMetadata};
 use crate::store::{RebalancePart, Store};
 
-pub(crate) const SCHEMA_VERSION: u32 = 15;
+pub(crate) const SCHEMA_VERSION: u32 = 16;
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct SnapshotManifest {
@@ -99,6 +99,7 @@ pub(crate) struct ChannelSnapshot {
     pub peer_alias: String,
     pub connected: bool,
     pub peer_supports_splicing: Option<bool>,
+    pub private: Option<bool>,
     pub state: String,
     pub is_normal: bool,
     pub capacity_msat: u64,
@@ -550,6 +551,17 @@ fn build_channel_snapshot(
     let net_revenue_msat = net_routing_revenue_msat as i128 + lease_fees.earned_msat as i128
         - lease_fees.paid_msat as i128;
     let indirect_revenue_msat = forwards.indirect_fees_sat as i128 * 1000;
+    let peer_channel = store.get_peer_channel(&channel.channel_id);
+    let local_update = peer_channel
+        .and_then(|peer_channel| peer_channel.updates.as_ref())
+        .and_then(|updates| updates.local.as_ref());
+    let remote_update = peer_channel
+        .and_then(|peer_channel| peer_channel.updates.as_ref())
+        .and_then(|updates| updates.remote.as_ref());
+    let outbound_network_channel =
+        short_channel_id.and_then(|scid| store.get_channel(scid, &store.info.id));
+    let inbound_network_channel =
+        short_channel_id.and_then(|scid| store.get_channel(scid, &channel.peer_id));
 
     ChannelSnapshot {
         channel_id: channel.channel_id.clone(),
@@ -560,6 +572,7 @@ fn build_channel_snapshot(
         peer_alias: store.get_node_alias(&channel.peer_id),
         connected: channel.connected,
         peer_supports_splicing: store.peer_supports_splicing(&channel.peer_id),
+        private: peer_channel.and_then(|peer_channel| peer_channel.private),
         state: channel.state.clone(),
         is_normal: channel.state == "CHANNELD_NORMAL",
         capacity_msat: channel.amount_msat,
@@ -571,24 +584,39 @@ fn build_channel_snapshot(
         },
         age_days,
         uptime_ratio: store.avail_map.get(&channel.peer_id).copied(),
-        outbound_fee_ppm: short_channel_id
-            .and_then(|scid| store.get_channel(scid, &store.info.id))
-            .map(|network_channel| network_channel.fee_per_millionth),
-        inbound_fee_ppm: short_channel_id
-            .and_then(|scid| store.get_channel(scid, &channel.peer_id))
-            .map(|network_channel| network_channel.fee_per_millionth),
-        outbound_base_fee_msat: short_channel_id
-            .and_then(|scid| store.get_channel(scid, &store.info.id))
-            .map(|network_channel| network_channel.base_fee_millisatoshi),
-        outbound_htlc_min_msat: short_channel_id
-            .and_then(|scid| store.get_channel(scid, &store.info.id))
-            .map(|network_channel| network_channel.htlc_minimum_msat),
-        outbound_htlc_max_msat: short_channel_id
-            .and_then(|scid| store.get_channel(scid, &store.info.id))
-            .map(|network_channel| network_channel.htlc_maximum_msat),
-        outbound_delay_blocks: short_channel_id
-            .and_then(|scid| store.get_channel(scid, &store.info.id))
-            .map(|network_channel| network_channel.delay),
+        outbound_fee_ppm: local_update
+            .map(|update| update.fee_proportional_millionths)
+            .or_else(|| {
+                peer_channel.and_then(|peer_channel| peer_channel.fee_proportional_millionths)
+            })
+            .or_else(|| {
+                outbound_network_channel.map(|network_channel| network_channel.fee_per_millionth)
+            }),
+        inbound_fee_ppm: remote_update
+            .map(|update| update.fee_proportional_millionths)
+            .or_else(|| {
+                inbound_network_channel.map(|network_channel| network_channel.fee_per_millionth)
+            }),
+        outbound_base_fee_msat: local_update
+            .map(|update| update.fee_base_msat)
+            .or_else(|| peer_channel.and_then(|peer_channel| peer_channel.fee_base_msat))
+            .or_else(|| {
+                outbound_network_channel
+                    .map(|network_channel| network_channel.base_fee_millisatoshi)
+            }),
+        outbound_htlc_min_msat: local_update
+            .map(|update| update.htlc_minimum_msat)
+            .or_else(|| {
+                outbound_network_channel.map(|network_channel| network_channel.htlc_minimum_msat)
+            }),
+        outbound_htlc_max_msat: local_update
+            .map(|update| update.htlc_maximum_msat)
+            .or_else(|| {
+                outbound_network_channel.map(|network_channel| network_channel.htlc_maximum_msat)
+            }),
+        outbound_delay_blocks: local_update
+            .map(|update| update.cltv_expiry_delta)
+            .or_else(|| outbound_network_channel.map(|network_channel| network_channel.delay)),
         last_fee_adjustment_at: short_channel_id
             .and_then(|scid| store.get_setchannel_timestamp(scid))
             .and_then(|timestamp| u64::try_from(timestamp).ok())

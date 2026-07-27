@@ -301,12 +301,16 @@
         lineChart("fee-chart", [
             { label: "Local", color: "#f6a723", rows: policyRows.filter(row => row.direction === "local"), value: row => row.fee_ppm },
             { label: "Remote", color: "#64b5f6", rows: policyRows.filter(row => row.direction === "remote"), value: row => row.fee_ppm }
-        ], " ppm");
+        ], " ppm", [{
+            label: "Historical effective",
+            color: "#c084fc",
+            value: channel.historical_effective_fee_ppm
+        }]);
         lineChart("htlc-chart", [{ label: "Local", color: "#50d890", rows: policyRows.filter(row => row.direction === "local"), value: row => row.htlc_max_msat / 1000 }], " sats");
         note.textContent = `Change-point history: ${formatNumber(liquidityRows.length, 0)} liquidity observations and ${formatNumber(policyRows.length, 0)} policy observations.`;
     }
 
-    function lineChart(id, series, suffix) {
+    function lineChart(id, series, suffix, referenceLines = []) {
         const host = document.querySelector(`#${id}`);
         const normalizedSeries = series.map(item => ({
             ...item,
@@ -315,6 +319,9 @@
                 .filter(point => Number.isFinite(point.x) && Number.isFinite(point.y))
                 .sort((a, b) => a.x - b.x)
         }));
+        const normalizedReferences = referenceLines
+            .map(item => ({ ...item, value: Number(item.value) }))
+            .filter(item => Number.isFinite(item.value));
         const points = normalizedSeries.flatMap(item => item.points);
         if (points.length === 0) return renderEmptyChart(id);
         const width = 760;
@@ -322,8 +329,9 @@
         const pad = { left: 58, right: 18, top: 24, bottom: 34 };
         const minX = Math.min(...points.map(point => point.x));
         const maxX = Math.max(...points.map(point => point.x));
-        const minY = Math.min(0, ...points.map(point => point.y));
-        const maxY = Math.max(...points.map(point => point.y));
+        const values = [...points.map(point => point.y), ...normalizedReferences.map(item => item.value)];
+        const minY = Math.min(0, ...values);
+        const maxY = Math.max(...values);
         const x = value => pad.left + (value - minX) / Math.max(1, maxX - minX) * (width - pad.left - pad.right);
         const y = value => height - pad.bottom - (value - minY) / Math.max(1, maxY - minY) * (height - pad.top - pad.bottom);
         const svg = svgElement("svg", { viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": "Historical line chart" });
@@ -332,6 +340,19 @@
         svg.appendChild(svgText(pad.left - 8, y(minY) + 4, formatCompact(minY, suffix), "end"));
         svg.appendChild(svgText(pad.left, height - 10, new Date(minX).toISOString().slice(0, 10), "start"));
         svg.appendChild(svgText(width - pad.right, height - 10, new Date(maxX).toISOString().slice(0, 10), "end"));
+        normalizedReferences.forEach(item => {
+            const reference = svgElement("line", {
+                x1: pad.left,
+                y1: y(item.value),
+                x2: width - pad.right,
+                y2: y(item.value),
+                stroke: item.color,
+                class: "chart-reference-line"
+            });
+            reference.appendChild(svgElement("title", {}));
+            reference.lastChild.textContent = `${item.label}: ${formatChartTooltipValue(item.value, suffix)}`;
+            svg.appendChild(reference);
+        });
         normalizedSeries.forEach(item => {
             if (!item.points.length) return;
             const path = item.points.map((point, index) => `${index ? "L" : "M"}${x(point.x).toFixed(1)},${y(point.y).toFixed(1)}`).join(" ");
@@ -363,6 +384,16 @@
             const swatch = document.createElement("i");
             swatch.style.background = item.color;
             entry.append(swatch, document.createTextNode(item.label));
+            legend.appendChild(entry);
+        });
+        normalizedReferences.forEach(item => {
+            const entry = document.createElement("span");
+            const swatch = document.createElement("i");
+            swatch.className = "reference";
+            swatch.style.borderColor = item.color;
+            entry.append(swatch, document.createTextNode(
+                `${item.label} · ${formatChartTooltipValue(item.value, suffix)}`
+            ));
             legend.appendChild(entry);
         });
         const tooltip = document.createElement("div");
@@ -616,7 +647,7 @@
                 format: "json",
                 itemLabel: "channels",
                 fileBase: "lightdash-channels",
-                storageKey: "lightdash.dashboard2.channelColumns",
+                storageKey: "lightdash.dashboard2.channelColumns.v2",
                 defaultSort: "short_channel_id",
                 defaultDirection: "desc",
                 pageSize: 0,
@@ -702,6 +733,7 @@
             column("peer_alias", "Peer", "text", { visible: true }),
             column("connected", "Connected", "boolean", { visible: true }),
             column("peer_supports_splicing", "Splice", "boolean", { visible: true }),
+            column("private", "Private", "boolean", { visible: true }),
             column("age_days", "Age", "number", { visible: true, suffix: " d", decimals: 0 }),
             column("local_balance_percent", "Local balance", "number", { visible: true, suffix: "%", decimals: 1 }),
             column("capacity_msat", "Capacity", "number", { visible: true, transform: msatToSat, suffix: " sats", decimals: 0 }),

@@ -757,6 +757,11 @@ h2 {
     pointer-events: none;
 }
 
+.chart-reference-line {
+    stroke-dasharray: 7 5;
+    stroke-width: 1.5;
+}
+
 .chart-tooltip {
     position: absolute;
     z-index: 3;
@@ -825,6 +830,13 @@ h2 {
     width: 0.65rem;
     height: 0.2rem;
     border-radius: 999px;
+}
+
+.chart-legend i.reference {
+    height: 0;
+    border-top: 2px dashed;
+    border-radius: 0;
+    background: none;
 }
 
 .chart-axis {
