@@ -309,7 +309,7 @@
             label: "Historical effective",
             color: "#c084fc",
             value: channel.historical_effective_fee_ppm
-        }], { yAxisMax: 4_000 });
+        }], { yAxisMax: 3_000 });
         lineChart("htlc-chart", [{ label: "Local", color: "#50d890", rows: policyRows.filter(row => row.direction === "local"), value: row => row.htlc_max_msat / 1000 }], " sats");
         note.textContent = `Change-point history: ${formatNumber(liquidityRows.length, 0)} liquidity observations and ${formatNumber(policyRows.length, 0)} policy observations.`;
     }
