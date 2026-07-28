@@ -7,13 +7,13 @@ relationship with [SLING_REBALANCE_STRATEGY.md](SLING_REBALANCE_STRATEGY.md).
 
 ## Objective
 
-The policy tries to discover an attractive forwarding price while protecting
-scarce outbound liquidity:
+The policy tries to discover an attractive forwarding price while maintaining
+an absolute minimum outbound reserve target:
 
 - a settled outbound forward is positive price evidence
 - a channel with no forwarding history should search downward quickly
 - an established channel should search downward slowly
-- a depleted channel should become gradually more expensive
+- a channel below the 50,000-sat reserve should not search downward
 - failed, offered, and local-failed HTLCs must not affect price
 
 The controller deliberately does not use forward attempts, TPPM, historical
@@ -21,6 +21,11 @@ PPM, raw forward count, or routed amount in its fee step. TPPM and historical
 PPM remain useful for analysis and Sling budgets. TPPM is the time-decayed,
 amount-weighted full realized fee rate over settled outbound forwards of at
 least 1,000 sats; it includes the base fee.
+
+The 50,000-sat threshold is intentionally absolute rather than proportional to
+channel capacity. It is an operational reserve target, not an attempt to
+price scarcity across the full balance range. HTLC maximum policy is the
+primary control on how remaining liquidity can be used.
 
 ## Production cadence
 
@@ -73,9 +78,10 @@ The normal-price half-life is about 34 idle days.
 A channel is depleted whenever it has fewer than 50,000 local sats, regardless
 of forwarding history.
 
-Without a recent settlement, its PPM increases by 1% per day. This is a simple
-inventory-scarcity adjustment. It does not jump or reset the channel to 2,500
-PPM.
+Without a recent settlement, its PPM increases by 1% per day. The purpose is to
+prevent downward price search while Sling restores the absolute reserve, not to
+use fees as the primary way to discourage channel use. It does not jump or
+reset the channel to 2,500 PPM.
 
 If a depleted channel later returns to normal balance, the normal 2% daily
 decrease is roughly twice as fast as the preceding 1% increase:
@@ -169,6 +175,10 @@ not:
 - justify a rebalance
 - increase a Sling budget
 
+This exclusion is also based on prior local investigation: failed-HTLC
+observations were noise rather than a useful demand signal. A failure is not
+evidence that a higher price was accepted.
+
 ## HTLC and availability behavior
 
 The existing operational safeguards remain unchanged:
@@ -179,6 +189,14 @@ The existing operational safeguards remain unchanged:
 - minimum HTLC remains at least 100,000 msat unless maximum HTLC is smaller
 
 HTLC changes and fee changes are sent in the same `setchannel` command.
+The maximum-HTLC rule, rather than a capacity-relative fee curve, is the main
+mechanism limiting use as local liquidity falls.
+
+This is a recovery target, not a hard balance guarantee. Maximum HTLC is based
+on current local balance rather than `local_balance - 50,000`, so an accepted
+forward can cross the boundary. A strict 50,000-sat reserve would require
+subtracting it when calculating maximum HTLC or disabling outbound forwarding
+at the boundary.
 
 ## Relationship with Sling
 
@@ -186,7 +204,8 @@ The state policies have complementary roles:
 
 - bootstrap fee discovery finds whether a new channel has demand
 - normal pricing searches slowly around an accepted region
-- depleted pricing charges gradually more for scarce remaining liquidity
+- depleted pricing preserves and gradually raises the retained price while the
+  fixed reserve is restored
 - Sling attempts to restore depleted targets from cheap, locally liquid sources
 
 The deployed order is intentional:
@@ -201,11 +220,22 @@ for established channels when their history-derived rebalance budget is higher.
 Sling retains its independent safety caps and profitability limitations
 documented in `SLING_REBALANCE_STRATEGY.md`.
 
+For a channel with fewer than 10 local sats, Sling performs one bounded
+100,000-sat bootstrap at up to 1,100 PPM. The amount is twice the depleted
+threshold, so one successful operation restores the channel above the
+50,000-sat reserve. Its potentially high fee is acceptable as a one-time
+bootstrap cost; it is not an ongoing unconstrained rebalance policy.
+
 ## Why this policy is intentionally simple
 
 The policy needs no persisted idle counter or learned demand model. Current
 balance, the latest 24-hour settled window, and retained settled history fully
 determine the action.
+
+The deployment also aims for one channel per peer and uses splicing to change
+capacity. Under that operating model, channel-scoped and peer-scoped pricing
+refer to the same economic relationship while exact outbound-SCID evidence
+keeps decisions reconstructible.
 
 This makes every decision easy to reconstruct:
 

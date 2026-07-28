@@ -106,6 +106,16 @@ successful bootstrap therefore moves the channel out of that absolute
 depleted state and lets bootstrap or normal dynamic fee behavior resume,
 depending on whether the channel has retained settled outbound history.
 
+The 50,000-sat value is a fixed operational reserve target, not a percentage-based
+scarcity trigger. Dynamic fees are not used to discourage channel use across
+the whole balance range; the fee controller's maximum-HTLC rule limits use as
+local liquidity falls. The dust operation can accept a relatively high fee
+because it is one bounded bootstrap whose 100,000-sat amount is designed to
+restore that reserve, not a recurring unconstrained rebalance.
+
+This recovery policy does not itself guarantee a hard 50,000-sat local floor;
+an accepted forward can cross the boundary before Sling restores liquidity.
+
 Dust bootstraps are executed immediately when `EXECUTE_SLING` is set. They are
 not persistent jobs and do not require `sling-go`.
 
