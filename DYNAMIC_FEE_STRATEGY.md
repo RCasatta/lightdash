@@ -18,7 +18,9 @@ scarce outbound liquidity:
 
 The controller deliberately does not use forward attempts, TPPM, historical
 PPM, raw forward count, or routed amount in its fee step. TPPM and historical
-PPM remain useful for analysis and Sling budgets.
+PPM remain useful for analysis and Sling budgets. TPPM is the time-decayed,
+amount-weighted full realized fee rate over settled outbound forwards of at
+least 1,000 sats; it includes the base fee.
 
 ## Production cadence
 

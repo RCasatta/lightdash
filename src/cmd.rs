@@ -583,6 +583,8 @@ pub struct Forward {
 pub struct SettledForward {
     pub in_channel: String,
     pub out_channel: String,
+    pub fee_msat: u64,
+    pub out_msat: u64,
     pub fee_sat: u64,
     pub out_sat: u64,
     pub fee_ppm: u64,
@@ -615,6 +617,8 @@ impl TryFrom<Forward> for SettledForward {
         Ok(Self {
             in_channel: value.in_channel,
             out_channel: value.out_channel.ok_or(())?,
+            fee_msat,
+            out_msat,
             fee_sat: fee_msat / 1000,
             out_sat: out_msat / 1000,
             fee_ppm,

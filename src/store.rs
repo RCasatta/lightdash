@@ -111,9 +111,8 @@ struct ChannelForwardMetrics {
     outbound_fees_sat: u64,
     indirect_fees_sat: u64,
     routed_out_sat: u64,
-    weighted_fees_sat: f64,
-    weighted_variable_fees_sat: f64,
-    weighted_routed_sat: f64,
+    weighted_tppm_fees_msat: f64,
+    weighted_tppm_routed_msat: f64,
 }
 
 #[derive(Default)]
@@ -127,7 +126,7 @@ struct ForwardCache {
 
 fn build_forward_cache(forwards: &cmd::ListForwards, now: DateTime<Utc>) -> ForwardCache {
     const HALF_LIFE_SECONDS: f64 = 7.0 * 24.0 * 60.0 * 60.0;
-    const OUR_BASE_FEE_SAT: u64 = 1;
+    const MIN_TPPM_OUT_MSAT: u64 = 1_000 * 1_000;
 
     let mut settled: Vec<_> = forwards
         .forwards
@@ -163,15 +162,15 @@ fn build_forward_cache(forwards: &cmd::ListForwards, now: DateTime<Utc>) -> Forw
         outgoing.outbound_fees_sat += forward.fee_sat;
         outgoing.routed_out_sat += forward.out_sat;
 
-        let age_seconds = now
-            .signed_duration_since(forward.resolved_time)
-            .num_seconds()
-            .max(0) as f64;
-        let decay = 0.5_f64.powf(age_seconds / HALF_LIFE_SECONDS);
-        outgoing.weighted_fees_sat += forward.fee_sat as f64 * decay;
-        outgoing.weighted_variable_fees_sat +=
-            forward.fee_sat.saturating_sub(OUR_BASE_FEE_SAT) as f64 * decay;
-        outgoing.weighted_routed_sat += forward.out_sat as f64 * decay;
+        if forward.out_msat >= MIN_TPPM_OUT_MSAT {
+            let age_seconds = now
+                .signed_duration_since(forward.resolved_time)
+                .num_seconds()
+                .max(0) as f64;
+            let decay = 0.5_f64.powf(age_seconds / HALF_LIFE_SECONDS);
+            outgoing.weighted_tppm_fees_msat += forward.fee_msat as f64 * decay;
+            outgoing.weighted_tppm_routed_msat += forward.out_msat as f64 * decay;
+        }
     }
 
     let mut local_failed_indices_by_channel: HashMap<String, Vec<usize>> = HashMap::new();
@@ -1053,39 +1052,18 @@ impl Store {
         Some(total_fees as f64 * 1_000_000.0 / total_routed as f64)
     }
 
-    /// Get time-decayed effective fee rate in ppm for outbound forwards on a channel.
+    /// Get time-decayed full fee rate in ppm for outbound forwards of at least 1,000 sats.
     ///
-    /// Uses a 1-week half-life. The average is still weighted by routed amount:
-    /// sum(fee * decay) divided by sum(amount * decay).
-    pub fn get_channel_time_decayed_effective_fee_ppm(
-        &self,
-        short_channel_id: &str,
-    ) -> Option<f64> {
+    /// Uses exact millisatoshi amounts, includes the base fee, and applies a one-week
+    /// half-life. The average is weighted by routed amount:
+    /// sum(fee_msat * decay) divided by sum(out_msat * decay).
+    pub fn get_channel_time_decayed_fee_ppm(&self, short_channel_id: &str) -> Option<f64> {
         let metrics = self
             .forward_cache
             .metrics_by_channel
             .get(short_channel_id)?;
-        let weighted_fees = metrics.weighted_fees_sat;
-        let weighted_routed = metrics.weighted_routed_sat;
-
-        if weighted_routed == 0.0 {
-            return None;
-        }
-
-        Some(weighted_fees * 1_000_000.0 / weighted_routed)
-    }
-
-    /// Get time-decayed variable fee rate in ppm after removing our fixed 1 sat base fee.
-    ///
-    /// This keeps the same 1-week half-life and amount weighting as TPPM, but reduces
-    /// each outbound forward fee by 1000 msat before averaging.
-    pub fn get_channel_time_decayed_variable_fee_ppm(&self, short_channel_id: &str) -> Option<f64> {
-        let metrics = self
-            .forward_cache
-            .metrics_by_channel
-            .get(short_channel_id)?;
-        let weighted_fees = metrics.weighted_variable_fees_sat;
-        let weighted_routed = metrics.weighted_routed_sat;
+        let weighted_fees = metrics.weighted_tppm_fees_msat;
+        let weighted_routed = metrics.weighted_tppm_routed_msat;
 
         if weighted_routed == 0.0 {
             return None;
@@ -1211,6 +1189,13 @@ impl Store {
         ))
     }
 
+    pub fn get_channel_combined_capacity_return(&self, short_channel_id: &str) -> Option<f64> {
+        Some(
+            self.get_channel_net_capacity_return(short_channel_id)?
+                + self.get_channel_indirect_capacity_contribution(short_channel_id)?,
+        )
+    }
+
     pub fn get_closed_channel_net_capacity_return(
         &self,
         channel: &cmd::ClosedChannel,
@@ -1240,6 +1225,16 @@ impl Store {
             channel.total_msat,
             age_days,
         ))
+    }
+
+    pub fn get_closed_channel_combined_capacity_return(
+        &self,
+        channel: &cmd::ClosedChannel,
+    ) -> Option<f64> {
+        Some(
+            self.get_closed_channel_net_capacity_return(channel)?
+                + self.get_closed_channel_indirect_capacity_contribution(channel)?,
+        )
     }
 
     pub fn get_closed_channel_age_days(&self, channel: &cmd::ClosedChannel) -> Option<i64> {
@@ -1633,18 +1628,75 @@ mod tests {
         status: &str,
         resolved_time: i64,
     ) -> cmd::Forward {
+        forward_with_amount(
+            in_channel,
+            out_channel,
+            fee_msat,
+            1_000_000,
+            status,
+            resolved_time,
+        )
+    }
+
+    fn forward_with_amount(
+        in_channel: &str,
+        out_channel: &str,
+        fee_msat: u64,
+        out_msat: u64,
+        status: &str,
+        resolved_time: i64,
+    ) -> cmd::Forward {
         cmd::Forward {
             in_channel: in_channel.to_string(),
             out_channel: Some(out_channel.to_string()),
             fee_msat: Some(fee_msat),
-            in_msat: 1_000_000 + fee_msat,
-            out_msat: Some(1_000_000),
+            in_msat: out_msat + fee_msat,
+            out_msat: Some(out_msat),
             status: status.to_string(),
             received_time: (resolved_time - 1) as f64,
             resolved_time: Some(resolved_time as f64),
             failreason: None,
             failcode: None,
         }
+    }
+
+    #[test]
+    fn tppm_includes_full_fee_and_excludes_forwards_below_one_thousand_sats() {
+        let store = test_store(
+            vec![fund(OUTGOING_SCID, 1_000_000_000)],
+            vec![
+                forward_with_amount(
+                    INCOMING_SCID,
+                    OUTGOING_SCID,
+                    100_000,
+                    999_999,
+                    "settled",
+                    NOW_TIMESTAMP - 60,
+                ),
+                forward_with_amount(
+                    INCOMING_SCID,
+                    OUTGOING_SCID,
+                    2_000,
+                    1_000_000,
+                    "settled",
+                    NOW_TIMESTAMP - 60,
+                ),
+                forward_with_amount(
+                    INCOMING_SCID,
+                    OUTGOING_SCID,
+                    3_000,
+                    2_000_000,
+                    "settled",
+                    NOW_TIMESTAMP - 60,
+                ),
+            ],
+            vec![],
+        );
+
+        let tppm = store
+            .get_channel_time_decayed_fee_ppm(OUTGOING_SCID)
+            .unwrap();
+        assert!((tppm - 1_666.666_666_666_666_7).abs() < f64::EPSILON);
     }
 
     fn test_store(
@@ -1978,6 +2030,14 @@ mod tests {
         assert_eq!(
             store.get_channel_indirect_capacity_contribution(OUTGOING_SCID),
             Some(0.0)
+        );
+        assert_eq!(
+            store.get_channel_combined_capacity_return(INCOMING_SCID),
+            Some(indirect_capacity_contribution)
+        );
+        assert_eq!(
+            store.get_channel_combined_capacity_return(OUTGOING_SCID),
+            Some(net_capacity_return)
         );
     }
 

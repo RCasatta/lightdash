@@ -12,7 +12,7 @@ use crate::history;
 use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts, DatasetMetadata};
 use crate::store::{RebalancePart, Store};
 
-pub(crate) const SCHEMA_VERSION: u32 = 16;
+pub(crate) const SCHEMA_VERSION: u32 = 17;
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct SnapshotManifest {
@@ -119,7 +119,7 @@ pub(crate) struct ChannelSnapshot {
     pub forwarding_fees_sat: u64,
     pub indirect_fees_sat: u64,
     pub historical_effective_fee_ppm: Option<f64>,
-    pub time_decayed_variable_fee_ppm: Option<f64>,
+    pub time_decayed_fee_ppm: Option<f64>,
     pub rebalance_target_cost_msat: u64,
     pub rebalance_target_credit_msat: u64,
     pub rebalance_effective_fee_ppm: Option<f64>,
@@ -131,6 +131,7 @@ pub(crate) struct ChannelSnapshot {
     pub gross_capacity_return_percent: Option<f64>,
     pub net_capacity_return_percent: Option<f64>,
     pub indirect_capacity_contribution_percent: Option<f64>,
+    pub combined_capacity_return_percent: Option<f64>,
 }
 
 #[derive(Serialize)]
@@ -154,6 +155,7 @@ struct ClosedChannelSnapshot {
     net_revenue_msat: i128,
     net_capacity_return_percent: Option<f64>,
     indirect_capacity_contribution_percent: Option<f64>,
+    combined_capacity_return_percent: Option<f64>,
 }
 
 #[derive(Serialize)]
@@ -231,8 +233,6 @@ struct ChannelForwardMetrics {
     routed_out_sat: u64,
     forwarding_fees_sat: u64,
     indirect_fees_sat: u64,
-    weighted_variable_fees_sat: f64,
-    weighted_routed_out_sat: f64,
 }
 
 #[derive(Default)]
@@ -551,6 +551,7 @@ fn build_channel_snapshot(
     let net_revenue_msat = net_routing_revenue_msat as i128 + lease_fees.earned_msat as i128
         - lease_fees.paid_msat as i128;
     let indirect_revenue_msat = forwards.indirect_fees_sat as i128 * 1000;
+    let combined_revenue_msat = net_revenue_msat + indirect_revenue_msat;
     let peer_channel = store.get_peer_channel(&channel.channel_id);
     let local_update = peer_channel
         .and_then(|peer_channel| peer_channel.updates.as_ref())
@@ -629,10 +630,8 @@ fn build_channel_snapshot(
             forwards.forwarding_fees_sat as f64,
             forwards.routed_out_sat as f64,
         ),
-        time_decayed_variable_fee_ppm: ratio_ppm(
-            forwards.weighted_variable_fees_sat,
-            forwards.weighted_routed_out_sat,
-        ),
+        time_decayed_fee_ppm: short_channel_id
+            .and_then(|scid| store.get_channel_time_decayed_fee_ppm(scid)),
         rebalance_target_cost_msat: rebalances.target_cost_msat,
         rebalance_target_credit_msat: rebalances.target_credit_msat,
         rebalance_effective_fee_ppm: ratio_ppm(
@@ -659,13 +658,15 @@ fn build_channel_snapshot(
             channel.amount_msat,
             age_days,
         ),
+        combined_capacity_return_percent: annualized_capacity_return_percent(
+            combined_revenue_msat,
+            channel.amount_msat,
+            age_days,
+        ),
     }
 }
 
 fn aggregate_channel_forwards(store: &Store) -> HashMap<String, ChannelForwardMetrics> {
-    const HALF_LIFE_SECONDS: f64 = 7.0 * 24.0 * 60.0 * 60.0;
-    const OUR_BASE_FEE_SAT: u64 = 1;
-
     let mut metrics: HashMap<String, ChannelForwardMetrics> = HashMap::new();
     for forward in store.settled_forwards() {
         let incoming = metrics.entry(forward.in_channel.clone()).or_default();
@@ -678,16 +679,6 @@ fn aggregate_channel_forwards(store: &Store) -> HashMap<String, ChannelForwardMe
         }
         outgoing.routed_out_sat += forward.out_sat;
         outgoing.forwarding_fees_sat += forward.fee_sat;
-
-        let age_seconds = store
-            .snapshot_time()
-            .signed_duration_since(forward.resolved_time)
-            .num_seconds()
-            .max(0) as f64;
-        let decay = 0.5_f64.powf(age_seconds / HALF_LIFE_SECONDS);
-        outgoing.weighted_variable_fees_sat +=
-            forward.fee_sat.saturating_sub(OUR_BASE_FEE_SAT) as f64 * decay;
-        outgoing.weighted_routed_out_sat += forward.out_sat as f64 * decay;
     }
     metrics
 }
@@ -759,6 +750,8 @@ fn build_closed_channel_snapshot(
     let net_revenue_msat = forwarding_fees_sat as i128 * 1000 + lease_fees.earned_msat as i128
         - lease_fees.paid_msat as i128
         - rebalance_target_cost_msat as i128;
+    let indirect_revenue_msat = indirect_fees_sat as i128 * 1000;
+    let combined_revenue_msat = net_revenue_msat + indirect_revenue_msat;
 
     ClosedChannelSnapshot {
         channel_id: channel.channel_id.clone(),
@@ -787,7 +780,12 @@ fn build_closed_channel_snapshot(
             age_days,
         ),
         indirect_capacity_contribution_percent: annualized_capacity_return_percent(
-            indirect_fees_sat as i128 * 1000,
+            indirect_revenue_msat,
+            channel.total_msat,
+            age_days,
+        ),
+        combined_capacity_return_percent: annualized_capacity_return_percent(
+            combined_revenue_msat,
             channel.total_msat,
             age_days,
         ),

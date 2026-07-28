@@ -214,7 +214,7 @@
         appendDetail(policy, "CLTV delta", channel.outbound_delay_blocks == null ? null : `${channel.outbound_delay_blocks} blocks`, fields.outbound_delay_blocks);
         appendDetail(policy, "Last fee adjustment", channel.last_fee_adjustment_at, fields.last_fee_adjustment_at);
         appendDetail(policy, "Historical fee rate", formatPpm(channel.historical_effective_fee_ppm), fields.historical_effective_fee_ppm);
-        appendDetail(policy, "Time-decayed fee rate", formatPpm(channel.time_decayed_variable_fee_ppm), fields.time_decayed_variable_fee_ppm);
+        appendDetail(policy, "Time-decayed fee rate", formatPpm(channel.time_decayed_fee_ppm), fields.time_decayed_fee_ppm);
 
         const inbound = forwards.filter(row => row.in_channel === channel.short_channel_id);
         const outbound = forwards.filter(row => row.out_channel === channel.short_channel_id);
@@ -232,6 +232,9 @@
         appendDetail(activity, "First rebalance", targetRebalances.at(-1)?.resolved_at, null);
         appendDetail(activity, "Last rebalance", targetRebalances[0]?.resolved_at, null);
         appendDetail(activity, "Net routing revenue", formatMsat(channel.net_routing_revenue_msat), fields.net_routing_revenue_msat);
+        appendDetail(activity, "Net capacity return", formatNumber(channel.net_capacity_return_percent, 2, "%"), fields.net_capacity_return_percent);
+        appendDetail(activity, "Indirect capacity contribution", formatNumber(channel.indirect_capacity_contribution_percent, 2, "%"), fields.indirect_capacity_contribution_percent);
+        appendDetail(activity, "Combined capacity return", formatNumber(channel.combined_capacity_return_percent, 2, "%"), fields.combined_capacity_return_percent);
     }
 
     function renderClosedChannelDetails(channel, forwards, rebalances, fields) {
@@ -262,6 +265,7 @@
         appendDetail(closure, "Final local balance", formatMsat(channel.final_local_balance_msat), fields.final_local_balance_msat);
         appendDetail(closure, "HTLCs sent", formatNumber(channel.total_htlcs_sent, 0), fields.total_htlcs_sent);
         appendDetail(closure, "Indirect capacity contribution", formatNumber(channel.indirect_capacity_contribution_percent, 2, "%"), fields.indirect_capacity_contribution_percent);
+        appendDetail(closure, "Combined capacity return", formatNumber(channel.combined_capacity_return_percent, 2, "%"), fields.combined_capacity_return_percent);
 
         const inbound = forwards.filter(row => row.in_channel === channel.short_channel_id);
         const outbound = forwards.filter(row => row.out_channel === channel.short_channel_id);
@@ -626,7 +630,7 @@
                 format: "json",
                 itemLabel: "closed channels",
                 fileBase: "lightdash-closed-channels",
-                storageKey: "lightdash.dashboard2.closedChannelColumns",
+                storageKey: "lightdash.dashboard2.closedChannelColumns.v2",
                 defaultSort: "short_channel_id",
                 defaultDirection: "desc",
                 pageSize: 0,
@@ -647,7 +651,7 @@
                 format: "json",
                 itemLabel: "channels",
                 fileBase: "lightdash-channels",
-                storageKey: "lightdash.dashboard2.channelColumns.v2",
+                storageKey: "lightdash.dashboard2.channelColumns.v3",
                 defaultSort: "short_channel_id",
                 defaultDirection: "desc",
                 pageSize: 0,
@@ -740,7 +744,7 @@
             column("uptime_ratio", "Uptime", "number", { visible: true, transform: value => value * 100, suffix: "%", decimals: 1 }),
             column("outbound_fee_ppm", "My PPM", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
             column("historical_effective_fee_ppm", "Historical PPM", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
-            column("time_decayed_variable_fee_ppm", "TPPM", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
+            column("time_decayed_fee_ppm", "TPPM", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
             column("rebalance_effective_fee_ppm", "Rebalance PPM", "number", { transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
             column("settled_forward_count", "Forwards", "number", { visible: true, decimals: 0 }),
             column("routed_out_sat", "Routed out", "number", { suffix: " sats", decimals: 0 }),
@@ -749,6 +753,7 @@
             column("gross_capacity_return_percent", "Gross capacity return", "number", { suffix: "%", decimals: 2, signedClass: true }),
             column("net_capacity_return_percent", "Net capacity return", "number", { visible: true, suffix: "%", decimals: 2, signedClass: true }),
             column("indirect_capacity_contribution_percent", "Indirect capacity contribution", "number", { visible: true, suffix: "%", decimals: 2, signedClass: true }),
+            column("combined_capacity_return_percent", "Combined capacity return", "number", { visible: true, suffix: "%", decimals: 2, signedClass: true }),
             column("rebalance_target_cost_msat", "Rebalance cost", "number", { transform: msatToSat, suffix: " sats", decimals: 0 }),
             column("net_routing_revenue_msat", "Net revenue", "number", { transform: msatToSat, suffix: " sats", decimals: 0, signedClass: true }),
             column("inbound_fee_ppm", "Inbound PPM", "number", { transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
@@ -770,6 +775,7 @@
             column("total_htlcs_sent", "HTLCs sent", "number", { visible: true, decimals: 0 }),
             column("net_capacity_return_percent", "Net capacity return", "number", { visible: true, suffix: "%", decimals: 2, signedClass: true }),
             column("indirect_capacity_contribution_percent", "Indirect capacity contribution", "number", { suffix: "%", decimals: 2, signedClass: true }),
+            column("combined_capacity_return_percent", "Combined capacity return", "number", { visible: true, suffix: "%", decimals: 2, signedClass: true }),
             column("funding_txid", "Funding transaction", "text", { monospace: true }),
             column("last_commitment_txid", "Last commitment transaction", "text", { monospace: true }),
             column("peer_id", "Peer ID", "text", { monospace: true })

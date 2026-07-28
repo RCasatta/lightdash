@@ -1356,12 +1356,13 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
                         th style="text-align: right;" title=(snapshot_field_title("channels", "historical_effective_fee_ppm")) { "Hist PPM" }
-                        th style="text-align: right;" title=(snapshot_field_title("channels", "time_decayed_variable_fee_ppm")) { "TPPM" }
+                        th style="text-align: right;" title=(snapshot_field_title("channels", "time_decayed_fee_ppm")) { "TPPM" }
                         th style="text-align: right;" title=(snapshot_field_title("channels", "rebalance_effective_fee_ppm")) { "Hist Reb PPM" }
                         th style="text-align: right;" { "HTLC Max (sats)" }
                         th style="text-align: right;" { "Inbound PPM" }
                         th style="text-align: right;" title=(snapshot_field_title("channels", "net_capacity_return_percent")) { "Net capacity return %" }
                         th style="text-align: right;" title=(snapshot_field_title("channels", "indirect_capacity_contribution_percent")) { "Indirect capacity contribution %" }
+                        th style="text-align: right;" title=(snapshot_field_title("channels", "combined_capacity_return_percent")) { "Combined capacity return %" }
                     }
                 }
                 tbody {
@@ -1423,7 +1424,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             }
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
-                                    @if let Some(tppm) = store.get_channel_time_decayed_variable_fee_ppm(scid) {
+                                    @if let Some(tppm) = store.get_channel_time_decayed_fee_ppm(scid) {
                                         (format!("{tppm:.0}"))
                                     } @else {
                                         "-"
@@ -1494,6 +1495,17 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                                     "-"
                                 }
                             }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(combined_capacity_return) = store.get_channel_combined_capacity_return(scid) {
+                                        (format!("{combined_capacity_return:.2}%"))
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
+                            }
                         }
                     }
                 }
@@ -1514,12 +1526,13 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                         th style="text-align: right;" { "Amount (sats)" }
                         th style="text-align: right;" { "My PPM" }
                         th style="text-align: right;" title=(snapshot_field_title("channels", "historical_effective_fee_ppm")) { "Hist PPM" }
-                        th style="text-align: right;" title=(snapshot_field_title("channels", "time_decayed_variable_fee_ppm")) { "TPPM" }
+                        th style="text-align: right;" title=(snapshot_field_title("channels", "time_decayed_fee_ppm")) { "TPPM" }
                         th style="text-align: right;" title=(snapshot_field_title("channels", "rebalance_effective_fee_ppm")) { "Hist Reb PPM" }
                         th style="text-align: right;" { "HTLC Max (sats)" }
                         th style="text-align: right;" { "Inbound PPM" }
                         th style="text-align: right;" title=(snapshot_field_title("channels", "net_capacity_return_percent")) { "Net capacity return %" }
                         th style="text-align: right;" title=(snapshot_field_title("channels", "indirect_capacity_contribution_percent")) { "Indirect capacity contribution %" }
+                        th style="text-align: right;" title=(snapshot_field_title("channels", "combined_capacity_return_percent")) { "Combined capacity return %" }
                         th style="text-align: right;" { "Age (days)" }
                     }
                 }
@@ -1582,7 +1595,7 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                             }
                             td style="text-align: right;" {
                                 @if let Some(scid) = &channel.short_channel_id {
-                                    @if let Some(tppm) = store.get_channel_time_decayed_variable_fee_ppm(scid) {
+                                    @if let Some(tppm) = store.get_channel_time_decayed_fee_ppm(scid) {
                                         (format!("{tppm:.0}"))
                                     } @else {
                                         "-"
@@ -1646,6 +1659,17 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                                         span title={(format!("{} sats indirectly attributed / {} sats capacity", format_sats(store.get_channel_indirect_fees(scid)), format_sats(channel.amount_msat / 1000)))} {
                                             (format!("{indirect_capacity_contribution:.2}%"))
                                         }
+                                    } @else {
+                                        "-"
+                                    }
+                                } @else {
+                                    "-"
+                                }
+                            }
+                            td style="text-align: right;" {
+                                @if let Some(scid) = &channel.short_channel_id {
+                                    @if let Some(combined_capacity_return) = store.get_channel_combined_capacity_return(scid) {
+                                        (format!("{combined_capacity_return:.2}%"))
                                     } @else {
                                         "-"
                                     }
@@ -1925,11 +1949,11 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                     }
 
                     div class="info-item" {
-                        span class="label" title=(snapshot_field_title("channels", "time_decayed_variable_fee_ppm")) {
+                        span class="label" title=(snapshot_field_title("channels", "time_decayed_fee_ppm")) {
                             "TPPM: "
                         }
                         span class="value" {
-                            @if let Some(tppm) = store.get_channel_time_decayed_effective_fee_ppm(scid) {
+                            @if let Some(tppm) = store.get_channel_time_decayed_fee_ppm(scid) {
                                 (format!("{tppm:.0} ppm"))
                             } @else {
                                 "-"
@@ -2041,6 +2065,17 @@ fn create_channel_pages(input: ChannelPagesInput<'_>) {
                         span class="value" {
                             @if let Some(indirect_capacity_contribution) = store.get_channel_indirect_capacity_contribution(scid) {
                                 (format!("{indirect_capacity_contribution:.2}%"))
+                            } @else {
+                                "-"
+                            }
+                        }
+                    }
+
+                    div class="info-item" {
+                        span class="label" title=(snapshot_field_title("channels", "combined_capacity_return_percent")) { "Combined capacity return: " }
+                        span class="value" {
+                            @if let Some(combined_capacity_return) = store.get_channel_combined_capacity_return(scid) {
+                                (format!("{combined_capacity_return:.2}%"))
                             } @else {
                                 "-"
                             }
@@ -2709,6 +2744,7 @@ fn create_closed_channels_page(
                             th style="text-align: right;" { "Final Amount (sats)" }
                             th style="text-align: right;" title=(snapshot_field_title("closed_channels", "net_capacity_return_percent")) { "Net capacity return %" }
                             th style="text-align: right;" title=(snapshot_field_title("closed_channels", "indirect_capacity_contribution_percent")) { "Indirect capacity contribution %" }
+                            th style="text-align: right;" title=(snapshot_field_title("closed_channels", "combined_capacity_return_percent")) { "Combined capacity return %" }
                             th style="text-align: right;" { "Total HTLCs Sent" }
                         }
                     }
@@ -2776,6 +2812,13 @@ fn create_closed_channels_page(
                                 td style="text-align: right;" {
                                     @if let Some(indirect_capacity_contribution) = store.get_closed_channel_indirect_capacity_contribution(&channel_info.channel) {
                                         (format!("{indirect_capacity_contribution:.2}%"))
+                                    } @else {
+                                        "-"
+                                    }
+                                }
+                                td style="text-align: right;" {
+                                    @if let Some(combined_capacity_return) = store.get_closed_channel_combined_capacity_return(&channel_info.channel) {
+                                        (format!("{combined_capacity_return:.2}%"))
                                     } @else {
                                         "-"
                                     }

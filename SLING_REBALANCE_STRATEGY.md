@@ -151,8 +151,9 @@ use the same predictable amount.
 
 Lightdash reads two realized forwarding metrics for the target:
 
-- **TPPM:** time-decayed, amount-weighted variable fee PPM with a seven-day
-  half-life and an assumed one-sat base fee removed
+- **TPPM:** time-decayed, amount-weighted full fee PPM with a seven-day
+  half-life; it includes the base fee and excludes forwards smaller than
+  1,000 sats
 - **historical effective PPM:** all-time forwarding fees divided by all-time
   routed amount
 
@@ -178,10 +179,10 @@ The budget is what Lightdash is willing to pay for replenishment, not what it
 charges for outbound forwarding. The 60% multiplier reserves an intended gross
 spread between past forwarding revenue and rebalance cost.
 
-The two input metrics do not currently have identical meaning: TPPM removes
-the fixed base fee while historical effective PPM includes it. Both are also
-currently derived after per-forward fee values have been truncated to sats.
-These limitations are documented in `DYNAMIC_FEE_STRATEGY.md`.
+Both input metrics include the full realized fee. TPPM uses exact millisatoshi
+amounts and excludes forwards smaller than 1,000 sats, while historical
+effective PPM includes all forwards after per-forward values have been
+truncated to sats.
 
 ## Ordinary Sling job
 
@@ -270,7 +271,8 @@ rebalance cost, source opportunity cost, and the required profit margin.
 - The dust bootstrap can pay 1,100 PPM without realized forwarding history.
 - Candidate selection uses current advertised PPM as a proxy for source value
   and does not include direct or indirect opportunity cost.
-- TPPM and historical effective PPM mix variable-only and total-fee meanings.
+- TPPM excludes forwards smaller than 1,000 sats while historical effective
+  PPM includes them.
 - Historical metrics use sat-truncated forwarding fees.
 - Rebalance profitability is not checked later using the realized Sling cost.
 - The fixed 1,000,000-sat candidate depletion cap weakens the intended 50%

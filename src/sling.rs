@@ -312,7 +312,7 @@ pub fn run_sling(store: &Store) {
         let my_ppm_log = my_ppm
             .map(|ppm| ppm.to_string())
             .unwrap_or_else(|| "n/a".to_string());
-        let tppm = store.get_channel_time_decayed_variable_fee_ppm(scid);
+        let tppm = store.get_channel_time_decayed_fee_ppm(scid);
         let historical_fee_ppm = store.get_channel_effective_fee_ppm(scid);
         let budget_ppm = compute_budget_ppm(tppm, historical_fee_ppm, my_ppm);
         let tppm_log = tppm
