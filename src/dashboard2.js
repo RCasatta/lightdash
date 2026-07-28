@@ -309,12 +309,12 @@
             label: "Historical effective",
             color: "#c084fc",
             value: channel.historical_effective_fee_ppm
-        }]);
+        }], { yAxisMax: 4_000 });
         lineChart("htlc-chart", [{ label: "Local", color: "#50d890", rows: policyRows.filter(row => row.direction === "local"), value: row => row.htlc_max_msat / 1000 }], " sats");
         note.textContent = `Change-point history: ${formatNumber(liquidityRows.length, 0)} liquidity observations and ${formatNumber(policyRows.length, 0)} policy observations.`;
     }
 
-    function lineChart(id, series, suffix, referenceLines = []) {
+    function lineChart(id, series, suffix, referenceLines = [], options = {}) {
         const host = document.querySelector(`#${id}`);
         const normalizedSeries = series.map(item => ({
             ...item,
@@ -335,7 +335,7 @@
         const maxX = Math.max(...points.map(point => point.x));
         const values = [...points.map(point => point.y), ...normalizedReferences.map(item => item.value)];
         const minY = Math.min(0, ...values);
-        const maxY = Math.max(...values);
+        const maxY = Math.min(Math.max(...values), options.yAxisMax ?? Infinity);
         const x = value => pad.left + (value - minX) / Math.max(1, maxX - minX) * (width - pad.left - pad.right);
         const y = value => height - pad.bottom - (value - minY) / Math.max(1, maxY - minY) * (height - pad.top - pad.bottom);
         const svg = svgElement("svg", { viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": "Historical line chart" });
