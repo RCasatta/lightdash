@@ -15,12 +15,20 @@ pub const DEPLETED_INCREASE_PERCENT: u64 = 1;
 pub const BOOTSTRAP_DECREASE_PERCENT: u64 = 15;
 pub const NORMAL_DECREASE_PERCENT: u64 = 2;
 pub const FEE_BASE: u64 = 1000; // msat
+pub const MIN_ROUTED_24H_SAT: u64 = 5000;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum FeeState {
     Bootstrap,
     Normal,
     Depleted,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ForwardActivity {
+    None,
+    BelowMinimum,
+    MeetsMinimum,
 }
 
 impl FeeState {
@@ -103,15 +111,25 @@ fn decrease_ppm_floor(current_ppm: u64, percent: u64) -> u64 {
     (numerator / 100).min(u64::MAX as u128) as u64
 }
 
-fn adjusted_ppm(current_ppm: u64, state: FeeState, forwarded_recently: bool) -> u64 {
-    let adjusted = if forwarded_recently {
-        increase_ppm_ceil(current_ppm, FORWARD_INCREASE_PERCENT)
+fn forward_activity(settled_forward_count: usize, routed_msat: u64) -> ForwardActivity {
+    if settled_forward_count == 0 {
+        ForwardActivity::None
+    } else if routed_msat >= MIN_ROUTED_24H_SAT * 1000 {
+        ForwardActivity::MeetsMinimum
     } else {
-        match state {
+        ForwardActivity::BelowMinimum
+    }
+}
+
+fn adjusted_ppm(current_ppm: u64, state: FeeState, activity: ForwardActivity) -> u64 {
+    let adjusted = match activity {
+        ForwardActivity::MeetsMinimum => increase_ppm_ceil(current_ppm, FORWARD_INCREASE_PERCENT),
+        ForwardActivity::BelowMinimum => current_ppm,
+        ForwardActivity::None => match state {
             FeeState::Bootstrap => decrease_ppm_floor(current_ppm, BOOTSTRAP_DECREASE_PERCENT),
             FeeState::Normal => decrease_ppm_floor(current_ppm, NORMAL_DECREASE_PERCENT),
             FeeState::Depleted => increase_ppm_ceil(current_ppm, DEPLETED_INCREASE_PERCENT),
-        }
+        },
     };
 
     adjusted.clamp(PPM_MIN, PPM_MAX)
@@ -135,6 +153,12 @@ pub fn calc_setchannel(
         .filter(|e| e.status == "settled")
         .count();
     let forwards_ko = forwards_all - forwards_ok;
+    let routed_24h_msat = current_channel_forwards
+        .iter()
+        .filter(|forward| forward.status == "settled")
+        .filter_map(|forward| forward.out_msat)
+        .fold(0u64, u64::saturating_add);
+    let activity = forward_activity(forwards_ok, routed_24h_msat);
 
     let current_ppm = our.fee_per_millionth;
     let current_max_htlc_sat = our.htlc_maximum_msat;
@@ -170,7 +194,7 @@ pub fn calc_setchannel(
         max(new_max_htlc_msat, 1), // min_htlc cannot be greater than max_htlc and lower than 1
     );
 
-    let new_ppm = adjusted_ppm(current_ppm, state, forwards_ok > 0);
+    let new_ppm = adjusted_ppm(current_ppm, state, activity);
 
     let changes = current_ppm != new_ppm
         || current_max_htlc_sat != new_max_htlc_msat
@@ -199,7 +223,7 @@ pub fn calc_setchannel(
         }
         let change_str = change_parts.join(" ");
         log::info!(
-            "{data} state:{} ok:{forwards_ok} ko:{forwards_ko} {short_channel_id} with {alias}. my_fund:{our_amount_msat} ({disp_perc})  {change_str}",
+            "{data} state:{} ok:{forwards_ok} ko:{forwards_ko} routed_24h_msat:{routed_24h_msat} {short_channel_id} with {alias}. my_fund:{our_amount_msat} ({disp_perc})  {change_str}",
             state.as_str()
         );
 
@@ -233,7 +257,7 @@ pub fn calc_setchannel(
         }
     } else {
         log::info!(
-            "EQU state:{} no changes in {short_channel_id} with {alias}, skipping",
+            "EQU state:{} routed_24h_msat:{routed_24h_msat} no changes in {short_channel_id} with {alias}, skipping",
             state.as_str()
         )
     };
@@ -294,22 +318,60 @@ mod tests {
     #[test]
     fn recent_forward_increases_every_channel_state() {
         for state in [FeeState::Bootstrap, FeeState::Normal, FeeState::Depleted] {
-            assert_eq!(adjusted_ppm(100, state, true), 105);
+            assert_eq!(adjusted_ppm(100, state, ForwardActivity::MeetsMinimum), 105);
         }
-        assert_eq!(adjusted_ppm(PPM_MIN, FeeState::Depleted, true), 11);
+        assert_eq!(
+            adjusted_ppm(PPM_MIN, FeeState::Depleted, ForwardActivity::MeetsMinimum),
+            11
+        );
+    }
+
+    #[test]
+    fn low_volume_forwarding_keeps_ppm_unchanged() {
+        for state in [FeeState::Bootstrap, FeeState::Normal, FeeState::Depleted] {
+            assert_eq!(adjusted_ppm(100, state, ForwardActivity::BelowMinimum), 100);
+        }
+    }
+
+    #[test]
+    fn forwarding_activity_requires_5000_routed_sats() {
+        assert_eq!(forward_activity(0, 0), ForwardActivity::None);
+        assert_eq!(
+            forward_activity(1, MIN_ROUTED_24H_SAT * 1000 - 1),
+            ForwardActivity::BelowMinimum
+        );
+        assert_eq!(
+            forward_activity(1, MIN_ROUTED_24H_SAT * 1000),
+            ForwardActivity::MeetsMinimum
+        );
     }
 
     #[test]
     fn idle_policy_depends_on_channel_state() {
-        assert_eq!(adjusted_ppm(100, FeeState::Bootstrap, false), 85);
-        assert_eq!(adjusted_ppm(100, FeeState::Normal, false), 98);
-        assert_eq!(adjusted_ppm(100, FeeState::Depleted, false), 101);
+        assert_eq!(
+            adjusted_ppm(100, FeeState::Bootstrap, ForwardActivity::None),
+            85
+        );
+        assert_eq!(
+            adjusted_ppm(100, FeeState::Normal, ForwardActivity::None),
+            98
+        );
+        assert_eq!(
+            adjusted_ppm(100, FeeState::Depleted, ForwardActivity::None),
+            101
+        );
     }
 
     #[test]
     fn adjusted_ppm_respects_bounds() {
-        assert_eq!(adjusted_ppm(PPM_MIN, FeeState::Bootstrap, false), PPM_MIN);
-        assert_eq!(adjusted_ppm(PPM_MAX, FeeState::Depleted, false), PPM_MAX);
+        assert_eq!(
+            adjusted_ppm(PPM_MIN, FeeState::Bootstrap, ForwardActivity::None),
+            PPM_MIN
+        );
+        assert_eq!(
+            adjusted_ppm(PPM_MAX, FeeState::Depleted, ForwardActivity::None),
+            PPM_MAX
+        );
     }
 
     #[test]
