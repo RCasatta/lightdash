@@ -1,21 +1,42 @@
 use std::cmp::{max, min, Ordering};
+use std::collections::HashSet;
+
+use chrono::Utc;
 
 use crate::cmd::Forward;
 use crate::store::Store;
-use chrono::Utc;
 
 pub const PPM_MIN: u64 = 10;
 pub const PPM_MAX: u64 = 5000;
 pub const DEPLETED_LOCAL_BALANCE_SAT: u64 = 50000;
 pub const MIN_HTLC: u64 = 100000; // msat
-pub const INCREASE_STEP_PERC: f64 = 0.1;
-pub const DECREASE_STEP_PERC: f64 = 0.05;
+pub const FORWARD_INCREASE_PERCENT: u64 = 5;
+pub const DEPLETED_INCREASE_PERCENT: u64 = 1;
+pub const BOOTSTRAP_DECREASE_PERCENT: u64 = 15;
+pub const NORMAL_DECREASE_PERCENT: u64 = 2;
 pub const FEE_BASE: u64 = 1000; // msat
-pub const FAST_DECREASE_PPM_THRESHOLD: u64 = 1000;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FeeState {
+    Bootstrap,
+    Normal,
+    Depleted,
+}
+
+impl FeeState {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Bootstrap => "bootstrap",
+            Self::Normal => "normal",
+            Self::Depleted => "depleted",
+        }
+    }
+}
 
 pub fn run_fees(store: &Store) {
     let normal_channels = store.normal_channels();
     let forwards_24h = store.filter_forwards_by_hours(24);
+    let ever_settled_out_channels: HashSet<&str> = store.settled_out_channel_ids().collect();
 
     let mut equ_count = 0;
     let mut inc_count = 0;
@@ -37,6 +58,7 @@ pub fn run_fees(store: &Store) {
             fund,
             our,
             &forwards_24h,
+            ever_settled_out_channels.contains(short_channel_id.as_str()),
             avail,
         );
         match trend {
@@ -61,24 +83,38 @@ pub fn largest_power_of_two_leq(n: u64) -> u64 {
     }
 }
 
-fn fee_perc_change(forwards_ok: usize, current_ppm: u64) -> f64 {
-    if forwards_ok == 0 {
-        if current_ppm > FAST_DECREASE_PPM_THRESHOLD {
-            -DECREASE_STEP_PERC * 2.0
-        } else {
-            -DECREASE_STEP_PERC
-        }
+fn fee_state(local_balance_sat: u64, ever_forwarded: bool) -> FeeState {
+    if local_balance_sat < DEPLETED_LOCAL_BALANCE_SAT {
+        FeeState::Depleted
+    } else if ever_forwarded {
+        FeeState::Normal
     } else {
-        INCREASE_STEP_PERC
+        FeeState::Bootstrap
     }
 }
 
-fn fee_min_ppm(local_balance_sat: u64) -> u64 {
-    if local_balance_sat < DEPLETED_LOCAL_BALANCE_SAT {
-        PPM_MAX / 2
+fn increase_ppm_ceil(current_ppm: u64, percent: u64) -> u64 {
+    let numerator = current_ppm as u128 * (100 + percent) as u128;
+    ((numerator + 99) / 100).min(u64::MAX as u128) as u64
+}
+
+fn decrease_ppm_floor(current_ppm: u64, percent: u64) -> u64 {
+    let numerator = current_ppm as u128 * (100 - percent) as u128;
+    (numerator / 100).min(u64::MAX as u128) as u64
+}
+
+fn adjusted_ppm(current_ppm: u64, state: FeeState, forwarded_recently: bool) -> u64 {
+    let adjusted = if forwarded_recently {
+        increase_ppm_ceil(current_ppm, FORWARD_INCREASE_PERCENT)
     } else {
-        PPM_MIN
-    }
+        match state {
+            FeeState::Bootstrap => decrease_ppm_floor(current_ppm, BOOTSTRAP_DECREASE_PERCENT),
+            FeeState::Normal => decrease_ppm_floor(current_ppm, NORMAL_DECREASE_PERCENT),
+            FeeState::Depleted => increase_ppm_ceil(current_ppm, DEPLETED_INCREASE_PERCENT),
+        }
+    };
+
+    adjusted.clamp(PPM_MIN, PPM_MAX)
 }
 
 pub fn calc_setchannel(
@@ -87,6 +123,7 @@ pub fn calc_setchannel(
     fund: &crate::cmd::Fund,
     our: &crate::cmd::Channel,
     forwards_24h: &[Forward],
+    ever_forwarded: bool,
     avail: Option<f64>,
 ) -> &'static str {
     let channel_fund_perc_ours = fund.perc_float(); // how full of our funds is the channel
@@ -103,6 +140,8 @@ pub fn calc_setchannel(
     let current_max_htlc_sat = our.htlc_maximum_msat;
     let current_min_htlc_sat = our.htlc_minimum_msat;
     let our_amount_msat = fund.our_amount_msat;
+    let local_balance_sat = our_amount_msat / 1000;
+    let state = fee_state(local_balance_sat, ever_forwarded);
 
     if let Some(avail) = avail {
         if avail < 0.8 {
@@ -131,14 +170,7 @@ pub fn calc_setchannel(
         max(new_max_htlc_msat, 1), // min_htlc cannot be greater than max_htlc and lower than 1
     );
 
-    let perc_change = fee_perc_change(forwards_ok, current_ppm);
-
-    let new_ppm = (current_ppm as f64 + (current_ppm as f64 * perc_change)) as u64;
-
-    let local_balance_sat = our_amount_msat / 1000;
-    let ppm_min = fee_min_ppm(local_balance_sat);
-
-    let new_ppm = new_ppm.clamp(ppm_min, PPM_MAX);
+    let new_ppm = adjusted_ppm(current_ppm, state, forwards_ok > 0);
 
     let changes = current_ppm != new_ppm
         || current_max_htlc_sat != new_max_htlc_msat
@@ -166,7 +198,10 @@ pub fn calc_setchannel(
             ));
         }
         let change_str = change_parts.join(" ");
-        log::info!("{data} ok:{forwards_ok} ko:{forwards_ko} {short_channel_id} with {alias}. my_fund:{our_amount_msat} ({disp_perc})  {change_str}");
+        log::info!(
+            "{data} state:{} ok:{forwards_ok} ko:{forwards_ko} {short_channel_id} with {alias}. my_fund:{our_amount_msat} ({disp_perc})  {change_str}",
+            state.as_str()
+        );
 
         let cmd = "lightning-cli";
         let args = format!(
@@ -197,7 +232,10 @@ pub fn calc_setchannel(
             log::info!("would execute `{cmd} {args}` {alias}");
         }
     } else {
-        log::info!("EQU no changes in {short_channel_id} with {alias}, skipping")
+        log::info!(
+            "EQU state:{} no changes in {short_channel_id} with {alias}, skipping",
+            state.as_str()
+        )
     };
     data
 }
@@ -217,41 +255,61 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fee_perc_change_uses_fixed_decrease_without_forwards() {
+    fn fee_state_gives_depleted_balance_precedence() {
         assert_eq!(
-            fee_perc_change(0, FAST_DECREASE_PPM_THRESHOLD),
-            -DECREASE_STEP_PERC
+            fee_state(DEPLETED_LOCAL_BALANCE_SAT - 1, false),
+            FeeState::Depleted
         );
         assert_eq!(
-            fee_perc_change(0, FAST_DECREASE_PPM_THRESHOLD - 500),
-            -DECREASE_STEP_PERC
-        );
-        assert_eq!(
-            fee_perc_change(0, FAST_DECREASE_PPM_THRESHOLD + 1),
-            -DECREASE_STEP_PERC * 2.0
+            fee_state(DEPLETED_LOCAL_BALANCE_SAT - 1, true),
+            FeeState::Depleted
         );
     }
 
     #[test]
-    fn fee_perc_change_uses_fixed_increase_with_forwards() {
+    fn fee_state_distinguishes_bootstrap_and_normal_channels() {
         assert_eq!(
-            fee_perc_change(1, FAST_DECREASE_PPM_THRESHOLD),
-            INCREASE_STEP_PERC
+            fee_state(DEPLETED_LOCAL_BALANCE_SAT, false),
+            FeeState::Bootstrap
         );
         assert_eq!(
-            fee_perc_change(12, FAST_DECREASE_PPM_THRESHOLD * 2),
-            INCREASE_STEP_PERC
+            fee_state(DEPLETED_LOCAL_BALANCE_SAT, true),
+            FeeState::Normal
         );
     }
 
     #[test]
-    fn fee_min_ppm_uses_high_floor_below_depleted_balance() {
-        assert_eq!(fee_min_ppm(DEPLETED_LOCAL_BALANCE_SAT - 1), PPM_MAX / 2);
+    fn percentage_increases_round_up() {
+        assert_eq!(increase_ppm_ceil(10, FORWARD_INCREASE_PERCENT), 11);
+        assert_eq!(increase_ppm_ceil(100, FORWARD_INCREASE_PERCENT), 105);
+        assert_eq!(increase_ppm_ceil(101, DEPLETED_INCREASE_PERCENT), 103);
     }
 
     #[test]
-    fn fee_min_ppm_uses_normal_floor_at_depleted_balance() {
-        assert_eq!(fee_min_ppm(DEPLETED_LOCAL_BALANCE_SAT), PPM_MIN);
+    fn percentage_decreases_round_down() {
+        assert_eq!(decrease_ppm_floor(2_500, BOOTSTRAP_DECREASE_PERCENT), 2_125);
+        assert_eq!(decrease_ppm_floor(100, NORMAL_DECREASE_PERCENT), 98);
+    }
+
+    #[test]
+    fn recent_forward_increases_every_channel_state() {
+        for state in [FeeState::Bootstrap, FeeState::Normal, FeeState::Depleted] {
+            assert_eq!(adjusted_ppm(100, state, true), 105);
+        }
+        assert_eq!(adjusted_ppm(PPM_MIN, FeeState::Depleted, true), 11);
+    }
+
+    #[test]
+    fn idle_policy_depends_on_channel_state() {
+        assert_eq!(adjusted_ppm(100, FeeState::Bootstrap, false), 85);
+        assert_eq!(adjusted_ppm(100, FeeState::Normal, false), 98);
+        assert_eq!(adjusted_ppm(100, FeeState::Depleted, false), 101);
+    }
+
+    #[test]
+    fn adjusted_ppm_respects_bounds() {
+        assert_eq!(adjusted_ppm(PPM_MIN, FeeState::Bootstrap, false), PPM_MIN);
+        assert_eq!(adjusted_ppm(PPM_MAX, FeeState::Depleted, false), PPM_MAX);
     }
 
     #[test]

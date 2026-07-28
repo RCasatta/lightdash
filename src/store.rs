@@ -457,6 +457,13 @@ impl Store {
         self.forward_cache.settled.clone()
     }
 
+    pub fn settled_out_channel_ids(&self) -> impl Iterator<Item = &str> {
+        self.forward_cache
+            .settled
+            .iter()
+            .map(|forward| forward.out_channel.as_str())
+    }
+
     /// Filter settled forwards to only include those resolved within the last N days
     pub fn filter_settled_forwards_by_days(&self, days: i64) -> Vec<SettledForward> {
         self.forward_cache
