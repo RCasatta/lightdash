@@ -490,6 +490,21 @@ h2 {
     margin: 0;
 }
 
+.table-status-copy {
+    display: grid;
+    gap: 0.25rem;
+}
+
+.table-summary {
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+}
+
+.table-summary-label {
+    color: var(--muted);
+    font-weight: 750;
+}
+
 .text-button {
     border-color: transparent;
     background: transparent;
@@ -942,6 +957,10 @@ h2 {
     .table-toolbar,
     .table-status-row {
         align-items: stretch;
+    }
+
+    .table-status-row {
+        flex-direction: column;
     }
 
     .toolbar-actions,

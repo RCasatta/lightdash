@@ -476,7 +476,10 @@ fn dynamic_table_panel(
             }
 
             div class="table-status-row" {
-                p id="table-status" aria-live="polite" { (loading_label) }
+                div class="table-status-copy" aria-live="polite" aria-atomic="true" {
+                    p id="table-status" { (loading_label) }
+                    p id="table-summary" class="table-summary" hidden {}
+                }
                 div class="export-actions" {
                     button type="button" class="text-button" id="export-csv" { "Export CSV" }
                     button type="button" class="text-button" id="export-json" { "Export JSON" }
@@ -762,6 +765,9 @@ mod tests {
         assert!(overview.contains("220 ppm (0.022%)"));
         assert!(overview.contains("748 ppm (0.075%)"));
         assert!(overview.contains("388 ppm (0.039%)"));
+        let forwards = fs::read_to_string(output.join("forwards.html")).unwrap();
+        assert!(forwards.contains("aria-atomic=\"true\""));
+        assert!(forwards.contains("id=\"table-summary\""));
 
         fs::remove_dir_all(root).unwrap();
     }

@@ -18,14 +18,15 @@
 
     const columns = config.columns;
     const presets = config.presets;
+    const defaultView = config.defaultView ?? "all";
     const defaultVisible = columns.filter(item => item.visible).map(item => item.key);
     const state = {
         rows: [],
         currentRows: [],
         visible: loadVisibleColumns(),
         query: "",
-        view: "all",
-        filters: {},
+        view: defaultView,
+        filters: cloneFilters(presets[defaultView] || {}),
         sort: config.defaultSort,
         direction: config.defaultDirection,
         page: 1,
@@ -39,6 +40,7 @@
     const filterPanel = document.querySelector("#filter-panel");
     const columnPanel = document.querySelector("#column-panel");
     const status = document.querySelector("#table-status");
+    const summary = document.querySelector("#table-summary");
     const errorBanner = document.querySelector("#table-error");
     const previousPage = document.querySelector("#previous-page");
     const nextPage = document.querySelector("#next-page");
@@ -676,9 +678,14 @@
                 storageKey: "lightdash.dashboard2.forwardColumns.v2",
                 defaultSort: "received_at",
                 defaultDirection: "desc",
+                defaultView: "last-week",
                 pageSize: 100,
                 emptyMessage: "No forward attempts match the current filters.",
                 prepare: prepareForward,
+                summaries: [
+                    sumSummary("out_msat", "Out amount", formatMsat),
+                    sumSummary("fee_msat", "Fees", formatMsat)
+                ],
                 presets: {
                     all: {},
                     "last-day": { received_at: { min: dateInputValue(referenceTime - 24 * 60 * 60 * 1000) } },
@@ -729,6 +736,10 @@
             }
         };
         return configs[kind];
+    }
+
+    function sumSummary(key, label, format) {
+        return { key, label, format };
     }
 
     function channelColumns() {
@@ -959,8 +970,8 @@
 
         document.querySelector("#reset-table").addEventListener("click", () => {
             state.query = "";
-            state.view = "all";
-            state.filters = {};
+            state.view = defaultView;
+            state.filters = cloneFilters(presets[defaultView] || {});
             state.sort = config.defaultSort;
             state.direction = config.defaultDirection;
             state.visible = [...defaultVisible];
@@ -1102,6 +1113,7 @@
         renderHeader(visibleColumns);
         renderBody(pageRows, visibleColumns);
         renderStatus(rows.length, pageRows.length);
+        renderSummary(rows);
         renderPagination(pageCount);
         document.querySelectorAll("[data-view]").forEach(button => {
             button.classList.toggle("is-active", button.dataset.view === state.view);
@@ -1115,8 +1127,27 @@
             return;
         }
         const start = matchCount === 0 ? 0 : (state.page - 1) * state.pageSize + 1;
-        const end = start + pageCount - 1;
+        const end = matchCount === 0 ? 0 : start + pageCount - 1;
         status.textContent = `Showing ${formatInteger(start)}–${formatInteger(end)} of ${formatInteger(matchCount)} matching ${config.itemLabel} (${formatInteger(state.rows.length)} total)`;
+    }
+
+    function renderSummary(rows) {
+        if (!config.summaries?.length) {
+            summary.hidden = true;
+            summary.replaceChildren();
+            return;
+        }
+
+        const values = config.summaries.map(item => {
+            const total = rows.reduce((sum, row) => {
+                const value = Number(row[item.key]);
+                return Number.isFinite(value) ? sum + value : sum;
+            }, 0);
+            return `${item.label} ${item.format(total)}`;
+        });
+        const label = textElement("span", "Filtered totals:", "table-summary-label");
+        summary.replaceChildren(label, document.createTextNode(` ${values.join(" · ")}`));
+        summary.hidden = false;
     }
 
     function renderPagination(pageCount) {
@@ -1382,7 +1413,7 @@
         if (config.channelView === "closed") params.set("view", "closed");
         if (config.rebalanceView === "history") params.set("view", "history");
         const hasDatasetView = config.channelView === "closed" || config.rebalanceView === "history";
-        if (state.view !== "all" && state.view !== "custom") {
+        if (state.view !== defaultView && state.view !== "custom") {
             params.set(hasDatasetView ? "preset" : "view", state.view);
         }
         if (state.query) params.set("q", state.query);
