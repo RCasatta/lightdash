@@ -6,7 +6,7 @@ use std::hash::{Hash, Hasher};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const SOURCE_PPM_FALLBACK: u64 = 300;
-const SOURCE_PPM_TARGET_VALUE_MULTIPLIER: f64 = 0.2;
+const SOURCE_PPM_TARGET_VALUE_MULTIPLIER: f64 = 0.3;
 const TARGET_ELIGIBLE_MAX_BALANCE: f64 = 0.3;
 const TARGET_REBALANCE_BALANCE: f64 = 0.5;
 const MIN_AMOUNT_SAT: u64 = 10_000;
@@ -337,10 +337,11 @@ pub fn run_sling(store: &Store) {
             let candidates = compute_candidates(store, &channels, SOURCE_PPM_FALLBACK);
             if candidates.is_empty() {
                 skipped_no_candidates += 1;
+                let result = "skip-no-cand";
                 log::info!(
-                    "{alias} balance:{:.1}% low_local_bootstrap source_ppm_max:<{} candidates:0, skipping",
+                    "balance:{:>5.1}% amount:{LOW_LOCAL_BOOTSTRAP_AMOUNT_SAT:>6}s tppm:{tppm_log:>6} hist_fee_ppm:{historical_fee_ppm_log:>6} channel_ppm:{my_ppm_log:>5} maxppm:{LOW_LOCAL_BOOTSTRAP_MAX_PPM:>4} src_ppm_max:<{SOURCE_PPM_FALLBACK:>4} cand:{:>3} result:{result:<12} alias:{alias}",
                     balance * 100.0,
-                    SOURCE_PPM_FALLBACK,
+                    0,
                 );
                 continue;
             }
@@ -358,17 +359,10 @@ pub fn run_sling(store: &Store) {
                 &onceamount_arg,
                 &maxppm_arg,
             );
+            let result = "bootstrap";
             log::info!(
-                "{alias} balance:{:.1}% low_local_bootstrap local_balance:{}s threshold:<{}s amount:{}s tppm:{} historical_fee_ppm:{} channel_ppm:{} maxppm:{} source_ppm_max:<{} candidates:{}",
+                "balance:{:>5.1}% amount:{LOW_LOCAL_BOOTSTRAP_AMOUNT_SAT:>6}s tppm:{tppm_log:>6} hist_fee_ppm:{historical_fee_ppm_log:>6} channel_ppm:{my_ppm_log:>5} maxppm:{LOW_LOCAL_BOOTSTRAP_MAX_PPM:>4} src_ppm_max:<{SOURCE_PPM_FALLBACK:>4} cand:{:>3} result:{result:<12} alias:{alias}",
                 balance * 100.0,
-                local_balance_sat,
-                LOW_LOCAL_BOOTSTRAP_THRESHOLD_SAT,
-                LOW_LOCAL_BOOTSTRAP_AMOUNT_SAT,
-                tppm_log,
-                historical_fee_ppm_log,
-                my_ppm_log,
-                LOW_LOCAL_BOOTSTRAP_MAX_PPM,
-                SOURCE_PPM_FALLBACK,
                 candidates.len(),
             );
             log::debug!("{alias} candidates: {candidates:?}");
@@ -382,37 +376,35 @@ pub fn run_sling(store: &Store) {
             continue;
         }
 
+        let source_ppm_max = compute_source_ppm_max(historical_fee_ppm, my_ppm);
         let Some(amount_hint) =
             compute_capacity_rebalance_amounts(channel_capacity_sat, local_balance_sat)
         else {
             skipped_small_amount += 1;
+            let result = "skip-small";
             log::info!(
-                "{alias} balance:{:.1}% amount:0s tppm:{} historical_fee_ppm:{} channel_ppm:{} below_min_amount:{}s, skipping",
+                "balance:{:>5.1}% amount:{:>6}s tppm:{tppm_log:>6} hist_fee_ppm:{historical_fee_ppm_log:>6} channel_ppm:{my_ppm_log:>5} maxppm:{budget_ppm:>4} src_ppm_max:<{source_ppm_max:>4} cand:{:>3} result:{result:<12} alias:{alias}",
                 balance * 100.0,
-                tppm_log,
-                historical_fee_ppm_log,
-                my_ppm_log,
-                MIN_AMOUNT_SAT,
+                0,
+                "n/a",
             );
             continue;
         };
 
-        let source_ppm_max = compute_source_ppm_max(historical_fee_ppm, my_ppm);
+        let job_amount = compute_job_amount(amount_hint, rebalance_jitter_seed(scid));
         let candidates = compute_candidates(store, &channels, source_ppm_max);
         if candidates.is_empty() {
             skipped_no_candidates += 1;
+            let result = "skip-no-cand";
             log::info!(
-                "{alias} balance:{:.1}% historical_fee_ppm:{} channel_ppm:{} source_ppm_max:<{} candidates:0, skipping",
+                "balance:{:>5.1}% amount:{job_amount:>6}s tppm:{tppm_log:>6} hist_fee_ppm:{historical_fee_ppm_log:>6} channel_ppm:{my_ppm_log:>5} maxppm:{budget_ppm:>4} src_ppm_max:<{source_ppm_max:>4} cand:{:>3} result:{result:<12} alias:{alias}",
                 balance * 100.0,
-                historical_fee_ppm_log,
-                my_ppm_log,
-                source_ppm_max,
+                0,
             );
             continue;
         }
 
         let candidates_arg = format!("candidates={}", candidates_to_json(&candidates));
-        let job_amount = compute_job_amount(amount_hint, rebalance_jitter_seed(scid));
 
         // Build arguments as a Vec to avoid shell quoting issues.
         // When calling a program directly (not via shell), we pass raw values
@@ -434,15 +426,10 @@ pub fn run_sling(store: &Store) {
             &deplete_percent_arg,
             &deplete_amount_arg,
         ];
+        let result = "job";
         log::info!(
-            "{alias} balance:{:.1}% amount:{}s tppm:{} historical_fee_ppm:{} channel_ppm:{} maxppm:{} source_ppm_max:<{} candidates:{}",
+            "balance:{:>5.1}% amount:{job_amount:>6}s tppm:{tppm_log:>6} hist_fee_ppm:{historical_fee_ppm_log:>6} channel_ppm:{my_ppm_log:>5} maxppm:{budget_ppm:>4} src_ppm_max:<{source_ppm_max:>4} cand:{:>3} result:{result:<12} alias:{alias}",
             balance * 100.0,
-            job_amount,
-            tppm_log,
-            historical_fee_ppm_log,
-            my_ppm_log,
-            budget_ppm,
-            source_ppm_max,
             candidates.len(),
         );
         log::debug!("{alias} candidates: {candidates:?}");
@@ -559,17 +546,17 @@ mod tests {
     }
 
     #[test]
-    fn compute_source_ppm_max_uses_twenty_percent_of_target_value() {
-        assert_eq!(compute_source_ppm_max(Some(500.0), Some(500)), 100);
-        assert_eq!(compute_source_ppm_max(Some(500.0), Some(2_000)), 100);
-        assert_eq!(compute_source_ppm_max(Some(500.0), None), 100);
-        assert_eq!(compute_source_ppm_max(Some(1_000.0), Some(1_000)), 200);
-        assert_eq!(compute_source_ppm_max(Some(2_000.0), Some(2_000)), 400);
+    fn compute_source_ppm_max_uses_thirty_percent_of_target_value() {
+        assert_eq!(compute_source_ppm_max(Some(500.0), Some(500)), 150);
+        assert_eq!(compute_source_ppm_max(Some(500.0), Some(2_000)), 150);
+        assert_eq!(compute_source_ppm_max(Some(500.0), None), 150);
+        assert_eq!(compute_source_ppm_max(Some(1_000.0), Some(1_000)), 300);
+        assert_eq!(compute_source_ppm_max(Some(2_000.0), Some(2_000)), 600);
     }
 
     #[test]
     fn compute_source_ppm_max_uses_lower_current_channel_ppm() {
-        assert_eq!(compute_source_ppm_max(Some(2_000.0), Some(1_000)), 200);
+        assert_eq!(compute_source_ppm_max(Some(2_000.0), Some(1_000)), 300);
     }
 
     #[test]

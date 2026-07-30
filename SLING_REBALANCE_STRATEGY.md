@@ -27,7 +27,7 @@ the total amount replenished.
 
 | Setting | Current value |
 |---|---:|
-| Ordinary source-channel PPM | `< 20%` of the target's conservative value, clamped to `10–1,100 PPM` |
+| Ordinary source-channel PPM | `< 30%` of the target's conservative value, clamped to `10–1,100 PPM` |
 | Source PPM fallback without target history | `< 300` |
 | Minimum source local balance | `> 70%` |
 | Maximum target local balance | `<= 30%` |
@@ -67,14 +67,14 @@ target_candidate_value_ppm
   = min(historical_effective_ppm, current_target_ppm when available)
 
 source_ppm_ceiling
-  = truncate(target_candidate_value_ppm * 0.20)
+  = truncate(target_candidate_value_ppm * 0.30)
   |> clamp(10, 1100)
 ```
 
-The 20% allocation is a simple source-opportunity-cost allowance alongside the
+The 30% allocation is a simple source-opportunity-cost allowance alongside the
 existing 60% realized-fee route-cost multiplier. A target worth 500 PPM
-therefore accepts sources below 100 PPM, one worth 1,500 PPM accepts sources
-below 300 PPM, and one worth 3,000 PPM accepts sources below 600 PPM. Taking
+therefore accepts sources below 150 PPM, one worth 1,000 PPM accepts sources
+below 300 PPM, and one worth 3,000 PPM accepts sources below 900 PPM. Taking
 the lower of historical and current target PPM also makes the ceiling fall as
 the dynamic fee controller searches downward.
 
