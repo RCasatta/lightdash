@@ -321,7 +321,10 @@
         const normalizedSeries = series.map(item => ({
             ...item,
             points: item.rows
-                .map(row => ({ x: Date.parse(row.observed_at), y: item.value(row) }))
+                .map(row => {
+                    const observedX = Date.parse(row.observed_at);
+                    return { x: observedX, y: item.value(row), observedX };
+                })
                 .filter(point => Number.isFinite(point.x) && Number.isFinite(point.y))
                 .sort((a, b) => a.x - b.x)
         }));
@@ -335,6 +338,14 @@
         const pad = { left: 58, right: 18, top: 24, bottom: 34 };
         const minX = Math.min(...points.map(point => point.x));
         const maxX = Math.max(...points.map(point => point.x));
+        // History datasets contain change points, so the final recorded value remains
+        // effective even when another series has a newer change.
+        normalizedSeries.forEach(item => {
+            const lastPoint = item.points.at(-1);
+            if (lastPoint && lastPoint.x < maxX) {
+                item.points.push({ ...lastPoint, x: maxX });
+            }
+        });
         const values = [...points.map(point => point.y), ...normalizedReferences.map(item => item.value)];
         const minY = Math.min(0, ...values);
         const maxY = Math.min(Math.max(...values), options.yAxisMax ?? Infinity);
@@ -435,7 +446,7 @@
                 const swatch = document.createElement("i");
                 swatch.style.background = item.color;
                 const value = textElement("span", `${item.label}: ${formatChartTooltipValue(point.y, suffix)}`);
-                const observed = textElement("time", new Date(point.x).toISOString().replace("T", " ").replace(".000Z", "Z"));
+                const observed = textElement("time", new Date(point.observedX).toISOString().replace("T", " ").replace(".000Z", "Z"));
                 row.append(swatch, value, observed);
                 return row;
             });
