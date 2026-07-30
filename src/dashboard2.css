@@ -593,6 +593,10 @@ h2 {
     color: var(--green);
 }
 
+.data-table .warning {
+    color: var(--red);
+}
+
 .status-badge {
     display: inline-flex;
     align-items: center;

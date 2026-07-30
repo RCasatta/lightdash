@@ -764,12 +764,12 @@
             column("local_balance_percent", "Local balance", "number", { visible: true, suffix: "%", decimals: 1 }),
             column("local_balance_msat", "Local balance sats", "number", { transform: msatToSat, suffix: " sats", decimals: 0 }),
             column("capacity_msat", "Capacity", "number", { visible: true, transform: msatToSat, suffix: " sats", decimals: 0 }),
-            column("uptime_ratio", "Uptime", "number", { visible: true, transform: value => value * 100, suffix: "%", decimals: 1 }),
+            column("uptime_ratio", "Uptime", "number", { visible: true, transform: value => value * 100, suffix: "%", decimals: 1, warningBelow: 0.8 }),
             column("outbound_fee_ppm", "My PPM", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
             column("historical_effective_fee_ppm", "Historical PPM", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
             column("time_decayed_fee_ppm", "TPPM", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
             column("rebalance_effective_fee_ppm", "Rebalance PPM", "number", { transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
-            column("settled_forward_count", "Forwards", "number", { visible: true, decimals: 0 }),
+            column("settled_forward_count", "Forwards", "number", { visible: true, decimals: 0, warningBelow: 1 }),
             column("routed_out_sat", "Routed out", "number", { suffix: " sats", decimals: 0 }),
             column("forwarding_fees_sat", "Fees", "number", { suffix: " sats", decimals: 0 }),
             column("indirect_fees_sat", "Indirect fees", "number", { suffix: " sats", decimals: 0 }),
@@ -869,6 +869,7 @@
             value: options.value ?? (row => row[key]),
             monospace: options.monospace ?? false,
             signedClass: options.signedClass ?? false,
+            warningBelow: options.warningBelow ?? null,
             options: options.options ?? [],
             badge: options.badge ?? false,
             metadata: null
@@ -1222,6 +1223,9 @@
         if (item.monospace) cell.classList.add("mono");
         if (item.signedClass && typeof rawValue === "number") {
             cell.classList.add(rawValue < 0 ? "negative" : "positive");
+        }
+        if (item.warningBelow !== null && typeof rawValue === "number" && rawValue < item.warningBelow) {
+            cell.classList.add("warning");
         }
         if (item.type === "boolean") {
             if (rawValue === null || rawValue === undefined) {
