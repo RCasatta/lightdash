@@ -5,7 +5,8 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const SOURCE_PPM_MAX: u64 = 300;
+const SOURCE_PPM_FALLBACK: u64 = 300;
+const SOURCE_PPM_TARGET_VALUE_MULTIPLIER: f64 = 0.2;
 const TARGET_ELIGIBLE_MAX_BALANCE: f64 = 0.3;
 const TARGET_REBALANCE_BALANCE: f64 = 0.5;
 const MIN_AMOUNT_SAT: u64 = 10_000;
@@ -31,22 +32,26 @@ const CMD: &str = "lightning-cli";
 /// Minimum balance percentage (our funds / total capacity) for a channel to be used as candidate.
 const MIN_CANDIDATE_BALANCE: f64 = 0.7;
 
-/// Computes candidates with liquidity for sling rebalancing.
+/// Computes candidates with liquidity for a target's Sling rebalance.
 ///
 /// Sling's `outppm` parameter filters candidates by ppm but not by balance.
 /// We want to pull from channels where:
-///   1. ppm < SOURCE_PPM_MAX (drain low-fee channels)
+///   1. ppm < source_ppm_max (drain channels cheap enough for this target)
 ///   2. balance > MIN_CANDIDATE_BALANCE (only drain channels that have enough liquidity on our side)
 ///
 /// Since sling doesn't support filtering by balance natively, we explicitly compute
 /// the candidates list ourselves and pass it via the `candidates` parameter.
-fn compute_full_candidates<'a>(store: &'a Store, channels: &'a [Fund]) -> Vec<&'a String> {
+fn compute_candidates<'a>(
+    store: &'a Store,
+    channels: &'a [Fund],
+    source_ppm_max: u64,
+) -> Vec<&'a String> {
     channels
         .iter()
         .filter_map(|ch| {
             let scid = ch.short_channel_id.as_ref()?;
             let our = store.get_channel(scid, &store.info.id)?;
-            if our.fee_per_millionth < SOURCE_PPM_MAX && ch.perc_float() > MIN_CANDIDATE_BALANCE {
+            if our.fee_per_millionth < source_ppm_max && ch.perc_float() > MIN_CANDIDATE_BALANCE {
                 Some(scid)
             } else {
                 None
@@ -73,6 +78,19 @@ fn is_target_eligible(balance: f64) -> bool {
 
 fn usable_ppm(ppm: Option<f64>) -> Option<f64> {
     ppm.filter(|ppm| ppm.is_finite() && *ppm > 0.0)
+}
+
+fn compute_source_ppm_max(historical_fee_ppm: Option<f64>, channel_ppm: Option<u64>) -> u64 {
+    let Some(historical_fee_ppm) = usable_ppm(historical_fee_ppm) else {
+        return SOURCE_PPM_FALLBACK;
+    };
+
+    let target_value_ppm = channel_ppm
+        .map(|channel_ppm| historical_fee_ppm.min(channel_ppm as f64))
+        .unwrap_or(historical_fee_ppm);
+
+    ((target_value_ppm * SOURCE_PPM_TARGET_VALUE_MULTIPLIER) as u64)
+        .clamp(BUDGET_PPM_MIN, BUDGET_PPM_MAX)
 }
 
 fn compute_budget_ppm(
@@ -252,42 +270,32 @@ fn enrich_sling_stats_with_last_channel_partner(
 pub fn run_sling(store: &Store) {
     let channels = store.normal_channels();
     log::info!(
-        "Sling inputs: channels:{} target_eligible_balance<={:.0}% rebalance_target:{:.0}% candidate_balance>=:{:.0}% min_amount:{}sat depleteuptopercent:{} depleteuptoamount:{}",
+        "Sling inputs: channels:{} target_eligible_balance<={:.0}% rebalance_target:{:.0}% candidate_balance>=:{:.0}% candidate_fallback_ppm:<{} candidate_target_value_multiplier:{:.0}% min_amount:{}sat depleteuptopercent:{} depleteuptoamount:{}",
         channels.len(),
         TARGET_ELIGIBLE_MAX_BALANCE * 100.0,
         TARGET_REBALANCE_BALANCE * 100.0,
         MIN_CANDIDATE_BALANCE * 100.0,
+        SOURCE_PPM_FALLBACK,
+        SOURCE_PPM_TARGET_VALUE_MULTIPLIER * 100.0,
         MIN_AMOUNT_SAT,
         CANDIDATE_DEPLETE_UP_TO_PERCENT,
         CANDIDATE_DEPLETE_UP_TO_AMOUNT_SAT
     );
-
-    let candidates = compute_full_candidates(store, &channels);
-    log::info!(
-        "{} candidates found (ppm < {SOURCE_PPM_MAX} and balance > {MIN_CANDIDATE_BALANCE})",
-        candidates.len()
-    );
-    log::info!("candidates: {:?}", candidates);
 
     let execute_sling = std::env::var("EXECUTE_SLING").is_ok();
     if execute_sling {
         reset_existing_sling_jobs();
     }
 
-    if candidates.is_empty() {
-        return;
-    }
-
-    let candidates_json = candidates_to_json(&candidates);
-
     let mut skipped_balance = 0u64;
     let mut skipped_missing_scid = 0u64;
     let mut targets_without_local_channel_info = 0u64;
     let mut skipped_small_amount = 0u64;
+    let mut skipped_no_candidates = 0u64;
     let mut suggested = 0u64;
     let mut bootstrap = 0u64;
 
-    for channel in channels {
+    for channel in &channels {
         let balance = channel.perc_float();
         if !is_target_eligible(balance) {
             skipped_balance += 1;
@@ -324,10 +332,21 @@ pub fn run_sling(store: &Store) {
 
         let channel_capacity_sat = channel.amount_msat / 1000;
         let local_balance_sat = channel.our_amount_msat / 1000;
-        let candidates_arg = format!("candidates={candidates_json}");
 
         if should_bootstrap_low_local(local_balance_sat) {
+            let candidates = compute_candidates(store, &channels, SOURCE_PPM_FALLBACK);
+            if candidates.is_empty() {
+                skipped_no_candidates += 1;
+                log::info!(
+                    "{alias} balance:{:.1}% low_local_bootstrap source_ppm_max:<{} candidates:0, skipping",
+                    balance * 100.0,
+                    SOURCE_PPM_FALLBACK,
+                );
+                continue;
+            }
+
             bootstrap += 1;
+            let candidates_arg = format!("candidates={}", candidates_to_json(&candidates));
             let scid_arg = format!("scid={scid}");
             let amount_arg = format!("amount={LOW_LOCAL_BOOTSTRAP_AMOUNT_SAT}");
             let onceamount_arg = format!("onceamount={LOW_LOCAL_BOOTSTRAP_AMOUNT_SAT}");
@@ -340,7 +359,7 @@ pub fn run_sling(store: &Store) {
                 &maxppm_arg,
             );
             log::info!(
-                "{alias} balance:{:.1}% low_local_bootstrap local_balance:{}s threshold:<{}s amount:{}s tppm:{} historical_fee_ppm:{} channel_ppm:{} maxppm:{}",
+                "{alias} balance:{:.1}% low_local_bootstrap local_balance:{}s threshold:<{}s amount:{}s tppm:{} historical_fee_ppm:{} channel_ppm:{} maxppm:{} source_ppm_max:<{} candidates:{}",
                 balance * 100.0,
                 local_balance_sat,
                 LOW_LOCAL_BOOTSTRAP_THRESHOLD_SAT,
@@ -349,7 +368,10 @@ pub fn run_sling(store: &Store) {
                 historical_fee_ppm_log,
                 my_ppm_log,
                 LOW_LOCAL_BOOTSTRAP_MAX_PPM,
+                SOURCE_PPM_FALLBACK,
+                candidates.len(),
             );
+            log::debug!("{alias} candidates: {candidates:?}");
             log::debug!("{CMD} {}", args.join(" "));
             if execute_sling {
                 log::info!("executing `{CMD} sling-once` {alias} scid:{scid}");
@@ -375,7 +397,21 @@ pub fn run_sling(store: &Store) {
             continue;
         };
 
-        suggested += 1;
+        let source_ppm_max = compute_source_ppm_max(historical_fee_ppm, my_ppm);
+        let candidates = compute_candidates(store, &channels, source_ppm_max);
+        if candidates.is_empty() {
+            skipped_no_candidates += 1;
+            log::info!(
+                "{alias} balance:{:.1}% historical_fee_ppm:{} channel_ppm:{} source_ppm_max:<{} candidates:0, skipping",
+                balance * 100.0,
+                historical_fee_ppm_log,
+                my_ppm_log,
+                source_ppm_max,
+            );
+            continue;
+        }
+
+        let candidates_arg = format!("candidates={}", candidates_to_json(&candidates));
         let job_amount = compute_job_amount(amount_hint, rebalance_jitter_seed(scid));
 
         // Build arguments as a Vec to avoid shell quoting issues.
@@ -399,14 +435,17 @@ pub fn run_sling(store: &Store) {
             &deplete_amount_arg,
         ];
         log::info!(
-            "{alias} balance:{:.1}% amount:{}s tppm:{} historical_fee_ppm:{} channel_ppm:{} maxppm:{}",
+            "{alias} balance:{:.1}% amount:{}s tppm:{} historical_fee_ppm:{} channel_ppm:{} maxppm:{} source_ppm_max:<{} candidates:{}",
             balance * 100.0,
             job_amount,
             tppm_log,
             historical_fee_ppm_log,
             my_ppm_log,
             budget_ppm,
+            source_ppm_max,
+            candidates.len(),
         );
+        log::debug!("{alias} candidates: {candidates:?}");
         log::debug!("{CMD} {}", args.join(" "));
         if execute_sling {
             log::info!("executing `{CMD} sling-job` {alias} scid:{scid}");
@@ -414,14 +453,16 @@ pub fn run_sling(store: &Store) {
             let result = crate::cmd::cmd_result(CMD, &args);
             log::debug!("cmd return: {result}");
         }
+        suggested += 1;
     }
 
     log::info!(
-        "Sling summary: suggested:{} bootstrap:{} skipped_balance:{} skipped_small_amount:{} skipped_missing_scid:{} targets_without_local_channel_info:{}",
+        "Sling summary: suggested:{} bootstrap:{} skipped_balance:{} skipped_small_amount:{} skipped_no_candidates:{} skipped_missing_scid:{} targets_without_local_channel_info:{}",
         suggested,
         bootstrap,
         skipped_balance,
         skipped_small_amount,
+        skipped_no_candidates,
         skipped_missing_scid,
         targets_without_local_channel_info
     );
@@ -435,9 +476,10 @@ pub fn run_sling(store: &Store) {
 mod tests {
     use super::{
         compute_base_rebalance_amount, compute_budget_ppm, compute_capacity_rebalance_amounts,
-        compute_job_amount, enrich_sling_stats_with_last_channel_partner, is_target_eligible,
-        low_local_bootstrap_args, should_bootstrap_low_local, BOOTSTRAP_MAX_PPM, BUDGET_PPM_MAX,
-        BUDGET_PPM_MIN, BUDGET_PPM_REALIZED_FEE_MULTIPLIER,
+        compute_job_amount, compute_source_ppm_max, enrich_sling_stats_with_last_channel_partner,
+        is_target_eligible, low_local_bootstrap_args, should_bootstrap_low_local,
+        BOOTSTRAP_MAX_PPM, BUDGET_PPM_MAX, BUDGET_PPM_MIN, BUDGET_PPM_REALIZED_FEE_MULTIPLIER,
+        SOURCE_PPM_FALLBACK,
     };
     use serde_json::Value;
 
@@ -514,6 +556,41 @@ mod tests {
     fn compute_budget_ppm_never_exceeds_channel_ppm() {
         assert_eq!(compute_budget_ppm(Some(7.0), Some(174.0), Some(10)), 10);
         assert_eq!(compute_budget_ppm(Some(40.0), Some(407.0), Some(78)), 78);
+    }
+
+    #[test]
+    fn compute_source_ppm_max_uses_twenty_percent_of_target_value() {
+        assert_eq!(compute_source_ppm_max(Some(500.0), Some(500)), 100);
+        assert_eq!(compute_source_ppm_max(Some(500.0), Some(2_000)), 100);
+        assert_eq!(compute_source_ppm_max(Some(500.0), None), 100);
+        assert_eq!(compute_source_ppm_max(Some(1_000.0), Some(1_000)), 200);
+        assert_eq!(compute_source_ppm_max(Some(2_000.0), Some(2_000)), 400);
+    }
+
+    #[test]
+    fn compute_source_ppm_max_uses_lower_current_channel_ppm() {
+        assert_eq!(compute_source_ppm_max(Some(2_000.0), Some(1_000)), 200);
+    }
+
+    #[test]
+    fn compute_source_ppm_max_falls_back_without_history() {
+        assert_eq!(
+            compute_source_ppm_max(None, Some(2_000)),
+            SOURCE_PPM_FALLBACK
+        );
+        assert_eq!(
+            compute_source_ppm_max(Some(f64::NAN), Some(2_000)),
+            SOURCE_PPM_FALLBACK
+        );
+    }
+
+    #[test]
+    fn compute_source_ppm_max_is_clamped() {
+        assert_eq!(compute_source_ppm_max(Some(1.0), Some(1)), BUDGET_PPM_MIN);
+        assert_eq!(
+            compute_source_ppm_max(Some(100_000.0), Some(100_000)),
+            BUDGET_PPM_MAX
+        );
     }
 
     #[test]
