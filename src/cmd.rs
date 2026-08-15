@@ -3,19 +3,16 @@ use flate2::read::GzDecoder;
 use serde::Deserialize;
 use serde_json::Value;
 use std::fs::{self, File};
-use std::io::{self, Read};
+use std::io;
 use std::path::PathBuf;
-use std::process::{Command, Output as ProcessOutput, Stdio};
+use std::process::{Command, Output as ProcessOutput};
 use std::sync::OnceLock;
-use std::thread;
-use std::time::{Duration, Instant};
 
 use crate::error_panic;
 
 static SSH_DESTINATION: OnceLock<String> = OnceLock::new();
 const DEFAULT_LOCAL_AVAILDB_PATH: &str = ".lightning/bitcoin/summars/availdb.json";
 const TEST_AVAILDB_PATH: &str = "test-json/availdb.json";
-pub const GETROUTES_TIMEOUT_SECONDS: u64 = 12;
 
 pub fn configure_ssh(destination: Option<String>) -> Result<(), String> {
     let Some(destination) = destination else {
@@ -191,13 +188,13 @@ pub fn get_routes(
     destination: &str,
     amount_msat: u64,
     max_fee_msat: u64,
-) -> Result<Option<GetRoutes>, String> {
+) -> Result<GetRoutesOutcome, String> {
     let v = if using_test_data() {
         Ok(cmd_result("cat", &["test-json/getroutes"]))
     } else {
         let amount_msat = format!("{amount_msat}msat");
         let max_fee_msat = format!("{max_fee_msat}msat");
-        cmd_result_with_timeout(
+        cmd_result_fallible(
             "lightning-cli",
             &[
                 "getroutes",
@@ -210,10 +207,21 @@ pub fn get_routes(
                 "2016",
                 "1",
             ],
-            Duration::from_secs(GETROUTES_TIMEOUT_SECONDS),
         )
     }?;
-    Ok(serde_json::from_value(v).ok())
+    Ok(parse_get_routes_outcome(v))
+}
+
+fn parse_get_routes_outcome(v: Value) -> GetRoutesOutcome {
+    if let Ok(routes) = serde_json::from_value(v.clone()) {
+        return GetRoutesOutcome::Found(routes);
+    }
+    let message = v.get("message").and_then(Value::as_str).unwrap_or_default();
+    if message.contains("timed out") || message.contains("deadline") {
+        GetRoutesOutcome::TimedOut
+    } else {
+        GetRoutesOutcome::NotFound
+    }
 }
 
 /// Sign a message with the node's key for authentication purposes
@@ -263,13 +271,9 @@ fn execute_command(cmd: &str, args: &[&str]) -> (String, io::Result<ProcessOutpu
     (description, result)
 }
 
-fn cmd_result_with_timeout(
-    cmd: &str,
-    args: &[impl AsRef<str>],
-    timeout: Duration,
-) -> Result<Value, String> {
+fn cmd_result_fallible(cmd: &str, args: &[impl AsRef<str>]) -> Result<Value, String> {
     let args: Vec<&str> = args.iter().map(|arg| arg.as_ref()).collect();
-    let (description, result) = execute_command_with_timeout(cmd, &args, timeout);
+    let (description, result) = execute_command(cmd, &args);
     let data = result.map_err(|error| format!("executing `{description}` failed: {error}"))?;
     let stdout = std::str::from_utf8(&data.stdout)
         .map_err(|error| format!("`{description}` returned non-UTF-8 output: {error}"))?;
@@ -279,81 +283,6 @@ fn cmd_result_with_timeout(
             "executing `{description}` exited with status {} and stderr `{stderr}`; parsing JSON returned {error}",
             data.status
         )
-    })
-}
-
-fn execute_command_with_timeout(
-    cmd: &str,
-    args: &[&str],
-    timeout: Duration,
-) -> (String, io::Result<ProcessOutput>) {
-    let (description, mut command) = configured_command(cmd, args);
-    command.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let result = run_command_with_timeout(command, timeout);
-    (description, result)
-}
-
-fn configured_command(cmd: &str, args: &[&str]) -> (String, Command) {
-    if cmd == "lightning-cli" {
-        let args = lightning_cli_json_args(args);
-        if let Some(destination) = SSH_DESTINATION.get() {
-            let remote_command = build_remote_command(cmd, &args);
-            let description = format!("ssh -C {destination} {remote_command}");
-            let mut command = Command::new("ssh");
-            command.arg("-C").arg(destination).arg(&remote_command);
-            return (description, command);
-        }
-
-        let description = format!("{cmd} {}", args.join(" "));
-        let mut command = Command::new(cmd);
-        command.args(args);
-        return (description, command);
-    }
-
-    let description = format!("{cmd} {}", args.join(" "));
-    let mut command = Command::new(cmd);
-    command.args(args);
-    (description, command)
-}
-
-fn run_command_with_timeout(mut command: Command, timeout: Duration) -> io::Result<ProcessOutput> {
-    let mut child = command.spawn()?;
-    let mut child_stdout = child.stdout.take().expect("piped stdout exists");
-    let mut child_stderr = child.stderr.take().expect("piped stderr exists");
-    let started = Instant::now();
-    let (status, timed_out, stdout, stderr) = thread::scope(|scope| {
-        let stdout_reader = scope.spawn(move || {
-            let mut stdout = Vec::new();
-            child_stdout.read_to_end(&mut stdout).map(|_| stdout)
-        });
-        let stderr_reader = scope.spawn(move || {
-            let mut stderr = Vec::new();
-            child_stderr.read_to_end(&mut stderr).map(|_| stderr)
-        });
-        let (status, timed_out) = loop {
-            if let Some(status) = child.try_wait()? {
-                break Ok((status, false));
-            }
-            if started.elapsed() >= timeout {
-                child.kill()?;
-                break child.wait().map(|status| (status, true));
-            }
-            thread::sleep(Duration::from_millis(25));
-        }?;
-        let stdout = stdout_reader.join().expect("stdout reader did not panic")?;
-        let stderr = stderr_reader.join().expect("stderr reader did not panic")?;
-        Ok::<_, io::Error>((status, timed_out, stdout, stderr))
-    })?;
-    if timed_out {
-        return Err(io::Error::new(
-            io::ErrorKind::TimedOut,
-            format!("command exceeded {:.1} seconds", timeout.as_secs_f64()),
-        ));
-    }
-    Ok(ProcessOutput {
-        status,
-        stdout,
-        stderr,
     })
 }
 
@@ -745,6 +674,12 @@ pub struct GetRoutes {
     pub routes: Vec<GetRoutesRoute>,
 }
 
+pub enum GetRoutesOutcome {
+    Found(GetRoutes),
+    TimedOut,
+    NotFound,
+}
+
 impl TryFrom<Forward> for SettledForward {
     type Error = ();
 
@@ -898,12 +833,9 @@ pub struct ListDatastore {
 
 #[cfg(test)]
 mod command_tests {
-    use std::process::Command;
-    use std::time::Duration;
-
     use super::{
         build_remote_command, lightning_cli_json_args, normalize_remote_home_path,
-        run_command_with_timeout, shell_quote, GetRoutes, ListPeerChannels,
+        parse_get_routes_outcome, shell_quote, GetRoutes, GetRoutesOutcome, ListPeerChannels,
     };
 
     #[test]
@@ -921,14 +853,12 @@ mod command_tests {
     }
 
     #[test]
-    fn command_timeout_terminates_a_slow_process() {
-        let mut command = Command::new("sleep");
-        command
-            .arg("1")
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped());
-        let error = run_command_with_timeout(command, Duration::from_millis(25)).unwrap_err();
-        assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+    fn getroutes_deadline_error_is_reported_as_timeout() {
+        let outcome = parse_get_routes_outcome(serde_json::json!({
+            "code": 210,
+            "message": "single_path_routes: timed out after deadline"
+        }));
+        assert!(matches!(outcome, GetRoutesOutcome::TimedOut));
     }
 
     #[test]

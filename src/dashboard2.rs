@@ -869,7 +869,7 @@ mod tests {
         .unwrap();
         fs::write(
             snapshot.join("routes-manifest.json"),
-            br#"{"schema_version":4,"generated_at":"2026-07-16T09:00:00Z","node_id":"02testnode","source":{"amounts_sat":[1000],"sample_seed_utc_day":20000,"randomized_destination_order":true,"per_amount_budget_seconds":600,"total_budget_seconds":3300,"rpc_timeout_seconds":12,"single_path_endpoint_capacity_filter":true,"max_fee_ppm":10000,"minimum_max_fee_msat":5000,"layers":["auto.localchans","auto.sourcefree"],"final_cltv":9,"maxdelay":2016,"maxparts":1},"datasets":{}}"#,
+            br#"{"schema_version":5,"generated_at":"2026-07-16T09:00:00Z","node_id":"02testnode","source":{"amounts_sat":[1000],"sample_seed_utc_day":20000,"randomized_destination_order":true,"per_amount_budget_seconds":600,"total_budget_seconds":3300,"single_path_endpoint_capacity_filter":true,"max_fee_ppm":10000,"minimum_max_fee_msat":5000,"layers":["auto.localchans","auto.sourcefree"],"final_cltv":9,"maxdelay":2016,"maxparts":1},"datasets":{}}"#,
         )
         .unwrap();
         for dataset in manifest.datasets.values() {

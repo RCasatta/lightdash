@@ -15,7 +15,7 @@ use crate::store::Store;
 
 const ROUTE_MAX_FEE_PPM: u64 = 10_000;
 const ROUTE_MIN_MAX_FEE_MSAT: u64 = 5_000;
-const ROUTES_SCHEMA_VERSION: u32 = 4;
+const ROUTES_SCHEMA_VERSION: u32 = 5;
 const ROUTES_MAX_AGE_SECONDS: i64 = 24 * 60 * 60;
 const ROUTE_AMOUNTS_SAT: [u64; 5] = [1_000, 10_000, 100_000, 1_000_000, 10_000_000];
 const ROUTE_AMOUNT_BUDGET: StdDuration = StdDuration::from_secs(10 * 60);
@@ -46,7 +46,6 @@ struct RoutesSource {
     randomized_destination_order: bool,
     per_amount_budget_seconds: u64,
     total_budget_seconds: u64,
-    rpc_timeout_seconds: u64,
     single_path_endpoint_capacity_filter: bool,
     max_fee_ppm: u64,
     minimum_max_fee_msat: u64,
@@ -247,11 +246,13 @@ fn analyze_routes(
                 );
             }
             let response = match route_result {
-                Ok(response) => response,
+                Ok(GetRoutesOutcome::Found(response)) => Some(response),
+                Ok(GetRoutesOutcome::TimedOut) => {
+                    timed_out_routes += 1;
+                    None
+                }
+                Ok(GetRoutesOutcome::NotFound) => None,
                 Err(error) => {
-                    if error.contains("timed out") || error.contains("command exceeded") {
-                        timed_out_routes += 1;
-                    }
                     log::warn!("Route query to {id} failed: {error}");
                     None
                 }
@@ -541,7 +542,6 @@ fn rebuild_cache(store: &Store, directory: &Path) -> Result<RoutesManifest, Stri
             randomized_destination_order: true,
             per_amount_budget_seconds: ROUTE_AMOUNT_BUDGET.as_secs(),
             total_budget_seconds: ROUTE_TOTAL_BUDGET.as_secs(),
-            rpc_timeout_seconds: GETROUTES_TIMEOUT_SECONDS,
             single_path_endpoint_capacity_filter: true,
             max_fee_ppm: ROUTE_MAX_FEE_PPM,
             minimum_max_fee_msat: ROUTE_MIN_MAX_FEE_MSAT,
@@ -831,7 +831,7 @@ fn route_run_fields() -> BTreeMap<String, FieldMetadata> {
         ("capacity_filtered_destinations".into(), metadata_field("integer", false, Some("node"), "Processed destinations skipped because no single local outbound channel or advertised destination inbound channel could carry the full amount in one HTLC.", Some("listpeerchannels and listchannels"), None)),
         ("evaluated_routes".into(), metadata_field("integer", false, Some("route"), "Destinations for which getroutes returned a single-part route within the fee and delay budgets.", Some("getroutes"), None)),
         ("failed_routes".into(), metadata_field("integer", false, Some("route"), "Queried destinations for which no acceptable route was returned.", None, Some("queried_destinations - evaluated_routes"))),
-        ("timed_out_routes".into(), metadata_field("integer", false, Some("route"), "Route queries terminated by Lightdash's per-RPC timeout.", Some("getroutes"), None)),
+        ("timed_out_routes".into(), metadata_field("integer", false, Some("route"), "Route queries for which getroutes reported that its internal Askrene deadline expired.", Some("getroutes"), None)),
         ("budget_exhausted".into(), metadata_field("boolean", false, None, "Whether the per-amount time budget expired before every eligible destination was processed.", None, None)),
         ("elapsed_seconds".into(), metadata_field("number", false, Some("second"), "Wall-clock duration of this amount's route analysis.", None, None)),
         ("candidate_nodes".into(), metadata_field("integer", false, Some("node"), "Distinct non-peer intermediary nodes appearing in at least one returned route.", None, None)),
@@ -1192,7 +1192,6 @@ mod tests {
                 randomized_destination_order: true,
                 per_amount_budget_seconds: ROUTE_AMOUNT_BUDGET.as_secs(),
                 total_budget_seconds: ROUTE_TOTAL_BUDGET.as_secs(),
-                rpc_timeout_seconds: GETROUTES_TIMEOUT_SECONDS,
                 single_path_endpoint_capacity_filter: true,
                 max_fee_ppm: ROUTE_MAX_FEE_PPM,
                 minimum_max_fee_msat: ROUTE_MIN_MAX_FEE_MSAT,
