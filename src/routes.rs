@@ -15,13 +15,12 @@ use crate::store::Store;
 
 const ROUTE_MAX_FEE_PPM: u64 = 10_000;
 const ROUTE_MIN_MAX_FEE_MSAT: u64 = 5_000;
-const ROUTES_SCHEMA_VERSION: u32 = 2;
+const ROUTES_SCHEMA_VERSION: u32 = 4;
 const ROUTES_MAX_AGE_SECONDS: i64 = 24 * 60 * 60;
 const ROUTE_AMOUNTS_SAT: [u64; 5] = [1_000, 10_000, 100_000, 1_000_000, 10_000_000];
-const ROUTE_SAMPLE_SIZE: usize = 250;
 const ROUTE_AMOUNT_BUDGET: StdDuration = StdDuration::from_secs(10 * 60);
 const ROUTE_TOTAL_BUDGET: StdDuration = StdDuration::from_secs(55 * 60);
-const ROUTE_PROGRESS_INTERVAL: usize = 25;
+const ROUTE_PROGRESS_INTERVAL: usize = 100;
 const ROUTE_SLOW_QUERY: StdDuration = StdDuration::from_secs(2);
 pub(crate) const DEFAULT_PROCESSED_DIRECTORY: &str = "/var/lib/lightdash/routes/processed";
 pub(crate) const SNAPSHOT_ROUTES_MANIFEST: &str = "routes-manifest.json";
@@ -43,11 +42,12 @@ pub(crate) struct RoutesManifest {
 #[derive(Clone, Deserialize, Serialize)]
 struct RoutesSource {
     amounts_sat: Vec<u64>,
-    destination_sample_size: usize,
     sample_seed_utc_day: u64,
+    randomized_destination_order: bool,
     per_amount_budget_seconds: u64,
     total_budget_seconds: u64,
     rpc_timeout_seconds: u64,
+    single_path_endpoint_capacity_filter: bool,
     max_fee_ppm: u64,
     minimum_max_fee_msat: u64,
     layers: Vec<String>,
@@ -62,7 +62,9 @@ pub(crate) struct RouteRun {
     pub max_fee_msat: u64,
     pub scanned_nodes: usize,
     pub eligible_destinations: usize,
-    pub sampled_destinations: usize,
+    pub processed_destinations: usize,
+    pub queried_destinations: usize,
+    pub capacity_filtered_destinations: usize,
     pub evaluated_routes: usize,
     pub failed_routes: usize,
     pub timed_out_routes: usize,
@@ -175,8 +177,31 @@ fn analyze_routes(
     let mut hop_sum = 0usize;
     let mut total = 0;
     let mut timed_out_routes = 0;
+    let mut queried_destinations = 0;
+    let mut capacity_filtered_destinations = 0;
     let amount_msat = amount_sat * 1000;
     let max_fee_msat = route_max_fee_msat(amount_msat);
+    let local_single_path_capacity_msat = store
+        .peer_channels
+        .channels
+        .iter()
+        .filter(|channel| channel.state == "CHANNELD_NORMAL")
+        .map(|channel| channel.spendable_msat.min(channel.maximum_htlc_out_msat))
+        .max()
+        .unwrap_or(0);
+    let mut destination_inbound_capacity_msat: HashMap<&str, u64> = HashMap::new();
+    for channel in store
+        .channels
+        .channels
+        .iter()
+        .filter(|channel| channel.active != Some(false))
+    {
+        let single_htlc_capacity = channel.amount_msat.min(channel.htlc_maximum_msat);
+        destination_inbound_capacity_msat
+            .entry(&channel.destination)
+            .and_modify(|capacity| *capacity = (*capacity).max(single_htlc_capacity))
+            .or_insert(single_htlc_capacity);
+    }
     let mut eligible: Vec<_> = nodes_by_id_keys
         .iter()
         .filter(|id| {
@@ -187,66 +212,75 @@ fn analyze_routes(
         .collect();
     eligible.sort_unstable_by_key(|id| destination_sample_score(id, sample_seed));
     let eligible_destinations = eligible.len();
-    eligible.truncate(ROUTE_SAMPLE_SIZE);
-    let planned_destinations = eligible.len();
-    let mut attempted_destinations = 0;
+    let mut processed_destinations = 0;
 
     log::info!(
-        "Analyzing {amount_sat} sat routes: sampled {planned_destinations} of {eligible_destinations} eligible destinations; budget {:.1} minutes",
+        "Analyzing {amount_sat} sat routes: {eligible_destinations} eligible destinations in randomized daily order; maximum local single-path capacity {:.0} sats; budget {:.1} minutes",
+        local_single_path_capacity_msat as f64 / 1_000.0,
         deadline.saturating_duration_since(Instant::now()).as_secs_f64() / 60.0
     );
 
     for id in eligible {
         if Instant::now() >= deadline {
             log::warn!(
-                "Stopping {amount_sat} sat analysis after {attempted_destinations}/{planned_destinations} sampled destinations: amount time budget exhausted"
+                "Stopping {amount_sat} sat analysis after {processed_destinations}/{eligible_destinations} eligible destinations: amount time budget exhausted"
             );
             break;
         }
-        attempted_destinations += 1;
-        let query_started = Instant::now();
-        let route_result = get_routes(&store.info.id, id, amount_msat, max_fee_msat);
-        let query_elapsed = query_started.elapsed();
-        if query_elapsed >= ROUTE_SLOW_QUERY {
-            log::info!(
-                "Slow {amount_sat} sat route query {attempted_destinations}/{planned_destinations} to {id}: {:.2}s",
-                query_elapsed.as_secs_f64()
-            );
-        }
-        let response = match route_result {
-            Ok(response) => response,
-            Err(error) => {
-                if error.contains("timed out") || error.contains("command exceeded") {
-                    timed_out_routes += 1;
-                }
-                log::warn!("Route query to {id} failed: {error}");
-                None
-            }
-        };
-        if let Some(route) = response.and_then(|response| response.routes.into_iter().next()) {
-            let mut nodes = route.path;
-            hop_sum += nodes.len();
-            total += 1;
-            nodes.pop(); // remove the random destination
-            for n in nodes.iter() {
-                let Some(node_id) = n.outgoing_node_id() else {
-                    continue;
-                };
-                if !peers_ids.contains(node_id) {
-                    *counters.entry(node_id.to_string()).or_insert(0u64) += 1;
-                }
-            }
-        }
-        if attempted_destinations % ROUTE_PROGRESS_INTERVAL == 0
-            || attempted_destinations == planned_destinations
+        processed_destinations += 1;
+        let destination_capacity_msat = destination_inbound_capacity_msat
+            .get(id.as_str())
+            .copied()
+            .unwrap_or(0);
+        if local_single_path_capacity_msat < amount_msat || destination_capacity_msat < amount_msat
         {
-            let failed = attempted_destinations - total;
+            capacity_filtered_destinations += 1;
+        } else {
+            queried_destinations += 1;
+            let query_started = Instant::now();
+            let route_result = get_routes(&store.info.id, id, amount_msat, max_fee_msat);
+            let query_elapsed = query_started.elapsed();
+            if query_elapsed >= ROUTE_SLOW_QUERY {
+                log::info!(
+                    "Slow {amount_sat} sat route query {queried_destinations} (destination {processed_destinations}/{eligible_destinations}) to {id}: {:.2}s",
+                    query_elapsed.as_secs_f64()
+                );
+            }
+            let response = match route_result {
+                Ok(response) => response,
+                Err(error) => {
+                    if error.contains("timed out") || error.contains("command exceeded") {
+                        timed_out_routes += 1;
+                    }
+                    log::warn!("Route query to {id} failed: {error}");
+                    None
+                }
+            };
+            if let Some(route) = response.and_then(|response| response.routes.into_iter().next()) {
+                let mut nodes = route.path;
+                hop_sum += nodes.len();
+                total += 1;
+                nodes.pop(); // remove the random destination
+                for n in nodes.iter() {
+                    let Some(node_id) = n.outgoing_node_id() else {
+                        continue;
+                    };
+                    if !peers_ids.contains(node_id) {
+                        *counters.entry(node_id.to_string()).or_insert(0u64) += 1;
+                    }
+                }
+            }
+        }
+        if processed_destinations % ROUTE_PROGRESS_INTERVAL == 0
+            || processed_destinations == eligible_destinations
+        {
+            let failed = queried_destinations - total;
             let average_query_seconds =
-                started.elapsed().as_secs_f64() / attempted_destinations.max(1) as f64;
-            let estimated_remaining_seconds =
-                average_query_seconds * (planned_destinations - attempted_destinations) as f64;
+                started.elapsed().as_secs_f64() / queried_destinations.max(1) as f64;
+            let remaining_destinations = eligible_destinations - processed_destinations;
+            let estimated_remaining_seconds = average_query_seconds * remaining_destinations as f64;
             log::info!(
-                "Route progress for {amount_sat} sats: {attempted_destinations}/{planned_destinations}, {total} routes found, {failed} failed, {timed_out_routes} timed out, {:.2}s/query average, {:.1}s estimated remaining, {:.1}s elapsed, {:.1}s budget left",
+                "Route progress for {amount_sat} sats: {processed_destinations}/{eligible_destinations} eligible destinations processed, {queried_destinations} queried, {capacity_filtered_destinations} capacity-filtered, {total} routes found, {failed} failed, {timed_out_routes} timed out, {:.2}s/query average, {:.1}s estimated remaining, {:.1}s elapsed, {:.1}s budget left",
                 average_query_seconds,
                 estimated_remaining_seconds,
                 started.elapsed().as_secs_f64(),
@@ -290,11 +324,13 @@ fn analyze_routes(
             max_fee_msat,
             scanned_nodes: nodes_by_id_keys.len(),
             eligible_destinations,
-            sampled_destinations: attempted_destinations,
+            processed_destinations,
+            queried_destinations,
+            capacity_filtered_destinations,
             evaluated_routes: total,
-            failed_routes: attempted_destinations - total,
+            failed_routes: queried_destinations - total,
             timed_out_routes,
-            budget_exhausted: attempted_destinations < planned_destinations,
+            budget_exhausted: processed_destinations < eligible_destinations,
             elapsed_seconds: started.elapsed().as_secs_f64(),
             candidate_nodes: candidates.len(),
             recurring_candidate_nodes: candidates
@@ -319,7 +355,9 @@ fn destination_sample_score(node_id: &str, seed: u64) -> u64 {
 struct RoutesSummary {
     scanned_nodes: usize,
     eligible_destinations: usize,
-    sampled_destinations: usize,
+    processed_destinations: usize,
+    queried_destinations: usize,
+    capacity_filtered_destinations: usize,
     evaluated_routes: usize,
     failed_routes: usize,
     timed_out_routes: usize,
@@ -335,7 +373,9 @@ impl From<&RouteRun> for RoutesSummary {
         Self {
             scanned_nodes: run.scanned_nodes,
             eligible_destinations: run.eligible_destinations,
-            sampled_destinations: run.sampled_destinations,
+            processed_destinations: run.processed_destinations,
+            queried_destinations: run.queried_destinations,
+            capacity_filtered_destinations: run.capacity_filtered_destinations,
             evaluated_routes: run.evaluated_routes,
             failed_routes: run.failed_routes,
             timed_out_routes: run.timed_out_routes,
@@ -497,11 +537,12 @@ fn rebuild_cache(store: &Store, directory: &Path) -> Result<RoutesManifest, Stri
         node_id: store.info.id.clone(),
         source: RoutesSource {
             amounts_sat: ROUTE_AMOUNTS_SAT.to_vec(),
-            destination_sample_size: ROUTE_SAMPLE_SIZE,
             sample_seed_utc_day: batch.sample_seed_utc_day,
+            randomized_destination_order: true,
             per_amount_budget_seconds: ROUTE_AMOUNT_BUDGET.as_secs(),
             total_budget_seconds: ROUTE_TOTAL_BUDGET.as_secs(),
             rpc_timeout_seconds: GETROUTES_TIMEOUT_SECONDS,
+            single_path_endpoint_capacity_filter: true,
             max_fee_ppm: ROUTE_MAX_FEE_PPM,
             minimum_max_fee_msat: ROUTE_MIN_MAX_FEE_MSAT,
             layers: vec!["auto.localchans".to_string(), "auto.sourcefree".to_string()],
@@ -785,11 +826,13 @@ fn route_run_fields() -> BTreeMap<String, FieldMetadata> {
         ("max_fee_msat".into(), metadata_field("integer", false, Some("msat"), "Maximum total route fee accepted for this probe amount.", None, Some("max(5000 msat, amount_sat * 1000 * 10000 / 1000000)"))),
         ("scanned_nodes".into(), metadata_field("integer", false, Some("node"), "Gossip nodes considered before destination eligibility filtering.", Some("listnodes"), None)),
         ("eligible_destinations".into(), metadata_field("integer", false, Some("node"), "Destinations with metadata for at least two public channels.", Some("listnodes and listchannels"), None)),
-        ("sampled_destinations".into(), metadata_field("integer", false, Some("node"), "Eligible destinations actually queried after deterministic daily sampling and time-budget enforcement.", Some("getroutes"), None)),
+        ("processed_destinations".into(), metadata_field("integer", false, Some("node"), "Eligible destinations processed in deterministic daily randomized order before the per-amount time budget expired.", Some("listnodes and listchannels"), None)),
+        ("queried_destinations".into(), metadata_field("integer", false, Some("node"), "Processed destinations passed to getroutes after known single-path endpoint capacity limits were checked.", Some("listpeerchannels, listchannels, and getroutes"), None)),
+        ("capacity_filtered_destinations".into(), metadata_field("integer", false, Some("node"), "Processed destinations skipped because no single local outbound channel or advertised destination inbound channel could carry the full amount in one HTLC.", Some("listpeerchannels and listchannels"), None)),
         ("evaluated_routes".into(), metadata_field("integer", false, Some("route"), "Destinations for which getroutes returned a single-part route within the fee and delay budgets.", Some("getroutes"), None)),
-        ("failed_routes".into(), metadata_field("integer", false, Some("route"), "Sampled destinations for which no acceptable route was returned.", None, Some("sampled_destinations - evaluated_routes"))),
+        ("failed_routes".into(), metadata_field("integer", false, Some("route"), "Queried destinations for which no acceptable route was returned.", None, Some("queried_destinations - evaluated_routes"))),
         ("timed_out_routes".into(), metadata_field("integer", false, Some("route"), "Route queries terminated by Lightdash's per-RPC timeout.", Some("getroutes"), None)),
-        ("budget_exhausted".into(), metadata_field("boolean", false, None, "Whether the per-amount time budget expired before every planned sampled destination was queried.", None, None)),
+        ("budget_exhausted".into(), metadata_field("boolean", false, None, "Whether the per-amount time budget expired before every eligible destination was processed.", None, None)),
         ("elapsed_seconds".into(), metadata_field("number", false, Some("second"), "Wall-clock duration of this amount's route analysis.", None, None)),
         ("candidate_nodes".into(), metadata_field("integer", false, Some("node"), "Distinct non-peer intermediary nodes appearing in at least one returned route.", None, None)),
         ("recurring_candidate_nodes".into(), metadata_field("integer", false, Some("node"), "Candidate nodes appearing in at least three returned routes.", None, None)),
@@ -958,13 +1001,15 @@ fn render_routes_page(
                             " | Candidate relays: " (summary.candidate_nodes)
                         }
                         p {
-                            "Destinations: " (summary.sampled_destinations) " sampled of "
-                            (summary.eligible_destinations) " eligible | Failed: "
+                            "Destinations: " (summary.processed_destinations) " processed of "
+                            (summary.eligible_destinations) " eligible | Queried: "
+                            (summary.queried_destinations) " | Capacity-filtered: "
+                            (summary.capacity_filtered_destinations) " | Failed: "
                             (summary.failed_routes) " | Timed out: " (summary.timed_out_routes)
                             " | Elapsed: " (format!("{:.1} seconds", summary.elapsed_seconds))
                         }
                         @if summary.budget_exhausted {
-                            p { "The per-amount time budget expired before the planned sample completed." }
+                            p { "The per-amount time budget expired before all eligible destinations were processed." }
                         }
                         p {
                             "Maximum route fee: "
@@ -1091,9 +1136,11 @@ mod tests {
             max_fee_msat: 10_000,
             scanned_nodes: 10,
             eligible_destinations: 8,
-            sampled_destinations: 8,
+            processed_destinations: 8,
+            queried_destinations: 7,
+            capacity_filtered_destinations: 1,
             evaluated_routes: 7,
-            failed_routes: 1,
+            failed_routes: 0,
             timed_out_routes: 0,
             budget_exhausted: false,
             elapsed_seconds: 2.5,
@@ -1141,11 +1188,12 @@ mod tests {
             node_id: "test-node".to_string(),
             source: RoutesSource {
                 amounts_sat: ROUTE_AMOUNTS_SAT.to_vec(),
-                destination_sample_size: ROUTE_SAMPLE_SIZE,
                 sample_seed_utc_day: 20_000,
+                randomized_destination_order: true,
                 per_amount_budget_seconds: ROUTE_AMOUNT_BUDGET.as_secs(),
                 total_budget_seconds: ROUTE_TOTAL_BUDGET.as_secs(),
                 rpc_timeout_seconds: GETROUTES_TIMEOUT_SECONDS,
+                single_path_endpoint_capacity_filter: true,
                 max_fee_ppm: ROUTE_MAX_FEE_PPM,
                 minimum_max_fee_msat: ROUTE_MIN_MAX_FEE_MSAT,
                 layers: vec!["auto.localchans".to_string(), "auto.sourcefree".to_string()],

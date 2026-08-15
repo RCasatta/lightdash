@@ -492,6 +492,8 @@ pub struct ListPeerChannelsChannel {
     #[serde(default)]
     pub to_us_msat: u64,
     #[serde(default)]
+    pub spendable_msat: u64,
+    #[serde(default)]
     pub maximum_htlc_out_msat: u64,
 }
 
