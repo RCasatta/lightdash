@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
 use std::path::{Component, Path};
+use std::time::{Duration as StdDuration, Instant};
 
 use crate::cmd::*;
 use crate::common::format_sats;
@@ -14,9 +15,14 @@ use crate::store::Store;
 
 const ROUTE_MAX_FEE_PPM: u64 = 10_000;
 const ROUTE_MIN_MAX_FEE_MSAT: u64 = 5_000;
-const ROUTES_SCHEMA_VERSION: u32 = 1;
+const ROUTES_SCHEMA_VERSION: u32 = 2;
 const ROUTES_MAX_AGE_SECONDS: i64 = 24 * 60 * 60;
 const ROUTE_AMOUNTS_SAT: [u64; 5] = [1_000, 10_000, 100_000, 1_000_000, 10_000_000];
+const ROUTE_SAMPLE_SIZE: usize = 250;
+const ROUTE_AMOUNT_BUDGET: StdDuration = StdDuration::from_secs(10 * 60);
+const ROUTE_TOTAL_BUDGET: StdDuration = StdDuration::from_secs(55 * 60);
+const ROUTE_PROGRESS_INTERVAL: usize = 25;
+const ROUTE_SLOW_QUERY: StdDuration = StdDuration::from_secs(2);
 pub(crate) const DEFAULT_PROCESSED_DIRECTORY: &str = "/var/lib/lightdash/routes/processed";
 pub(crate) const SNAPSHOT_ROUTES_MANIFEST: &str = "routes-manifest.json";
 
@@ -37,6 +43,11 @@ pub(crate) struct RoutesManifest {
 #[derive(Clone, Deserialize, Serialize)]
 struct RoutesSource {
     amounts_sat: Vec<u64>,
+    destination_sample_size: usize,
+    sample_seed_utc_day: u64,
+    per_amount_budget_seconds: u64,
+    total_budget_seconds: u64,
+    rpc_timeout_seconds: u64,
     max_fee_ppm: u64,
     minimum_max_fee_msat: u64,
     layers: Vec<String>,
@@ -51,8 +62,12 @@ pub(crate) struct RouteRun {
     pub max_fee_msat: u64,
     pub scanned_nodes: usize,
     pub eligible_destinations: usize,
+    pub sampled_destinations: usize,
     pub evaluated_routes: usize,
     pub failed_routes: usize,
+    pub timed_out_routes: usize,
+    pub budget_exhausted: bool,
+    pub elapsed_seconds: f64,
     pub candidate_nodes: usize,
     pub recurring_candidate_nodes: usize,
     pub average_hops: f64,
@@ -76,14 +91,24 @@ struct RouteAnalysis {
     candidates: Vec<RouteCandidate>,
 }
 
+struct RouteAnalysisBatch {
+    analyses: Vec<RouteAnalysis>,
+    sample_seed_utc_day: u64,
+}
+
 #[derive(Deserialize, Serialize)]
 struct RoutesExportBundle {
     manifest: RoutesManifest,
     files: BTreeMap<String, Value>,
 }
 
-pub fn run_routes(store: &Store, directory: &str, amount_sat: u64) {
-    let analysis = analyze_routes(store, amount_sat);
+pub fn run_routes(store: &Store, directory: &str) {
+    for analysis in analyze_route_amounts(store).analyses {
+        write_routes_page(directory, &analysis);
+    }
+}
+
+fn write_routes_page(directory: &str, analysis: &RouteAnalysis) {
     let summary = RoutesSummary::from(&analysis.run);
     let route_entries: Vec<_> = analysis
         .candidates
@@ -92,6 +117,7 @@ pub fn run_routes(store: &Store, directory: &str, amount_sat: u64) {
         .cloned()
         .collect();
     let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string();
+    let amount_sat = analysis.run.amount_sat;
     let routes_html = render_routes_page(&route_entries, &summary, &timestamp, amount_sat * 1000);
 
     if let Err(e) = fs::create_dir_all(directory) {
@@ -107,7 +133,40 @@ pub fn run_routes(store: &Store, directory: &str, amount_sat: u64) {
     }
 }
 
-fn analyze_routes(store: &Store, amount_sat: u64) -> RouteAnalysis {
+fn analyze_route_amounts(store: &Store) -> RouteAnalysisBatch {
+    let started = Instant::now();
+    let total_deadline = started + ROUTE_TOTAL_BUDGET;
+    let sample_seed = Utc::now().timestamp().div_euclid(24 * 60 * 60) as u64;
+    let mut analyses = Vec::with_capacity(ROUTE_AMOUNTS_SAT.len());
+
+    for amount_sat in ROUTE_AMOUNTS_SAT {
+        let amount_deadline = (Instant::now() + ROUTE_AMOUNT_BUDGET).min(total_deadline);
+        analyses.push(analyze_routes(
+            store,
+            amount_sat,
+            sample_seed,
+            amount_deadline,
+        ));
+    }
+
+    log::info!(
+        "Route analysis completed all {} amounts in {:.1} minutes",
+        analyses.len(),
+        started.elapsed().as_secs_f64() / 60.0
+    );
+    RouteAnalysisBatch {
+        analyses,
+        sample_seed_utc_day: sample_seed,
+    }
+}
+
+fn analyze_routes(
+    store: &Store,
+    amount_sat: u64,
+    sample_seed: u64,
+    deadline: Instant,
+) -> RouteAnalysis {
+    let started = Instant::now();
     let chan_meta = store.chan_meta_per_node();
     let peers_ids = store.peers_ids();
     let nodes_by_id_keys = store.node_ids_with_aliases();
@@ -115,22 +174,56 @@ fn analyze_routes(store: &Store, amount_sat: u64) -> RouteAnalysis {
     let mut counters = HashMap::new();
     let mut hop_sum = 0usize;
     let mut total = 0;
-    let mut eligible_destinations = 0;
+    let mut timed_out_routes = 0;
     let amount_msat = amount_sat * 1000;
     let max_fee_msat = route_max_fee_msat(amount_msat);
+    let mut eligible: Vec<_> = nodes_by_id_keys
+        .iter()
+        .filter(|id| {
+            chan_meta
+                .get(id.as_str())
+                .is_some_and(|chan_info| chan_info.count >= 2)
+        })
+        .collect();
+    eligible.sort_unstable_by_key(|id| destination_sample_score(id, sample_seed));
+    let eligible_destinations = eligible.len();
+    eligible.truncate(ROUTE_SAMPLE_SIZE);
+    let planned_destinations = eligible.len();
+    let mut attempted_destinations = 0;
 
-    for id in &nodes_by_id_keys {
-        // Skip nodes that have less than 2 channels
-        if chan_meta
-            .get(id.as_str())
-            .is_none_or(|chan_info| chan_info.count < 2)
-        {
-            continue;
+    log::info!(
+        "Analyzing {amount_sat} sat routes: sampled {planned_destinations} of {eligible_destinations} eligible destinations; budget {:.1} minutes",
+        deadline.saturating_duration_since(Instant::now()).as_secs_f64() / 60.0
+    );
+
+    for id in eligible {
+        if Instant::now() >= deadline {
+            log::warn!(
+                "Stopping {amount_sat} sat analysis after {attempted_destinations}/{planned_destinations} sampled destinations: amount time budget exhausted"
+            );
+            break;
         }
-        eligible_destinations += 1;
-        if let Some(route) = get_routes(&store.info.id, id, amount_msat, max_fee_msat)
-            .and_then(|response| response.routes.into_iter().next())
-        {
+        attempted_destinations += 1;
+        let query_started = Instant::now();
+        let route_result = get_routes(&store.info.id, id, amount_msat, max_fee_msat);
+        let query_elapsed = query_started.elapsed();
+        if query_elapsed >= ROUTE_SLOW_QUERY {
+            log::info!(
+                "Slow {amount_sat} sat route query {attempted_destinations}/{planned_destinations} to {id}: {:.2}s",
+                query_elapsed.as_secs_f64()
+            );
+        }
+        let response = match route_result {
+            Ok(response) => response,
+            Err(error) => {
+                if error.contains("timed out") || error.contains("command exceeded") {
+                    timed_out_routes += 1;
+                }
+                log::warn!("Route query to {id} failed: {error}");
+                None
+            }
+        };
+        if let Some(route) = response.and_then(|response| response.routes.into_iter().next()) {
             let mut nodes = route.path;
             hop_sum += nodes.len();
             total += 1;
@@ -143,6 +236,22 @@ fn analyze_routes(store: &Store, amount_sat: u64) -> RouteAnalysis {
                     *counters.entry(node_id.to_string()).or_insert(0u64) += 1;
                 }
             }
+        }
+        if attempted_destinations % ROUTE_PROGRESS_INTERVAL == 0
+            || attempted_destinations == planned_destinations
+        {
+            let failed = attempted_destinations - total;
+            let average_query_seconds =
+                started.elapsed().as_secs_f64() / attempted_destinations.max(1) as f64;
+            let estimated_remaining_seconds =
+                average_query_seconds * (planned_destinations - attempted_destinations) as f64;
+            log::info!(
+                "Route progress for {amount_sat} sats: {attempted_destinations}/{planned_destinations}, {total} routes found, {failed} failed, {timed_out_routes} timed out, {:.2}s/query average, {:.1}s estimated remaining, {:.1}s elapsed, {:.1}s budget left",
+                average_query_seconds,
+                estimated_remaining_seconds,
+                started.elapsed().as_secs_f64(),
+                deadline.saturating_duration_since(Instant::now()).as_secs_f64()
+            );
         }
     }
     let mut counters_vec: Vec<_> = counters.into_iter().collect();
@@ -181,8 +290,12 @@ fn analyze_routes(store: &Store, amount_sat: u64) -> RouteAnalysis {
             max_fee_msat,
             scanned_nodes: nodes_by_id_keys.len(),
             eligible_destinations,
+            sampled_destinations: attempted_destinations,
             evaluated_routes: total,
-            failed_routes: eligible_destinations - total,
+            failed_routes: attempted_destinations - total,
+            timed_out_routes,
+            budget_exhausted: attempted_destinations < planned_destinations,
+            elapsed_seconds: started.elapsed().as_secs_f64(),
             candidate_nodes: candidates.len(),
             recurring_candidate_nodes: candidates
                 .iter()
@@ -194,9 +307,24 @@ fn analyze_routes(store: &Store, amount_sat: u64) -> RouteAnalysis {
     }
 }
 
+fn destination_sample_score(node_id: &str, seed: u64) -> u64 {
+    let mut hash = 0xcbf29ce484222325_u64 ^ seed;
+    for byte in node_id.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
+}
+
 struct RoutesSummary {
     scanned_nodes: usize,
+    eligible_destinations: usize,
+    sampled_destinations: usize,
     evaluated_routes: usize,
+    failed_routes: usize,
+    timed_out_routes: usize,
+    budget_exhausted: bool,
+    elapsed_seconds: f64,
     candidate_nodes: usize,
     average_hops: f64,
     max_fee_msat: u64,
@@ -206,7 +334,13 @@ impl From<&RouteRun> for RoutesSummary {
     fn from(run: &RouteRun) -> Self {
         Self {
             scanned_nodes: run.scanned_nodes,
+            eligible_destinations: run.eligible_destinations,
+            sampled_destinations: run.sampled_destinations,
             evaluated_routes: run.evaluated_routes,
+            failed_routes: run.failed_routes,
+            timed_out_routes: run.timed_out_routes,
+            budget_exhausted: run.budget_exhausted,
+            elapsed_seconds: run.elapsed_seconds,
             candidate_nodes: run.recurring_candidate_nodes,
             average_hops: run.average_hops,
             max_fee_msat: run.max_fee_msat,
@@ -312,9 +446,8 @@ fn ensure_cached_routes(
 fn rebuild_cache(store: &Store, directory: &Path) -> Result<RoutesManifest, String> {
     let mut runs = Vec::new();
     let mut candidates = Vec::new();
-    for amount_sat in ROUTE_AMOUNTS_SAT {
-        log::info!("Analyzing routes for {amount_sat} sats");
-        let analysis = analyze_routes(store, amount_sat);
+    let batch = analyze_route_amounts(store);
+    for analysis in batch.analyses {
         runs.push(analysis.run);
         candidates.extend(analysis.candidates);
     }
@@ -364,6 +497,11 @@ fn rebuild_cache(store: &Store, directory: &Path) -> Result<RoutesManifest, Stri
         node_id: store.info.id.clone(),
         source: RoutesSource {
             amounts_sat: ROUTE_AMOUNTS_SAT.to_vec(),
+            destination_sample_size: ROUTE_SAMPLE_SIZE,
+            sample_seed_utc_day: batch.sample_seed_utc_day,
+            per_amount_budget_seconds: ROUTE_AMOUNT_BUDGET.as_secs(),
+            total_budget_seconds: ROUTE_TOTAL_BUDGET.as_secs(),
+            rpc_timeout_seconds: GETROUTES_TIMEOUT_SECONDS,
             max_fee_ppm: ROUTE_MAX_FEE_PPM,
             minimum_max_fee_msat: ROUTE_MIN_MAX_FEE_MSAT,
             layers: vec!["auto.localchans".to_string(), "auto.sourcefree".to_string()],
@@ -647,8 +785,12 @@ fn route_run_fields() -> BTreeMap<String, FieldMetadata> {
         ("max_fee_msat".into(), metadata_field("integer", false, Some("msat"), "Maximum total route fee accepted for this probe amount.", None, Some("max(5000 msat, amount_sat * 1000 * 10000 / 1000000)"))),
         ("scanned_nodes".into(), metadata_field("integer", false, Some("node"), "Gossip nodes considered before destination eligibility filtering.", Some("listnodes"), None)),
         ("eligible_destinations".into(), metadata_field("integer", false, Some("node"), "Destinations with metadata for at least two public channels.", Some("listnodes and listchannels"), None)),
+        ("sampled_destinations".into(), metadata_field("integer", false, Some("node"), "Eligible destinations actually queried after deterministic daily sampling and time-budget enforcement.", Some("getroutes"), None)),
         ("evaluated_routes".into(), metadata_field("integer", false, Some("route"), "Destinations for which getroutes returned a single-part route within the fee and delay budgets.", Some("getroutes"), None)),
-        ("failed_routes".into(), metadata_field("integer", false, Some("route"), "Eligible destinations for which no acceptable route was returned.", None, Some("eligible_destinations - evaluated_routes"))),
+        ("failed_routes".into(), metadata_field("integer", false, Some("route"), "Sampled destinations for which no acceptable route was returned.", None, Some("sampled_destinations - evaluated_routes"))),
+        ("timed_out_routes".into(), metadata_field("integer", false, Some("route"), "Route queries terminated by Lightdash's per-RPC timeout.", Some("getroutes"), None)),
+        ("budget_exhausted".into(), metadata_field("boolean", false, None, "Whether the per-amount time budget expired before every planned sampled destination was queried.", None, None)),
+        ("elapsed_seconds".into(), metadata_field("number", false, Some("second"), "Wall-clock duration of this amount's route analysis.", None, None)),
         ("candidate_nodes".into(), metadata_field("integer", false, Some("node"), "Distinct non-peer intermediary nodes appearing in at least one returned route.", None, None)),
         ("recurring_candidate_nodes".into(), metadata_field("integer", false, Some("node"), "Candidate nodes appearing in at least three returned routes.", None, None)),
         ("average_hops".into(), metadata_field("number", false, Some("hop_per_route"), "Mean hop count across successfully evaluated routes, including the destination hop.", None, Some("sum(route hop counts) / evaluated_routes"))),
@@ -816,6 +958,15 @@ fn render_routes_page(
                             " | Candidate relays: " (summary.candidate_nodes)
                         }
                         p {
+                            "Destinations: " (summary.sampled_destinations) " sampled of "
+                            (summary.eligible_destinations) " eligible | Failed: "
+                            (summary.failed_routes) " | Timed out: " (summary.timed_out_routes)
+                            " | Elapsed: " (format!("{:.1} seconds", summary.elapsed_seconds))
+                        }
+                        @if summary.budget_exhausted {
+                            p { "The per-amount time budget expired before the planned sample completed." }
+                        }
+                        p {
                             "Maximum route fee: "
                             (format!("{} sats", format_sats(summary.max_fee_msat / 1000)))
                             " (1% of the payment amount, with a 5 sat minimum)."
@@ -888,6 +1039,19 @@ mod tests {
     }
 
     #[test]
+    fn destination_sampling_is_stable_within_a_utc_day() {
+        let node = "02c095d069538f96bf14c5f90f6c0851bdf354a0ec86039a24bf38a73f705adc2c";
+        assert_eq!(
+            destination_sample_score(node, 20_000),
+            destination_sample_score(node, 20_000)
+        );
+        assert_ne!(
+            destination_sample_score(node, 20_000),
+            destination_sample_score(node, 20_001)
+        );
+    }
+
+    #[test]
     fn route_cache_uses_a_rolling_24_hour_ttl() {
         let now = Utc::now();
         let mut manifest = test_manifest(now - Duration::hours(23));
@@ -927,8 +1091,12 @@ mod tests {
             max_fee_msat: 10_000,
             scanned_nodes: 10,
             eligible_destinations: 8,
+            sampled_destinations: 8,
             evaluated_routes: 7,
             failed_routes: 1,
+            timed_out_routes: 0,
+            budget_exhausted: false,
+            elapsed_seconds: 2.5,
             candidate_nodes: 0,
             recurring_candidate_nodes: 0,
             average_hops: 2.5,
@@ -973,6 +1141,11 @@ mod tests {
             node_id: "test-node".to_string(),
             source: RoutesSource {
                 amounts_sat: ROUTE_AMOUNTS_SAT.to_vec(),
+                destination_sample_size: ROUTE_SAMPLE_SIZE,
+                sample_seed_utc_day: 20_000,
+                per_amount_budget_seconds: ROUTE_AMOUNT_BUDGET.as_secs(),
+                total_budget_seconds: ROUTE_TOTAL_BUDGET.as_secs(),
+                rpc_timeout_seconds: GETROUTES_TIMEOUT_SECONDS,
                 max_fee_ppm: ROUTE_MAX_FEE_PPM,
                 minimum_max_fee_msat: ROUTE_MIN_MAX_FEE_MSAT,
                 layers: vec!["auto.localchans".to_string(), "auto.sourcefree".to_string()],

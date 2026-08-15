@@ -241,9 +241,7 @@ fn main() {
                     error_panic!("routes requires an output directory or a subcommand");
                 });
                 let store = Store::new(None);
-                for amount_sat in [1_000, 10_000, 100_000, 1_000_000, 10_000_000] {
-                    routes::run_routes(&store, &directory, amount_sat);
-                }
+                routes::run_routes(&store, &directory);
             }
         },
         Commands::Sling => {

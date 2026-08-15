@@ -499,10 +499,12 @@ fn render_routes_page(
                     &format!("{} sat probe", format_number(run.amount_sat)),
                     &format!("{} routes", format_number(run.evaluated_routes)),
                     &format!(
-                        "{} eligible · {:.2} average hops · {} sat max fee",
+                        "{} sampled of {} eligible · {} failed · {} timed out · {:.1}s",
+                        format_number(run.sampled_destinations),
                         format_number(run.eligible_destinations),
-                        run.average_hops,
-                        format_number(run.max_fee_msat / 1000),
+                        format_number(run.failed_routes),
+                        format_number(run.timed_out_routes),
+                        run.elapsed_seconds,
                     ),
                 ))
             }
@@ -855,7 +857,7 @@ mod tests {
         fs::write(snapshot.join("rebalance-status.json"), b"[]").unwrap();
         fs::write(
             snapshot.join("route-runs.json"),
-            br#"[{"amount_sat":1000,"max_fee_msat":10000,"scanned_nodes":10,"eligible_destinations":8,"evaluated_routes":7,"failed_routes":1,"candidate_nodes":1,"recurring_candidate_nodes":1,"average_hops":2.5}]"#,
+            br#"[{"amount_sat":1000,"max_fee_msat":10000,"scanned_nodes":10,"eligible_destinations":8,"sampled_destinations":8,"evaluated_routes":7,"failed_routes":1,"timed_out_routes":0,"budget_exhausted":false,"elapsed_seconds":2.5,"candidate_nodes":1,"recurring_candidate_nodes":1,"average_hops":2.5}]"#,
         )
         .unwrap();
         fs::write(
@@ -865,7 +867,7 @@ mod tests {
         .unwrap();
         fs::write(
             snapshot.join("routes-manifest.json"),
-            br#"{"schema_version":1,"generated_at":"2026-07-16T09:00:00Z","node_id":"02testnode","source":{"amounts_sat":[1000],"max_fee_ppm":10000,"minimum_max_fee_msat":5000,"layers":["auto.localchans","auto.sourcefree"],"final_cltv":9,"maxdelay":2016,"maxparts":1},"datasets":{}}"#,
+            br#"{"schema_version":2,"generated_at":"2026-07-16T09:00:00Z","node_id":"02testnode","source":{"amounts_sat":[1000],"destination_sample_size":250,"sample_seed_utc_day":20000,"per_amount_budget_seconds":600,"total_budget_seconds":3300,"rpc_timeout_seconds":12,"max_fee_ppm":10000,"minimum_max_fee_msat":5000,"layers":["auto.localchans","auto.sourcefree"],"final_cltv":9,"maxdelay":2016,"maxparts":1},"datasets":{}}"#,
         )
         .unwrap();
         for dataset in manifest.datasets.values() {
