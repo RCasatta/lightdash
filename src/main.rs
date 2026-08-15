@@ -67,6 +67,12 @@ enum Commands {
         /// Generate the snapshot without processed channel history
         #[arg(long)]
         without_history: bool,
+        /// Override the processed routes cache directory; remote when --ssh is used
+        #[arg(long, conflicts_with = "without_routes")]
+        routes_directory: Option<String>,
+        /// Generate the snapshot without cached route analysis
+        #[arg(long)]
+        without_routes: bool,
     },
     /// Process raw listchannels and listfunds archives into normalized history datasets
     History {
@@ -75,8 +81,10 @@ enum Commands {
     },
     /// Generate routing analysis page
     Routes {
-        /// Directory for routes output
-        directory: String,
+        /// Directory for legacy routes HTML output
+        directory: Option<String>,
+        #[command(subcommand)]
+        command: Option<RoutesCommands>,
     },
     /// Execute sling jobs for rebalancing
     Sling,
@@ -133,6 +141,25 @@ enum HistoryCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum RoutesCommands {
+    /// Refresh the durable route-analysis cache
+    Refresh {
+        /// Directory for processed route-analysis datasets
+        #[arg(long, default_value = "/var/lib/lightdash/routes/processed")]
+        directory: String,
+    },
+    /// Stream the cached route-analysis artifact as JSON
+    Export {
+        /// Directory containing processed route-analysis datasets
+        #[arg(long, default_value = "/var/lib/lightdash/routes/processed")]
+        directory: String,
+        /// Recompute the cache first when it is at least 24 hours old
+        #[arg(long)]
+        refresh_if_stale: bool,
+    },
+}
+
 fn main() {
     init_logging();
     log::info!("Lightdash starting");
@@ -165,6 +192,8 @@ fn main() {
             availdb,
             history_directory,
             without_history,
+            routes_directory,
+            without_routes,
         } => {
             let store = Store::new(availdb);
             if let Err(e) = snapshot::run_snapshot(
@@ -172,6 +201,8 @@ fn main() {
                 &directory,
                 history_directory.as_deref(),
                 without_history,
+                routes_directory.as_deref(),
+                without_routes,
             ) {
                 error_panic!("creating snapshot in `{directory}` failed: {e}");
             }
@@ -191,13 +222,30 @@ fn main() {
                 }
             }
         },
-        Commands::Routes { directory } => {
-            let store = Store::new(None);
-
-            for i in [1000, 10_000, 100_000, 1_000_000, 10_000_000] {
-                routes::run_routes(&store, &directory, i);
+        Commands::Routes { directory, command } => match command {
+            Some(RoutesCommands::Refresh { directory }) => {
+                if let Err(e) = routes::run_cache_refresh(&directory) {
+                    error_panic!("refreshing cached route analysis failed: {e}");
+                }
             }
-        }
+            Some(RoutesCommands::Export {
+                directory,
+                refresh_if_stale,
+            }) => {
+                if let Err(e) = routes::run_export(&directory, refresh_if_stale) {
+                    error_panic!("exporting cached route analysis failed: {e}");
+                }
+            }
+            None => {
+                let directory = directory.unwrap_or_else(|| {
+                    error_panic!("routes requires an output directory or a subcommand");
+                });
+                let store = Store::new(None);
+                for amount_sat in [1_000, 10_000, 100_000, 1_000_000, 10_000_000] {
+                    routes::run_routes(&store, &directory, amount_sat);
+                }
+            }
+        },
         Commands::Sling => {
             let store = Store::new(None);
 

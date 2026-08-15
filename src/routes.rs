@@ -1,16 +1,113 @@
-use chrono::Utc;
+use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use maud::{html, Markup, DOCTYPE};
-use std::collections::HashMap;
-use std::fs;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::{BTreeMap, HashMap};
+use std::fs::{self, File};
+use std::io::{self, BufWriter, Write};
+use std::path::{Component, Path};
 
 use crate::cmd::*;
 use crate::common::format_sats;
+use crate::snapshot_metadata::{DatasetMetadata, FieldMetadata};
 use crate::store::Store;
 
 const ROUTE_MAX_FEE_PPM: u64 = 10_000;
 const ROUTE_MIN_MAX_FEE_MSAT: u64 = 5_000;
+const ROUTES_SCHEMA_VERSION: u32 = 1;
+const ROUTES_MAX_AGE_SECONDS: i64 = 24 * 60 * 60;
+const ROUTE_AMOUNTS_SAT: [u64; 5] = [1_000, 10_000, 100_000, 1_000_000, 10_000_000];
+pub(crate) const DEFAULT_PROCESSED_DIRECTORY: &str = "/var/lib/lightdash/routes/processed";
+pub(crate) const SNAPSHOT_ROUTES_MANIFEST: &str = "routes-manifest.json";
+
+pub(crate) struct ImportedRoutes {
+    pub manifest_file: String,
+    pub datasets: BTreeMap<String, DatasetMetadata>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub(crate) struct RoutesManifest {
+    schema_version: u32,
+    pub generated_at: String,
+    node_id: String,
+    source: RoutesSource,
+    pub datasets: BTreeMap<String, DatasetMetadata>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct RoutesSource {
+    amounts_sat: Vec<u64>,
+    max_fee_ppm: u64,
+    minimum_max_fee_msat: u64,
+    layers: Vec<String>,
+    final_cltv: u32,
+    maxdelay: u32,
+    maxparts: u32,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub(crate) struct RouteRun {
+    pub amount_sat: u64,
+    pub max_fee_msat: u64,
+    pub scanned_nodes: usize,
+    pub eligible_destinations: usize,
+    pub evaluated_routes: usize,
+    pub failed_routes: usize,
+    pub candidate_nodes: usize,
+    pub recurring_candidate_nodes: usize,
+    pub average_hops: f64,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub(crate) struct RouteCandidate {
+    pub amount_sat: u64,
+    pub rank: usize,
+    pub node_id: String,
+    pub alias: String,
+    pub appearances: u64,
+    pub appearance_ratio: Option<f64>,
+    pub average_fee_ppm: f64,
+    pub fee_diversity: f64,
+    pub channel_count: u64,
+}
+
+struct RouteAnalysis {
+    run: RouteRun,
+    candidates: Vec<RouteCandidate>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct RoutesExportBundle {
+    manifest: RoutesManifest,
+    files: BTreeMap<String, Value>,
+}
 
 pub fn run_routes(store: &Store, directory: &str, amount_sat: u64) {
+    let analysis = analyze_routes(store, amount_sat);
+    let summary = RoutesSummary::from(&analysis.run);
+    let route_entries: Vec<_> = analysis
+        .candidates
+        .iter()
+        .filter(|candidate| candidate.appearances >= 3)
+        .cloned()
+        .collect();
+    let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string();
+    let routes_html = render_routes_page(&route_entries, &summary, &timestamp, amount_sat * 1000);
+
+    if let Err(e) = fs::create_dir_all(directory) {
+        log::error!("Error creating directory {directory}: {e}");
+        return;
+    }
+
+    let routes_file_path = format!("{directory}/routes-{amount_sat}.html");
+
+    match fs::write(&routes_file_path, routes_html.into_string()) {
+        Ok(_) => log::info!("Routes page generated: {routes_file_path}"),
+        Err(e) => log::error!("Error writing routes page {routes_file_path}: {e}"),
+    }
+}
+
+fn analyze_routes(store: &Store, amount_sat: u64) -> RouteAnalysis {
     let chan_meta = store.chan_meta_per_node();
     let peers_ids = store.peers_ids();
     let nodes_by_id_keys = store.node_ids_with_aliases();
@@ -18,6 +115,7 @@ pub fn run_routes(store: &Store, directory: &str, amount_sat: u64) {
     let mut counters = HashMap::new();
     let mut hop_sum = 0usize;
     let mut total = 0;
+    let mut eligible_destinations = 0;
     let amount_msat = amount_sat * 1000;
     let max_fee_msat = route_max_fee_msat(amount_msat);
 
@@ -29,6 +127,7 @@ pub fn run_routes(store: &Store, directory: &str, amount_sat: u64) {
         {
             continue;
         }
+        eligible_destinations += 1;
         if let Some(route) = get_routes(&store.info.id, id, amount_msat, max_fee_msat)
             .and_then(|response| response.routes.into_iter().next())
         {
@@ -46,23 +145,29 @@ pub fn run_routes(store: &Store, directory: &str, amount_sat: u64) {
             }
         }
     }
-    let mut counters_vec: Vec<_> = counters.into_iter().filter(|e| e.1 > 2).collect();
+    let mut counters_vec: Vec<_> = counters.into_iter().collect();
     counters_vec.sort_by(|a, b| b.1.cmp(&a.1));
 
-    let route_entries: Vec<RouteEntry> = counters_vec
+    let mut candidates: Vec<RouteCandidate> = counters_vec
         .into_iter()
         .filter_map(|(id, count)| {
             let chan_info = chan_meta.get(id.as_str())?;
-            Some(RouteEntry {
+            Some(RouteCandidate {
+                amount_sat,
+                rank: 0,
                 node_id: id.clone(),
                 alias: store.get_node_alias(&id),
                 appearances: count,
-                avg_fee: chan_info.avg_fee(),
+                appearance_ratio: (total != 0).then_some(count as f64 / total as f64),
+                average_fee_ppm: chan_info.avg_fee(),
                 fee_diversity: chan_info.fee_diversity(),
                 channel_count: chan_info.count,
             })
         })
         .collect();
+    for (index, candidate) in candidates.iter_mut().enumerate() {
+        candidate.rank = index + 1;
+    }
 
     let average_hops = if total == 0 {
         0.0
@@ -70,39 +175,23 @@ pub fn run_routes(store: &Store, directory: &str, amount_sat: u64) {
         hop_sum as f64 / total as f64
     };
 
-    let summary = RoutesSummary {
-        scanned_nodes: nodes_by_id_keys.len(),
-        evaluated_routes: total,
-        candidate_nodes: route_entries.len(),
-        average_hops,
-        max_fee_msat,
-    };
-
-    let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string();
-    let routes_html = render_routes_page(&route_entries, &summary, &timestamp, amount_msat);
-
-    if let Err(e) = fs::create_dir_all(directory) {
-        log::error!("Error creating directory {}: {}", directory, e);
-        return;
+    RouteAnalysis {
+        run: RouteRun {
+            amount_sat,
+            max_fee_msat,
+            scanned_nodes: nodes_by_id_keys.len(),
+            eligible_destinations,
+            evaluated_routes: total,
+            failed_routes: eligible_destinations - total,
+            candidate_nodes: candidates.len(),
+            recurring_candidate_nodes: candidates
+                .iter()
+                .filter(|candidate| candidate.appearances >= 3)
+                .count(),
+            average_hops,
+        },
+        candidates,
     }
-
-    let routes_file_path = format!("{}/routes-{}.html", directory, amount_sat);
-
-    match fs::write(&routes_file_path, routes_html.into_string()) {
-        Ok(_) => {
-            log::info!("Routes page generated: {}", routes_file_path);
-        }
-        Err(e) => log::error!("Error writing routes page: {}", e),
-    }
-}
-
-struct RouteEntry {
-    node_id: String,
-    alias: String,
-    appearances: u64,
-    avg_fee: f64,
-    fee_diversity: f64,
-    channel_count: u64,
 }
 
 struct RoutesSummary {
@@ -113,13 +202,475 @@ struct RoutesSummary {
     max_fee_msat: u64,
 }
 
+impl From<&RouteRun> for RoutesSummary {
+    fn from(run: &RouteRun) -> Self {
+        Self {
+            scanned_nodes: run.scanned_nodes,
+            evaluated_routes: run.evaluated_routes,
+            candidate_nodes: run.recurring_candidate_nodes,
+            average_hops: run.average_hops,
+            max_fee_msat: run.max_fee_msat,
+        }
+    }
+}
+
 fn route_max_fee_msat(amount_msat: u64) -> u64 {
     let proportional_fee = (amount_msat as u128 * ROUTE_MAX_FEE_PPM as u128 / 1_000_000) as u64;
     proportional_fee.max(ROUTE_MIN_MAX_FEE_MSAT)
 }
 
+pub fn run_cache_refresh(directory: &str) -> Result<(), String> {
+    let store = Store::new(None);
+    ensure_cached_routes(&store, Path::new(directory), true)?;
+    Ok(())
+}
+
+pub fn run_export(directory: &str, refresh_if_stale: bool) -> Result<(), String> {
+    let directory = Path::new(directory);
+    if refresh_if_stale {
+        let node_id = get_info().id;
+        if !cached_routes_are_fresh(directory, &node_id) {
+            let store = Store::new(None);
+            ensure_cached_routes(&store, directory, false)?;
+        }
+    }
+
+    let bundle = export_bundle(directory)?;
+    let stdout = io::stdout();
+    let mut writer = BufWriter::new(stdout.lock());
+    serde_json::to_writer(&mut writer, &bundle)
+        .map_err(|e| format!("serializing routes export failed: {e}"))?;
+    writer
+        .flush()
+        .map_err(|e| format!("flushing routes export failed: {e}"))
+}
+
+pub(crate) fn import_for_snapshot(
+    store: &Store,
+    snapshot_directory: &Path,
+    configured_directory: Option<&str>,
+) -> Result<ImportedRoutes, String> {
+    let processed_directory = configured_directory.unwrap_or(DEFAULT_PROCESSED_DIRECTORY);
+    if using_ssh() {
+        log::info!("Fetching cached route analysis from remote node");
+        let bytes = remote_command_output(
+            "lightdash",
+            &[
+                "routes",
+                "export",
+                "--directory",
+                processed_directory,
+                "--refresh-if-stale",
+            ],
+        )?;
+        let bundle: RoutesExportBundle = serde_json::from_slice(&bytes)
+            .map_err(|e| format!("parsing remote routes export failed: {e}"))?;
+        import_bundle(bundle, snapshot_directory, &store.info.id)
+    } else {
+        let processed_directory = Path::new(processed_directory);
+        log::info!(
+            "Ensuring cached route analysis in {}",
+            processed_directory.display()
+        );
+        let manifest = ensure_cached_routes(store, processed_directory, false)?;
+        import_directory(processed_directory, snapshot_directory, manifest)
+    }
+}
+
+fn ensure_cached_routes(
+    store: &Store,
+    directory: &Path,
+    force: bool,
+) -> Result<RoutesManifest, String> {
+    let existing = read_valid_manifest(directory, Some(&store.info.id)).ok();
+    if !force
+        && existing
+            .as_ref()
+            .is_some_and(|manifest| manifest_is_fresh(manifest, Utc::now()))
+    {
+        log::info!("Reusing route analysis less than 24 hours old");
+        return Ok(existing.expect("fresh manifest exists"));
+    }
+
+    log::info!("Refreshing cached route analysis");
+    match rebuild_cache(store, directory) {
+        Ok(manifest) => Ok(manifest),
+        Err(error) => {
+            if let Some(existing) = existing {
+                log::warn!(
+                    "Refreshing route analysis failed; reusing cached result from {}: {error}",
+                    existing.generated_at
+                );
+                Ok(existing)
+            } else {
+                Err(error)
+            }
+        }
+    }
+}
+
+fn rebuild_cache(store: &Store, directory: &Path) -> Result<RoutesManifest, String> {
+    let mut runs = Vec::new();
+    let mut candidates = Vec::new();
+    for amount_sat in ROUTE_AMOUNTS_SAT {
+        log::info!("Analyzing routes for {amount_sat} sats");
+        let analysis = analyze_routes(store, amount_sat);
+        runs.push(analysis.run);
+        candidates.extend(analysis.candidates);
+    }
+    if runs.iter().all(|run| run.evaluated_routes == 0) {
+        return Err("route analysis did not find any routes for any probe amount".to_string());
+    }
+
+    fs::create_dir_all(directory).map_err(|e| {
+        format!(
+            "creating routes cache directory `{}` failed: {e}",
+            directory.display()
+        )
+    })?;
+    let generated_at = Utc::now();
+    let generation = generated_at.format("%Y%m%dT%H%M%S%.fZ").to_string();
+    let runs_file = format!("route-runs-{generation}.json");
+    let runs_schema_file = format!("route-runs-{generation}.schema.json");
+    let candidates_file = format!("route-candidates-{generation}.json");
+    let candidates_schema_file = format!("route-candidates-{generation}.schema.json");
+    let datasets = route_dataset_metadata(
+        &runs_file,
+        &runs_schema_file,
+        &candidates_file,
+        &candidates_schema_file,
+        runs.len(),
+        candidates.len(),
+    );
+
+    write_json_atomic(&directory.join(&runs_file), &runs)?;
+    write_json_atomic(&directory.join(&candidates_file), &candidates)?;
+    write_json_atomic(
+        &directory.join(&runs_schema_file),
+        datasets
+            .get("route_runs")
+            .expect("route runs metadata exists"),
+    )?;
+    write_json_atomic(
+        &directory.join(&candidates_schema_file),
+        datasets
+            .get("route_candidates")
+            .expect("route candidates metadata exists"),
+    )?;
+
+    let manifest = RoutesManifest {
+        schema_version: ROUTES_SCHEMA_VERSION,
+        generated_at: generated_at.to_rfc3339_opts(SecondsFormat::Secs, true),
+        node_id: store.info.id.clone(),
+        source: RoutesSource {
+            amounts_sat: ROUTE_AMOUNTS_SAT.to_vec(),
+            max_fee_ppm: ROUTE_MAX_FEE_PPM,
+            minimum_max_fee_msat: ROUTE_MIN_MAX_FEE_MSAT,
+            layers: vec!["auto.localchans".to_string(), "auto.sourcefree".to_string()],
+            final_cltv: 9,
+            maxdelay: 2016,
+            maxparts: 1,
+        },
+        datasets,
+    };
+    write_json_atomic(&directory.join("manifest.json"), &manifest)?;
+    log::info!(
+        "Cached {} route runs and {} candidates in {}",
+        runs.len(),
+        candidates.len(),
+        directory.display()
+    );
+    Ok(manifest)
+}
+
+fn cached_routes_are_fresh(directory: &Path, expected_node_id: &str) -> bool {
+    read_valid_manifest(directory, Some(expected_node_id))
+        .is_ok_and(|manifest| manifest_is_fresh(&manifest, Utc::now()))
+}
+
+fn manifest_is_fresh(manifest: &RoutesManifest, now: DateTime<Utc>) -> bool {
+    let Ok(generated_at) = DateTime::parse_from_rfc3339(&manifest.generated_at) else {
+        return false;
+    };
+    let age = now.signed_duration_since(generated_at.with_timezone(&Utc));
+    age >= Duration::zero() && age < Duration::seconds(ROUTES_MAX_AGE_SECONDS)
+}
+
+fn read_valid_manifest(
+    directory: &Path,
+    expected_node_id: Option<&str>,
+) -> Result<RoutesManifest, String> {
+    let path = directory.join("manifest.json");
+    let bytes = fs::read(&path)
+        .map_err(|e| format!("reading routes manifest `{}` failed: {e}", path.display()))?;
+    let manifest: RoutesManifest = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("parsing routes manifest `{}` failed: {e}", path.display()))?;
+    validate_manifest(&manifest, expected_node_id)?;
+    for dataset in manifest.datasets.values() {
+        for relative_path in [&dataset.path, &dataset.schema_path] {
+            validate_relative_path(relative_path)?;
+            if !directory.join(relative_path).is_file() {
+                return Err(format!(
+                    "routes cache is missing manifest file `{relative_path}`"
+                ));
+            }
+        }
+    }
+    Ok(manifest)
+}
+
+fn validate_manifest(
+    manifest: &RoutesManifest,
+    expected_node_id: Option<&str>,
+) -> Result<(), String> {
+    if manifest.schema_version != ROUTES_SCHEMA_VERSION {
+        return Err(format!(
+            "unsupported routes schema version {}; expected {ROUTES_SCHEMA_VERSION}",
+            manifest.schema_version
+        ));
+    }
+    if let Some(expected_node_id) = expected_node_id {
+        if manifest.node_id != expected_node_id {
+            return Err(format!(
+                "cached routes belong to node {}, but snapshot node is {expected_node_id}",
+                manifest.node_id
+            ));
+        }
+    }
+    for required in ["route_runs", "route_candidates"] {
+        if !manifest.datasets.contains_key(required) {
+            return Err(format!("routes manifest is missing dataset `{required}`"));
+        }
+    }
+    Ok(())
+}
+
+fn import_directory(
+    processed_directory: &Path,
+    snapshot_directory: &Path,
+    mut manifest: RoutesManifest,
+) -> Result<ImportedRoutes, String> {
+    for dataset_key in ["route_runs", "route_candidates"] {
+        let dataset = manifest
+            .datasets
+            .get_mut(dataset_key)
+            .expect("validated routes dataset exists");
+        let source_path = dataset.path.clone();
+        validate_relative_path(&source_path)?;
+        let (snapshot_path, snapshot_schema_path) = snapshot_dataset_paths(dataset_key);
+        fs::copy(
+            processed_directory.join(&source_path),
+            snapshot_directory.join(snapshot_path),
+        )
+        .map_err(|e| format!("copying cached routes file `{source_path}` failed: {e}"))?;
+        dataset.path = snapshot_path.to_string();
+        dataset.schema_path = snapshot_schema_path.to_string();
+        write_json(&snapshot_directory.join(snapshot_schema_path), dataset)?;
+    }
+    write_json(
+        &snapshot_directory.join(SNAPSHOT_ROUTES_MANIFEST),
+        &manifest,
+    )?;
+    Ok(ImportedRoutes {
+        manifest_file: SNAPSHOT_ROUTES_MANIFEST.to_string(),
+        datasets: manifest.datasets,
+    })
+}
+
+fn import_bundle(
+    mut bundle: RoutesExportBundle,
+    snapshot_directory: &Path,
+    expected_node_id: &str,
+) -> Result<ImportedRoutes, String> {
+    validate_manifest(&bundle.manifest, Some(expected_node_id))?;
+    for dataset_key in ["route_runs", "route_candidates"] {
+        let dataset = bundle
+            .manifest
+            .datasets
+            .get_mut(dataset_key)
+            .expect("validated routes dataset exists");
+        let source_path = dataset.path.clone();
+        validate_relative_path(&source_path)?;
+        let value = bundle
+            .files
+            .get(&source_path)
+            .ok_or_else(|| format!("routes export is missing `{source_path}`"))?;
+        let (snapshot_path, snapshot_schema_path) = snapshot_dataset_paths(dataset_key);
+        write_json(&snapshot_directory.join(snapshot_path), value)?;
+        dataset.path = snapshot_path.to_string();
+        dataset.schema_path = snapshot_schema_path.to_string();
+        write_json(&snapshot_directory.join(snapshot_schema_path), dataset)?;
+    }
+    write_json(
+        &snapshot_directory.join(SNAPSHOT_ROUTES_MANIFEST),
+        &bundle.manifest,
+    )?;
+    Ok(ImportedRoutes {
+        manifest_file: SNAPSHOT_ROUTES_MANIFEST.to_string(),
+        datasets: bundle.manifest.datasets,
+    })
+}
+
+fn snapshot_dataset_paths(dataset_key: &str) -> (&'static str, &'static str) {
+    match dataset_key {
+        "route_runs" => ("route-runs.json", "route-runs.schema.json"),
+        "route_candidates" => ("route-candidates.json", "route-candidates.schema.json"),
+        _ => unreachable!("validated route dataset key"),
+    }
+}
+
+fn export_bundle(directory: &Path) -> Result<RoutesExportBundle, String> {
+    let manifest = read_valid_manifest(directory, None)?;
+    let mut files = BTreeMap::new();
+    for dataset in manifest.datasets.values() {
+        for relative_path in [&dataset.path, &dataset.schema_path] {
+            let path = directory.join(relative_path);
+            let bytes = fs::read(&path).map_err(|e| {
+                format!(
+                    "reading routes export file `{}` failed: {e}",
+                    path.display()
+                )
+            })?;
+            let value = serde_json::from_slice(&bytes).map_err(|e| {
+                format!(
+                    "parsing routes export file `{}` failed: {e}",
+                    path.display()
+                )
+            })?;
+            files.insert(relative_path.clone(), value);
+        }
+    }
+    Ok(RoutesExportBundle { manifest, files })
+}
+
+fn validate_relative_path(value: &str) -> Result<(), String> {
+    let path = Path::new(value);
+    if path.is_absolute()
+        || path
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err(format!("unsafe routes artifact path `{value}`"));
+    }
+    Ok(())
+}
+
+fn write_json(path: &Path, value: &impl Serialize) -> Result<(), String> {
+    let file = File::create(path)
+        .map_err(|e| format!("creating routes artifact `{}` failed: {e}", path.display()))?;
+    let mut writer = BufWriter::new(file);
+    serde_json::to_writer_pretty(&mut writer, value)
+        .map_err(|e| format!("writing routes artifact `{}` failed: {e}", path.display()))?;
+    writer
+        .write_all(b"\n")
+        .map_err(|e| format!("finishing routes artifact `{}` failed: {e}", path.display()))?;
+    writer
+        .flush()
+        .map_err(|e| format!("flushing routes artifact `{}` failed: {e}", path.display()))
+}
+
+fn write_json_atomic(path: &Path, value: &impl Serialize) -> Result<(), String> {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| format!("routes artifact path `{}` has no filename", path.display()))?;
+    let temporary = path.with_file_name(format!(".{file_name}.{}.tmp", std::process::id()));
+    write_json(&temporary, value)?;
+    fs::rename(&temporary, path).map_err(|e| {
+        format!(
+            "replacing routes artifact `{}` with `{}` failed: {e}",
+            path.display(),
+            temporary.display()
+        )
+    })
+}
+
+fn route_dataset_metadata(
+    runs_file: &str,
+    runs_schema_file: &str,
+    candidates_file: &str,
+    candidates_schema_file: &str,
+    run_count: usize,
+    candidate_count: usize,
+) -> BTreeMap<String, DatasetMetadata> {
+    BTreeMap::from([
+        (
+            "route_runs".to_string(),
+            DatasetMetadata {
+                path: runs_file.to_string(),
+                schema_path: runs_schema_file.to_string(),
+                format: "json-array".to_string(),
+                description: "Coverage and outcome summary for each amount used to probe single-part routes from the local node.".to_string(),
+                record_count: run_count,
+                primary_key: Some("amount_sat".to_string()),
+                fields: route_run_fields(),
+            },
+        ),
+        (
+            "route_candidates".to_string(),
+            DatasetMetadata {
+                path: candidates_file.to_string(),
+                schema_path: candidates_schema_file.to_string(),
+                format: "json-array".to_string(),
+                description: "Non-peer intermediary nodes appearing in route probes, ranked separately for each payment amount.".to_string(),
+                record_count: candidate_count,
+                primary_key: Some("amount_sat,node_id".to_string()),
+                fields: route_candidate_fields(),
+            },
+        ),
+    ])
+}
+
+fn metadata_field(
+    json_type: &str,
+    nullable: bool,
+    unit: Option<&str>,
+    description: &str,
+    source: Option<&str>,
+    formula: Option<&str>,
+) -> FieldMetadata {
+    FieldMetadata {
+        json_type: json_type.to_string(),
+        nullable,
+        unit: unit.map(str::to_string),
+        description: description.to_string(),
+        formula: formula.map(str::to_string),
+        source: source.map(str::to_string),
+        aggregation: None,
+        warning: None,
+    }
+}
+
+fn route_run_fields() -> BTreeMap<String, FieldMetadata> {
+    BTreeMap::from([
+        ("amount_sat".into(), metadata_field("integer", false, Some("sat"), "Payment amount delivered to each probed destination.", None, None)),
+        ("max_fee_msat".into(), metadata_field("integer", false, Some("msat"), "Maximum total route fee accepted for this probe amount.", None, Some("max(5000 msat, amount_sat * 1000 * 10000 / 1000000)"))),
+        ("scanned_nodes".into(), metadata_field("integer", false, Some("node"), "Gossip nodes considered before destination eligibility filtering.", Some("listnodes"), None)),
+        ("eligible_destinations".into(), metadata_field("integer", false, Some("node"), "Destinations with metadata for at least two public channels.", Some("listnodes and listchannels"), None)),
+        ("evaluated_routes".into(), metadata_field("integer", false, Some("route"), "Destinations for which getroutes returned a single-part route within the fee and delay budgets.", Some("getroutes"), None)),
+        ("failed_routes".into(), metadata_field("integer", false, Some("route"), "Eligible destinations for which no acceptable route was returned.", None, Some("eligible_destinations - evaluated_routes"))),
+        ("candidate_nodes".into(), metadata_field("integer", false, Some("node"), "Distinct non-peer intermediary nodes appearing in at least one returned route.", None, None)),
+        ("recurring_candidate_nodes".into(), metadata_field("integer", false, Some("node"), "Candidate nodes appearing in at least three returned routes.", None, None)),
+        ("average_hops".into(), metadata_field("number", false, Some("hop_per_route"), "Mean hop count across successfully evaluated routes, including the destination hop.", None, Some("sum(route hop counts) / evaluated_routes"))),
+    ])
+}
+
+fn route_candidate_fields() -> BTreeMap<String, FieldMetadata> {
+    BTreeMap::from([
+        ("amount_sat".into(), metadata_field("integer", false, Some("sat"), "Probe payment amount for this ranking.", None, None)),
+        ("rank".into(), metadata_field("integer", false, Some("rank"), "Rank within the probe amount ordered by descending appearances.", None, None)),
+        ("node_id".into(), metadata_field("string", false, None, "Public key of the non-peer intermediary node.", Some("getroutes path.node_id_out"), None)),
+        ("alias".into(), metadata_field("string", false, None, "Gossip alias advertised by the candidate node.", Some("listnodes"), None)),
+        ("appearances".into(), metadata_field("integer", false, Some("route"), "Number of successful destination probes whose path contained this node.", Some("getroutes"), None)),
+        ("appearance_ratio".into(), metadata_field("number", true, Some("ratio"), "Share of successfully evaluated routes containing this candidate.", None, Some("appearances / evaluated_routes for amount_sat"))),
+        ("average_fee_ppm".into(), metadata_field("number", false, Some("ppm"), "Mean advertised proportional fee across the candidate's public channel directions.", Some("listchannels"), None)),
+        ("fee_diversity".into(), metadata_field("number", false, Some("ratio"), "Existing fee-diversity score derived from the candidate's public channel policies.", Some("listchannels"), None)),
+        ("channel_count".into(), metadata_field("integer", false, Some("channel"), "Number of public channel records associated with the candidate.", Some("listchannels"), None)),
+    ])
+}
+
 fn render_routes_page(
-    entries: &[RouteEntry],
+    entries: &[RouteCandidate],
     summary: &RoutesSummary,
     timestamp: &str,
     amount_msat: u64,
@@ -300,7 +851,7 @@ fn render_routes_page(
                                                 a href={(format!("nodes/{}.html", entry.node_id))} { (&entry.alias) }
                                             }
                                             td class="align-right" { (entry.appearances) }
-                                            td class="align-right" { (format!("{:.1}", entry.avg_fee)) }
+                                            td class="align-right" { (format!("{:.1}", entry.average_fee_ppm)) }
                                             td class="align-right" { (format!("{:.3}", entry.fee_diversity)) }
                                             td class="align-right" { (entry.channel_count) }
                                         }
@@ -321,7 +872,12 @@ fn render_routes_page(
 
 #[cfg(test)]
 mod tests {
-    use super::route_max_fee_msat;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use chrono::{Duration, SecondsFormat, Utc};
+
+    use super::*;
 
     #[test]
     fn route_fee_budget_matches_xpay_default() {
@@ -329,5 +885,113 @@ mod tests {
         assert_eq!(route_max_fee_msat(1_000_000), 10_000);
         assert_eq!(route_max_fee_msat(10_000_000), 100_000);
         assert_eq!(route_max_fee_msat(10_000_000_000), 100_000_000);
+    }
+
+    #[test]
+    fn route_cache_uses_a_rolling_24_hour_ttl() {
+        let now = Utc::now();
+        let mut manifest = test_manifest(now - Duration::hours(23));
+        assert!(manifest_is_fresh(&manifest, now));
+
+        manifest.generated_at =
+            (now - Duration::hours(24)).to_rfc3339_opts(SecondsFormat::Secs, true);
+        assert!(!manifest_is_fresh(&manifest, now));
+
+        manifest.generated_at =
+            (now + Duration::seconds(1)).to_rfc3339_opts(SecondsFormat::Secs, true);
+        assert!(!manifest_is_fresh(&manifest, now));
+    }
+
+    #[test]
+    fn cached_routes_export_imports_with_stable_snapshot_paths() {
+        let root = temporary_test_directory();
+        let cache = root.join("cache");
+        let snapshot = root.join("snapshot");
+        fs::create_dir_all(&cache).unwrap();
+        fs::create_dir_all(&snapshot).unwrap();
+
+        let datasets = route_dataset_metadata(
+            "route-runs-generation.json",
+            "route-runs-generation.schema.json",
+            "route-candidates-generation.json",
+            "route-candidates-generation.schema.json",
+            1,
+            0,
+        );
+        let manifest = RoutesManifest {
+            datasets: datasets.clone(),
+            ..test_manifest(Utc::now())
+        };
+        let runs = vec![RouteRun {
+            amount_sat: 1_000,
+            max_fee_msat: 10_000,
+            scanned_nodes: 10,
+            eligible_destinations: 8,
+            evaluated_routes: 7,
+            failed_routes: 1,
+            candidate_nodes: 0,
+            recurring_candidate_nodes: 0,
+            average_hops: 2.5,
+        }];
+        write_json(&cache.join("route-runs-generation.json"), &runs).unwrap();
+        write_json(
+            &cache.join("route-candidates-generation.json"),
+            &Vec::<RouteCandidate>::new(),
+        )
+        .unwrap();
+        write_json(
+            &cache.join("route-runs-generation.schema.json"),
+            datasets.get("route_runs").unwrap(),
+        )
+        .unwrap();
+        write_json(
+            &cache.join("route-candidates-generation.schema.json"),
+            datasets.get("route_candidates").unwrap(),
+        )
+        .unwrap();
+        write_json(&cache.join("manifest.json"), &manifest).unwrap();
+
+        let imported =
+            import_bundle(export_bundle(&cache).unwrap(), &snapshot, "test-node").unwrap();
+        assert!(snapshot.join("route-runs.json").is_file());
+        assert!(snapshot.join("route-runs.schema.json").is_file());
+        assert!(snapshot.join("route-candidates.json").is_file());
+        assert!(snapshot.join(SNAPSHOT_ROUTES_MANIFEST).is_file());
+        assert_eq!(imported.datasets["route_runs"].path, "route-runs.json");
+        assert_eq!(
+            imported.datasets["route_candidates"].schema_path,
+            "route-candidates.schema.json"
+        );
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    fn test_manifest(generated_at: DateTime<Utc>) -> RoutesManifest {
+        RoutesManifest {
+            schema_version: ROUTES_SCHEMA_VERSION,
+            generated_at: generated_at.to_rfc3339_opts(SecondsFormat::Secs, true),
+            node_id: "test-node".to_string(),
+            source: RoutesSource {
+                amounts_sat: ROUTE_AMOUNTS_SAT.to_vec(),
+                max_fee_ppm: ROUTE_MAX_FEE_PPM,
+                minimum_max_fee_msat: ROUTE_MIN_MAX_FEE_MSAT,
+                layers: vec!["auto.localchans".to_string(), "auto.sourcefree".to_string()],
+                final_cltv: 9,
+                maxdelay: 2016,
+                maxparts: 1,
+            },
+            datasets: BTreeMap::new(),
+        }
+    }
+
+    fn temporary_test_directory() -> std::path::PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "lightdash-routes-test-{}-{nonce}",
+            std::process::id()
+        ))
     }
 }

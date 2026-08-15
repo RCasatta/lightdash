@@ -744,6 +744,30 @@
                     "no-cheap-route": { has_no_cheap_route: { eq: "true" } }
                 },
                 columns: rebalanceStatusColumns()
+            },
+            routes: {
+                datasetKey: "route_candidates",
+                source: "data/route-candidates.json",
+                format: "json",
+                itemLabel: "route candidates",
+                fileBase: "lightdash-route-candidates",
+                storageKey: "lightdash.dashboard2.routeCandidateColumns.v1",
+                defaultSort: "appearances",
+                defaultDirection: "desc",
+                defaultView: "recurring",
+                pageSize: 100,
+                emptyMessage: "No route candidates match the current filters.",
+                prepare: row => row,
+                presets: {
+                    all: {},
+                    recurring: { appearances: { min: 3 } },
+                    "amount-1000": { amount_sat: { eq: "1000" } },
+                    "amount-10000": { amount_sat: { eq: "10000" } },
+                    "amount-100000": { amount_sat: { eq: "100000" } },
+                    "amount-1000000": { amount_sat: { eq: "1000000" } },
+                    "amount-10000000": { amount_sat: { eq: "10000000" } }
+                },
+                columns: routeCandidateColumns()
             }
         };
         return configs[kind];
@@ -837,6 +861,20 @@
             column("is_balanced", "Balanced", "boolean"),
             column("has_no_cheap_route", "No cheap route", "boolean"),
             column("peer_id", "Peer ID", "text", { monospace: true })
+        ];
+    }
+
+    function routeCandidateColumns() {
+        return [
+            column("amount_sat", "Probe amount", "number", { visible: true, suffix: " sats", decimals: 0 }),
+            column("rank", "Rank", "number", { visible: true, decimals: 0 }),
+            column("alias", "Candidate", "text", { visible: true }),
+            column("node_id", "Node ID", "text", { monospace: true, value: row => abbreviateValue(row.node_id) }),
+            column("appearances", "Appearances", "number", { visible: true, decimals: 0 }),
+            column("appearance_ratio", "Route share", "number", { visible: true, transform: value => value * 100, suffix: "%", decimals: 2 }),
+            column("average_fee_ppm", "Average fee", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
+            column("fee_diversity", "Fee diversity", "number", { decimals: 3 }),
+            column("channel_count", "Channels", "number", { visible: true, decimals: 0 })
         ];
     }
 

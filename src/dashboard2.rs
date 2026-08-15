@@ -4,6 +4,7 @@ use std::path::{Component, Path, PathBuf};
 use maud::{html, Markup, DOCTYPE};
 use serde::de::DeserializeOwned;
 
+use crate::routes::{RouteRun, RoutesManifest};
 use crate::snapshot::{SnapshotManifest, SummarySnapshot, SCHEMA_VERSION};
 
 const APP_CSS: &str = include_str!("dashboard2.css");
@@ -31,6 +32,11 @@ pub fn run_dashboard2(snapshot_directory: &str, output_directory: &str) -> Resul
     let rebalances_path = snapshot_file(snapshot_directory, &manifest.files.rebalances)?;
     let rebalance_status_path =
         snapshot_file(snapshot_directory, &manifest.files.rebalance_status)?;
+    let route_runs_dataset = manifest.datasets.get("route_runs");
+    let route_candidates_dataset = manifest.datasets.get("route_candidates");
+    if route_runs_dataset.is_some() != route_candidates_dataset.is_some() {
+        return Err("snapshot must contain both route_runs and route_candidates".to_string());
+    }
     let summary: SummarySnapshot = read_json(&summary_path, "snapshot summary")?;
 
     let assets_directory = output_directory.join("assets");
@@ -57,6 +63,30 @@ pub fn run_dashboard2(snapshot_directory: &str, output_directory: &str) -> Resul
         &rebalance_status_path,
         &data_directory.join("rebalance-status.json"),
     )?;
+    let routes_page_data = if let (Some(runs_dataset), Some(candidates_dataset)) =
+        (route_runs_dataset, route_candidates_dataset)
+    {
+        let runs_path = snapshot_file(snapshot_directory, &runs_dataset.path)?;
+        let candidates_path = snapshot_file(snapshot_directory, &candidates_dataset.path)?;
+        copy_file(&runs_path, &data_directory.join("route-runs.json"))?;
+        copy_file(
+            &candidates_path,
+            &data_directory.join("route-candidates.json"),
+        )?;
+        let runs: Vec<RouteRun> = read_json(&runs_path, "route runs")?;
+        let routes_manifest_path = manifest
+            .files
+            .routes_manifest
+            .as_ref()
+            .ok_or_else(|| "snapshot route datasets are missing routes_manifest".to_string())?;
+        let routes_manifest: RoutesManifest = read_json(
+            &snapshot_file(snapshot_directory, routes_manifest_path)?,
+            "routes manifest",
+        )?;
+        Some((runs, routes_manifest.generated_at))
+    } else {
+        None
+    };
     copy_file(
         &snapshot_directory.join("manifest.json"),
         &data_directory.join("manifest.json"),
@@ -88,6 +118,14 @@ pub fn run_dashboard2(snapshot_directory: &str, output_directory: &str) -> Resul
         copy_file(&data_source, &data_destination)?;
         copy_file(&schema_source, &schema_destination)?;
     }
+    for dataset_key in ["route_runs", "route_candidates"] {
+        let Some(dataset) = manifest.datasets.get(dataset_key) else {
+            continue;
+        };
+        let schema_source = snapshot_file(snapshot_directory, &dataset.schema_path)?;
+        let schema_destination = snapshot_file(&data_directory, &dataset.schema_path)?;
+        copy_file(&schema_source, &schema_destination)?;
+    }
 
     let overview = render_overview_page(&manifest, &summary);
     write_file(&output_directory.join("index.html"), &overview)?;
@@ -99,6 +137,10 @@ pub fn run_dashboard2(snapshot_directory: &str, output_directory: &str) -> Resul
     write_file(&output_directory.join("forwards.html"), &forwards_page)?;
     let rebalances_page = render_rebalances_page(&manifest);
     write_file(&output_directory.join("rebalances.html"), &rebalances_page)?;
+    if let Some((runs, generated_at)) = routes_page_data {
+        let routes_page = render_routes_page(&manifest, &runs, &generated_at);
+        write_file(&output_directory.join("routes.html"), &routes_page)?;
+    }
 
     log::info!(
         "Dashboard2 generated successfully in {} from snapshot {}",
@@ -432,6 +474,63 @@ fn render_rebalances_page(manifest: &SnapshotManifest) -> String {
     page_shell("Rebalances", "rebalances", manifest, content)
 }
 
+fn render_routes_page(
+    manifest: &SnapshotManifest,
+    runs: &[RouteRun],
+    generated_at: &str,
+) -> String {
+    let content = html! {
+        section class="hero" {
+            div {
+                p class="eyebrow" { "Route analysis" }
+                h1 { "Potential relay partners" }
+                p class="hero-copy" {
+                    "Recurring non-peer intermediaries found in realistic single-part route probes. "
+                    "Analysis generated "
+                    time datetime=(generated_at) { (generated_at) }
+                    "."
+                }
+            }
+        }
+
+        section class="metric-grid" aria-label="Route probe coverage" {
+            @for run in runs {
+                (metric_card(
+                    &format!("{} sat probe", format_number(run.amount_sat)),
+                    &format!("{} routes", format_number(run.evaluated_routes)),
+                    &format!(
+                        "{} eligible · {:.2} average hops · {} sat max fee",
+                        format_number(run.eligible_destinations),
+                        run.average_hops,
+                        format_number(run.max_fee_msat / 1000),
+                    ),
+                ))
+            }
+        }
+
+        (dynamic_table_panel(
+            "Routes",
+            "routes",
+            "data/route-candidates.json",
+            "json",
+            "Loading route candidates…",
+            true,
+            html! {
+                div class="preset-group" role="group" aria-label="Route candidate views" {
+                    button type="button" class="preset-button" data-view="recurring" { "Recurring" }
+                    button type="button" class="preset-button" data-view="all" { "All" }
+                    button type="button" class="preset-button" data-view="amount-1000" { "1K sats" }
+                    button type="button" class="preset-button" data-view="amount-10000" { "10K sats" }
+                    button type="button" class="preset-button" data-view="amount-100000" { "100K sats" }
+                    button type="button" class="preset-button" data-view="amount-1000000" { "1M sats" }
+                    button type="button" class="preset-button" data-view="amount-10000000" { "10M sats" }
+                }
+            }
+        ))
+    };
+    page_shell("Routes", "routes", manifest, content)
+}
+
 fn dynamic_table_panel(
     page_title: &str,
     table_kind: &str,
@@ -553,6 +652,9 @@ fn page_shell(
                         a href="channels.html" aria-current=(if active_page == "channels" { "page" } else { "false" }) { "Channels" }
                         a href="forwards.html" aria-current=(if active_page == "forwards" { "page" } else { "false" }) { "Forwards" }
                         a href="rebalances.html" aria-current=(if active_page == "rebalances" { "page" } else { "false" }) { "Rebalances" }
+                        @if manifest.datasets.contains_key("route_candidates") {
+                            a href="routes.html" aria-current=(if active_page == "routes" { "page" } else { "false" }) { "Routes" }
+                        }
                     }
                     div class="freshness" {
                         span { "Snapshot" }
@@ -609,6 +711,7 @@ fn format_number<T: ToString>(value: T) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -617,7 +720,7 @@ mod tests {
         RoicPeriodSnapshot, RoicSnapshot, SnapshotFiles, SnapshotManifest, SummarySnapshot,
         SCHEMA_VERSION,
     };
-    use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts};
+    use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts, DatasetMetadata};
 
     use super::{format_number, run_dashboard2, snapshot_file};
 
@@ -650,8 +753,9 @@ mod tests {
             rebalances: "rebalances.jsonl".to_string(),
             rebalance_status: "rebalance-status.json".to_string(),
             history_manifest: None,
+            routes_manifest: Some("routes-manifest.json".to_string()),
         };
-        let manifest = SnapshotManifest {
+        let mut manifest = SnapshotManifest {
             schema_version: SCHEMA_VERSION,
             generated_at: "2026-07-16T10:00:00Z".to_string(),
             node_id: "02testnode".to_string(),
@@ -669,6 +773,30 @@ mod tests {
             ),
             files,
         };
+        manifest.datasets.insert(
+            "route_runs".to_string(),
+            DatasetMetadata {
+                path: "route-runs.json".to_string(),
+                schema_path: "route-runs.schema.json".to_string(),
+                format: "json-array".to_string(),
+                description: "Route runs".to_string(),
+                record_count: 1,
+                primary_key: Some("amount_sat".to_string()),
+                fields: BTreeMap::new(),
+            },
+        );
+        manifest.datasets.insert(
+            "route_candidates".to_string(),
+            DatasetMetadata {
+                path: "route-candidates.json".to_string(),
+                schema_path: "route-candidates.schema.json".to_string(),
+                format: "json-array".to_string(),
+                description: "Route candidates".to_string(),
+                record_count: 1,
+                primary_key: Some("amount_sat,node_id".to_string()),
+                fields: BTreeMap::new(),
+            },
+        );
         let summary = SummarySnapshot {
             node_id: manifest.node_id.clone(),
             block_height: manifest.block_height,
@@ -725,6 +853,21 @@ mod tests {
         fs::write(snapshot.join("settled-forwards.jsonl"), b"").unwrap();
         fs::write(snapshot.join("rebalances.jsonl"), b"").unwrap();
         fs::write(snapshot.join("rebalance-status.json"), b"[]").unwrap();
+        fs::write(
+            snapshot.join("route-runs.json"),
+            br#"[{"amount_sat":1000,"max_fee_msat":10000,"scanned_nodes":10,"eligible_destinations":8,"evaluated_routes":7,"failed_routes":1,"candidate_nodes":1,"recurring_candidate_nodes":1,"average_hops":2.5}]"#,
+        )
+        .unwrap();
+        fs::write(
+            snapshot.join("route-candidates.json"),
+            br#"[{"amount_sat":1000,"rank":1,"node_id":"02candidate","alias":"candidate","appearances":4,"appearance_ratio":0.57,"average_fee_ppm":100.0,"fee_diversity":0.1,"channel_count":10}]"#,
+        )
+        .unwrap();
+        fs::write(
+            snapshot.join("routes-manifest.json"),
+            br#"{"schema_version":1,"generated_at":"2026-07-16T09:00:00Z","node_id":"02testnode","source":{"amounts_sat":[1000],"max_fee_ppm":10000,"minimum_max_fee_msat":5000,"layers":["auto.localchans","auto.sourcefree"],"final_cltv":9,"maxdelay":2016,"maxparts":1},"datasets":{}}"#,
+        )
+        .unwrap();
         for dataset in manifest.datasets.values() {
             fs::write(
                 snapshot.join(&dataset.schema_path),
@@ -740,6 +883,7 @@ mod tests {
         assert!(output.join("channel.html").is_file());
         assert!(output.join("forwards.html").is_file());
         assert!(output.join("rebalances.html").is_file());
+        assert!(output.join("routes.html").is_file());
         assert!(output.join("assets/app.css").is_file());
         assert!(output.join("assets/app.js").is_file());
         assert_eq!(
@@ -750,6 +894,8 @@ mod tests {
         assert!(output.join("data/settled-forwards.jsonl").is_file());
         assert!(output.join("data/rebalances.jsonl").is_file());
         assert!(output.join("data/rebalance-status.json").is_file());
+        assert!(output.join("data/route-runs.json").is_file());
+        assert!(output.join("data/route-candidates.json").is_file());
         assert!(output.join("data/summary.schema.json").is_file());
         assert!(output.join("data/channels.schema.json").is_file());
         assert!(output.join("data/closed-channels.schema.json").is_file());
@@ -768,6 +914,10 @@ mod tests {
         let forwards = fs::read_to_string(output.join("forwards.html")).unwrap();
         assert!(forwards.contains("aria-atomic=\"true\""));
         assert!(forwards.contains("id=\"table-summary\""));
+        let routes = fs::read_to_string(output.join("routes.html")).unwrap();
+        assert!(routes.contains("Potential relay partners"));
+        assert!(routes.contains("2026-07-16T09:00:00Z"));
+        assert!(routes.contains("7 routes"));
 
         fs::remove_dir_all(root).unwrap();
     }

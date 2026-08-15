@@ -132,6 +132,9 @@ Snapshot datasets currently include:
 - `settled-forwards.jsonl`: successful forwards used by Dashboard2.
 - `other-forwards.jsonl`: failed, offered, pending, and other noisy attempts.
 - `rebalances.jsonl`: matched bookkeeper rebalance parts.
+- `route-runs.json`: coverage summaries for cached single-part route probes.
+- `route-candidates.json`: non-peer intermediaries ranked as potential channel
+  partners.
 
 Historical archives are a separate server-side source under
 `/var/lib/lightdash/history/raw/{channels,funds}`. Rebuild their normalized
@@ -157,6 +160,16 @@ export and validates both the history schema version and node ID before merging
 the datasets into the snapshot manifest. Use `--without-history` only when an
 incomplete snapshot is intentional. Test-data mode omits history unless
 `--history-directory` is supplied.
+
+Snapshots also ensure a durable route-analysis cache by default. Local
+snapshots reuse `/var/lib/lightdash/routes/processed` while it is less than 24
+hours old and otherwise recompute it. Remote snapshots invoke `lightdash routes
+export --refresh-if-stale` on the node so thousands of `getroutes` calls do not
+cross individual SSH processes. Use `--routes-directory` to override the cache
+path or `--without-routes` to intentionally omit it. Test-data mode omits
+routes unless `--routes-directory` is supplied. Cache refreshes write
+generation-specific datasets and schemas before atomically replacing the
+manifest; a failed refresh reuses the last valid cache when available.
 
 Keep settled and non-settled forwards separate. The Dashboard2 forwards page
 must load only `settled-forwards.jsonl`; failed forwards are high-volume,

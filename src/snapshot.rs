@@ -9,10 +9,11 @@ use serde::{Deserialize, Serialize};
 use crate::cmd::{self, ClosedChannel, Forward, Fund};
 use crate::common::channel_balance_target_stddev_percentage_points;
 use crate::history;
+use crate::routes;
 use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts, DatasetMetadata};
 use crate::store::{RebalancePart, Store};
 
-pub(crate) const SCHEMA_VERSION: u32 = 17;
+pub(crate) const SCHEMA_VERSION: u32 = 18;
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct SnapshotManifest {
@@ -34,6 +35,7 @@ pub(crate) struct SnapshotFiles {
     pub rebalances: String,
     pub rebalance_status: String,
     pub history_manifest: Option<String>,
+    pub routes_manifest: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -247,6 +249,8 @@ pub fn run_snapshot(
     directory: &str,
     history_directory: Option<&str>,
     without_history: bool,
+    routes_directory: Option<&str>,
+    without_routes: bool,
 ) -> io::Result<()> {
     let directory = Path::new(directory);
     fs::create_dir_all(directory)?;
@@ -260,6 +264,7 @@ pub fn run_snapshot(
         rebalances: "rebalances.jsonl".to_string(),
         rebalance_status: "rebalance-status.json".to_string(),
         history_manifest: None,
+        routes_manifest: None,
     };
     let rebalance_status = build_rebalance_status_snapshot(store)?;
     let settled_forward_count = store.settled_forwards().len();
@@ -295,6 +300,23 @@ pub fn run_snapshot(
         log::info!("Processed history omitted in test-data mode");
         Vec::new()
     };
+    let include_routes = !(without_routes || cmd::using_test_data() && routes_directory.is_none());
+    if include_routes {
+        let imported = routes::import_for_snapshot(store, directory, routes_directory)
+            .map_err(io::Error::other)?;
+        files.routes_manifest = Some(imported.manifest_file);
+        for (name, metadata) in imported.datasets {
+            if datasets.insert(name.clone(), metadata).is_some() {
+                return Err(io::Error::other(format!(
+                    "routes dataset `{name}` conflicts with a snapshot dataset"
+                )));
+            }
+        }
+    } else if without_routes {
+        log::info!("Route analysis omitted by --without-routes");
+    } else {
+        log::info!("Route analysis omitted in test-data mode");
+    }
     let generated_at = format_datetime(store.snapshot_time());
     let manifest = SnapshotManifest {
         schema_version: SCHEMA_VERSION,

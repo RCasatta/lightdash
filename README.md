@@ -24,6 +24,15 @@ override that path or `--without-history` to intentionally create a snapshot
 without historical datasets. Debug test-data snapshots omit history unless a
 history directory is explicitly supplied.
 
+Snapshots also include cached route analysis by default. The cache lives at
+`/var/lib/lightdash/routes/processed` and is refreshed when it is at least 24
+hours old. Each refresh probes the configured payment amounts with `getroutes`,
+a single part, and the same fee ceiling as xpay: 1% with a 5 sat minimum. Use
+`--routes-directory` to override the cache location or `--without-routes` to
+omit it intentionally. With `--ssh`, the remote Lightdash process refreshes and
+exports the cache in one operation, avoiding a separate SSH process per route
+probe.
+
 Lightdash automatically reads Summars availability data from
 `~/.lightning/bitcoin/summars/availdb.json`. Use `--availdb PATH` or the
 `AVAILDB_PATH` environment variable to override it. With `--ssh`, the path is
@@ -36,11 +45,11 @@ lightdash dashboard2 target/snapshot target/site2
 ```
 
 Dashboard2 currently provides a shared site shell, an overview, and dynamic
-channel and forward tables with presets, generic filters, sorting, column
-visibility, URL state, and filtered CSV/JSON exports. The forwards page streams
-only `settled-forwards.jsonl` and paginates the result instead of loading noisy
-failed attempts or rendering the complete history into the DOM. Serve the
-output over HTTP so the browser can load its data files.
+channel, forward, rebalance, and route-candidate tables with presets, generic
+filters, sorting, column visibility, URL state, and filtered CSV/JSON exports.
+The forwards page streams only `settled-forwards.jsonl` and paginates the result
+instead of loading noisy failed attempts or rendering the complete history into
+the DOM. Serve the output over HTTP so the browser can load its data files.
 
 ## Historical channel data
 
@@ -78,6 +87,26 @@ tar -xf history.tar
 
 The JSONL datasets are already gzip-compressed, so the surrounding tar stream
 is intentionally uncompressed.
+
+## Cached route analysis
+
+Refresh the processed route cache explicitly:
+
+```bash
+lightdash routes refresh
+```
+
+Export it as a self-contained JSON bundle, refreshing only when stale:
+
+```bash
+lightdash routes export --refresh-if-stale > routes.json
+```
+
+The legacy HTML generator remains available as `lightdash routes DIRECTORY`.
+The cache contains a versioned manifest, route-run summaries, candidate rows,
+and matching schema companions. Snapshot import gives these files stable names
+while preserving the route-analysis generation time separately from the
+snapshot generation time.
 
 ## Remote Core Lightning node
 
