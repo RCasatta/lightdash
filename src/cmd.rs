@@ -244,14 +244,26 @@ pub fn cmd_result(cmd: &str, args: &[impl AsRef<str>]) -> Value {
 
 fn execute_command(cmd: &str, args: &[&str]) -> (String, io::Result<ProcessOutput>) {
     if cmd == "lightning-cli" {
+        let args = lightning_cli_json_args(args);
         if let Some(destination) = SSH_DESTINATION.get() {
-            return execute_ssh_command(destination, cmd, args);
+            return execute_ssh_command(destination, cmd, &args);
         }
+
+        let description = format!("{cmd} {}", args.join(" "));
+        let result = Command::new(cmd).args(args).output();
+        return (description, result);
     }
 
     let description = format!("{cmd} {}", args.join(" "));
     let result = Command::new(cmd).args(args).output();
     (description, result)
+}
+
+fn lightning_cli_json_args<'a>(args: &[&'a str]) -> Vec<&'a str> {
+    let mut json_args = Vec::with_capacity(args.len() + 2);
+    json_args.extend(["--json", "--notifications=none"]);
+    json_args.extend_from_slice(args);
+    json_args
 }
 
 fn execute_ssh_command(
@@ -787,8 +799,23 @@ pub struct ListDatastore {
 #[cfg(test)]
 mod command_tests {
     use super::{
-        build_remote_command, normalize_remote_home_path, shell_quote, GetRoutes, ListPeerChannels,
+        build_remote_command, lightning_cli_json_args, normalize_remote_home_path, shell_quote,
+        GetRoutes, ListPeerChannels,
     };
+
+    #[test]
+    fn lightning_cli_output_is_json_without_notifications() {
+        assert_eq!(
+            lightning_cli_json_args(&["getroutes", "source", "destination"]),
+            [
+                "--json",
+                "--notifications=none",
+                "getroutes",
+                "source",
+                "destination"
+            ]
+        );
+    }
 
     #[test]
     fn remote_lightning_cli_command_is_shell_quoted() {
