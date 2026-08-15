@@ -7,6 +7,9 @@ use crate::cmd::*;
 use crate::common::format_sats;
 use crate::store::Store;
 
+const ROUTE_MAX_FEE_PPM: u64 = 10_000;
+const ROUTE_MIN_MAX_FEE_MSAT: u64 = 5_000;
+
 pub fn run_routes(store: &Store, directory: &str, amount_sat: u64) {
     let chan_meta = store.chan_meta_per_node();
     let peers_ids = store.peers_ids();
@@ -15,6 +18,8 @@ pub fn run_routes(store: &Store, directory: &str, amount_sat: u64) {
     let mut counters = HashMap::new();
     let mut hop_sum = 0usize;
     let mut total = 0;
+    let amount_msat = amount_sat * 1000;
+    let max_fee_msat = route_max_fee_msat(amount_msat);
 
     for id in &nodes_by_id_keys {
         // Skip nodes that have less than 2 channels
@@ -24,14 +29,19 @@ pub fn run_routes(store: &Store, directory: &str, amount_sat: u64) {
         {
             continue;
         }
-        if let Some(route) = get_route(id, amount_sat * 1000) {
-            let mut nodes = route.route;
+        if let Some(route) = get_routes(&store.info.id, id, amount_msat, max_fee_msat)
+            .and_then(|response| response.routes.into_iter().next())
+        {
+            let mut nodes = route.path;
             hop_sum += nodes.len();
             total += 1;
             nodes.pop(); // remove the random destination
             for n in nodes.iter() {
-                if !peers_ids.contains(&n.id) {
-                    *counters.entry(n.id.to_string()).or_insert(0u64) += 1;
+                let Some(node_id) = n.outgoing_node_id() else {
+                    continue;
+                };
+                if !peers_ids.contains(node_id) {
+                    *counters.entry(node_id.to_string()).or_insert(0u64) += 1;
                 }
             }
         }
@@ -65,10 +75,11 @@ pub fn run_routes(store: &Store, directory: &str, amount_sat: u64) {
         evaluated_routes: total,
         candidate_nodes: route_entries.len(),
         average_hops,
+        max_fee_msat,
     };
 
     let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string();
-    let routes_html = render_routes_page(&route_entries, &summary, &timestamp, amount_sat * 1000);
+    let routes_html = render_routes_page(&route_entries, &summary, &timestamp, amount_msat);
 
     if let Err(e) = fs::create_dir_all(directory) {
         log::error!("Error creating directory {}: {}", directory, e);
@@ -99,6 +110,12 @@ struct RoutesSummary {
     evaluated_routes: usize,
     candidate_nodes: usize,
     average_hops: f64,
+    max_fee_msat: u64,
+}
+
+fn route_max_fee_msat(amount_msat: u64) -> u64 {
+    let proportional_fee = (amount_msat as u128 * ROUTE_MAX_FEE_PPM as u128 / 1_000_000) as u64;
+    proportional_fee.max(ROUTE_MIN_MAX_FEE_MSAT)
 }
 
 fn render_routes_page(
@@ -248,6 +265,11 @@ fn render_routes_page(
                             " | Candidate relays: " (summary.candidate_nodes)
                         }
                         p {
+                            "Maximum route fee: "
+                            (format!("{} sats", format_sats(summary.max_fee_msat / 1000)))
+                            " (1% of the payment amount, with a 5 sat minimum)."
+                        }
+                        p {
                             "Nodes listed below appeared at least three times in random routes and are not currently direct peers."
                         }
                     }
@@ -294,5 +316,18 @@ fn render_routes_page(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::route_max_fee_msat;
+
+    #[test]
+    fn route_fee_budget_matches_xpay_default() {
+        assert_eq!(route_max_fee_msat(100_000), 5_000);
+        assert_eq!(route_max_fee_msat(1_000_000), 10_000);
+        assert_eq!(route_max_fee_msat(10_000_000), 100_000);
+        assert_eq!(route_max_fee_msat(10_000_000_000), 100_000_000);
     }
 }

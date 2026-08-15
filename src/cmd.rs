@@ -183,13 +183,30 @@ pub fn get_info() -> GetInfo {
     serde_json::from_value(v).unwrap()
 }
 
-pub fn get_route(id: &str, amount_msat: u64) -> Option<GetRoute> {
+pub fn get_routes(
+    source: &str,
+    destination: &str,
+    amount_msat: u64,
+    max_fee_msat: u64,
+) -> Option<GetRoutes> {
     let v = if using_test_data() {
-        cmd_result("cat", &["test-json/getroute"])
+        cmd_result("cat", &["test-json/getroutes"])
     } else {
+        let amount_msat = format!("{amount_msat}msat");
+        let max_fee_msat = format!("{max_fee_msat}msat");
         cmd_result(
             "lightning-cli",
-            &["getroute", id, &amount_msat.to_string(), "10"],
+            &[
+                "getroutes",
+                source,
+                destination,
+                &amount_msat,
+                r#"["auto.localchans","auto.sourcefree"]"#,
+                &max_fee_msat,
+                "9",
+                "2016",
+                "1",
+            ],
         )
     };
     serde_json::from_value(v).ok()
@@ -594,12 +611,26 @@ pub struct SettledForward {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct RouteNode {
-    pub id: String,
+    #[serde(default)]
+    pub node_id_out: Option<String>,
+    #[serde(default)]
+    pub next_node_id: Option<String>,
+}
+
+impl RouteNode {
+    pub fn outgoing_node_id(&self) -> Option<&str> {
+        self.node_id_out.as_deref().or(self.next_node_id.as_deref())
+    }
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct GetRoute {
-    pub route: Vec<RouteNode>,
+pub struct GetRoutesRoute {
+    pub path: Vec<RouteNode>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct GetRoutes {
+    pub routes: Vec<GetRoutesRoute>,
 }
 
 impl TryFrom<Forward> for SettledForward {
@@ -755,7 +786,9 @@ pub struct ListDatastore {
 
 #[cfg(test)]
 mod command_tests {
-    use super::{build_remote_command, normalize_remote_home_path, shell_quote, ListPeerChannels};
+    use super::{
+        build_remote_command, normalize_remote_home_path, shell_quote, GetRoutes, ListPeerChannels,
+    };
 
     #[test]
     fn remote_lightning_cli_command_is_shell_quoted() {
@@ -826,6 +859,26 @@ mod command_tests {
         assert_eq!(
             updates.remote.as_ref().unwrap().fee_proportional_millionths,
             0
+        );
+    }
+
+    #[test]
+    fn getroutes_accepts_current_and_deprecated_outgoing_node_fields() {
+        let response: GetRoutes = serde_json::from_str(
+            r#"{
+                "routes": [{
+                    "path": [{
+                        "node_id_out": "current",
+                        "next_node_id": "deprecated"
+                    }]
+                }]
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            response.routes[0].path[0].outgoing_node_id(),
+            Some("current")
         );
     }
 }

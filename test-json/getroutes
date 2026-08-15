@@ -1,0 +1,31 @@
+{
+  "probability_ppm": 750000,
+  "routes": [
+    {
+      "probability_ppm": 750000,
+      "amount_msat": 1000,
+      "final_cltv": 9,
+      "path": [
+        {
+          "short_channel_id_dir": "854507x1427x0/0",
+          "node_id_in": "02e56c765b7c65f816ec44485d327fe1dec78985c31f5dce6d8293f61e4c06722e",
+          "node_id_out": "03b2fdf3674e934a13a72f495d471dbe15962edd4d37b9ef3bdf2cd6c09ef9f719",
+          "next_node_id": "03b2fdf3674e934a13a72f495d471dbe15962edd4d37b9ef3bdf2cd6c09ef9f719",
+          "amount_in_msat": 1001,
+          "amount_out_msat": 1000,
+          "cltv_in": 49,
+          "cltv_out": 9
+        },
+        {
+          "short_channel_id_dir": "714455x1131x1/1",
+          "node_id_in": "03b2fdf3674e934a13a72f495d471dbe15962edd4d37b9ef3bdf2cd6c09ef9f719",
+          "node_id_out": "037659a0ac8eb3b8d0a720114efc861d3a940382dcfa1403746b4f8f6b2e8810ba",
+          "amount_in_msat": 1000,
+          "amount_out_msat": 1000,
+          "cltv_in": 9,
+          "cltv_out": 9
+        }
+      ]
+    }
+  ]
+}
