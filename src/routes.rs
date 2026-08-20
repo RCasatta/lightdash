@@ -15,7 +15,7 @@ use crate::store::Store;
 
 const ROUTE_MAX_FEE_PPM: u64 = 10_000;
 const ROUTE_MIN_MAX_FEE_MSAT: u64 = 5_000;
-const ROUTES_SCHEMA_VERSION: u32 = 6;
+const ROUTES_SCHEMA_VERSION: u32 = 7;
 const ROUTES_MAX_AGE_SECONDS: i64 = 24 * 60 * 60;
 const ROUTE_AMOUNTS_SAT: [u64; 5] = [1_000, 10_000, 100_000, 1_000_000, 10_000_000];
 const ROUTE_AMOUNT_BUDGET: StdDuration = StdDuration::from_secs(10 * 60);
@@ -547,7 +547,7 @@ fn rebuild_cache(store: &Store, directory: &Path) -> Result<RoutesManifest, Stri
             single_path_endpoint_capacity_filter: true,
             max_fee_ppm: ROUTE_MAX_FEE_PPM,
             minimum_max_fee_msat: ROUTE_MIN_MAX_FEE_MSAT,
-            layers: vec!["auto.localchans".to_string(), "auto.sourcefree".to_string()],
+            layers: GETROUTES_LAYERS.iter().map(ToString::to_string).collect(),
             final_cltv: 9,
             maxdelay: 2016,
             maxparts: 1,
@@ -1200,7 +1200,7 @@ mod tests {
                 single_path_endpoint_capacity_filter: true,
                 max_fee_ppm: ROUTE_MAX_FEE_PPM,
                 minimum_max_fee_msat: ROUTE_MIN_MAX_FEE_MSAT,
-                layers: vec!["auto.localchans".to_string(), "auto.sourcefree".to_string()],
+                layers: GETROUTES_LAYERS.iter().map(ToString::to_string).collect(),
                 final_cltv: 9,
                 maxdelay: 2016,
                 maxparts: 1,

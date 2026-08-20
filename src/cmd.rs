@@ -13,6 +13,7 @@ use crate::error_panic;
 static SSH_DESTINATION: OnceLock<String> = OnceLock::new();
 const DEFAULT_LOCAL_AVAILDB_PATH: &str = ".lightning/bitcoin/summars/availdb.json";
 const TEST_AVAILDB_PATH: &str = "test-json/availdb.json";
+pub const GETROUTES_LAYERS: [&str; 3] = ["auto.localchans", "auto.sourcefree", "xpay"];
 
 pub fn configure_ssh(destination: Option<String>) -> Result<(), String> {
     let Some(destination) = destination else {
@@ -194,6 +195,7 @@ pub fn get_routes(
     } else {
         let amount_msat = format!("{amount_msat}msat");
         let max_fee_msat = format!("{max_fee_msat}msat");
+        let layers = serde_json::to_string(&GETROUTES_LAYERS).expect("route layers serialize");
         cmd_result_fallible(
             "lightning-cli",
             &[
@@ -201,7 +203,7 @@ pub fn get_routes(
                 source,
                 destination,
                 &amount_msat,
-                r#"["auto.localchans","auto.sourcefree"]"#,
+                &layers,
                 &max_fee_msat,
                 "9",
                 "2016",
