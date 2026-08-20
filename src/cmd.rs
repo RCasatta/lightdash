@@ -477,6 +477,8 @@ pub struct Node {
     pub nodeid: String,
     pub alias: Option<String>,
     pub last_timestamp: Option<u64>,
+    #[serde(default)]
+    pub addresses: Vec<Value>,
 }
 
 #[derive(Deserialize, Debug)]

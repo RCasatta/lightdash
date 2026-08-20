@@ -15,7 +15,7 @@ use crate::store::Store;
 
 const ROUTE_MAX_FEE_PPM: u64 = 10_000;
 const ROUTE_MIN_MAX_FEE_MSAT: u64 = 5_000;
-const ROUTES_SCHEMA_VERSION: u32 = 5;
+const ROUTES_SCHEMA_VERSION: u32 = 6;
 const ROUTES_MAX_AGE_SECONDS: i64 = 24 * 60 * 60;
 const ROUTE_AMOUNTS_SAT: [u64; 5] = [1_000, 10_000, 100_000, 1_000_000, 10_000_000];
 const ROUTE_AMOUNT_BUDGET: StdDuration = StdDuration::from_secs(10 * 60);
@@ -80,6 +80,7 @@ pub(crate) struct RouteCandidate {
     pub rank: usize,
     pub node_id: String,
     pub alias: String,
+    pub connectable: bool,
     pub appearances: u64,
     pub appearance_ratio: Option<f64>,
     pub average_fee_ppm: f64,
@@ -301,6 +302,7 @@ fn analyze_routes(
                 rank: 0,
                 node_id: id.clone(),
                 alias: store.get_node_alias(&id),
+                connectable: store.is_node_connectable(&id),
                 appearances: count,
                 appearance_ratio: (total != 0).then_some(count as f64 / total as f64),
                 average_fee_ppm: chan_info.avg_fee(),
@@ -846,6 +848,7 @@ fn route_candidate_fields() -> BTreeMap<String, FieldMetadata> {
         ("rank".into(), metadata_field("integer", false, Some("rank"), "Rank within the probe amount ordered by descending appearances.", None, None)),
         ("node_id".into(), metadata_field("string", false, None, "Public key of the non-peer intermediary node.", Some("getroutes path.node_id_out"), None)),
         ("alias".into(), metadata_field("string", false, None, "Gossip alias advertised by the candidate node.", Some("listnodes"), None)),
+        ("connectable".into(), metadata_field("boolean", false, None, "Whether the candidate advertises at least one network address in its current node announcement.", Some("listnodes.addresses"), None)),
         ("appearances".into(), metadata_field("integer", false, Some("route"), "Number of successful destination probes whose path contained this node.", Some("getroutes"), None)),
         ("appearance_ratio".into(), metadata_field("number", true, Some("ratio"), "Share of successfully evaluated routes containing this candidate.", None, Some("appearances / evaluated_routes for amount_sat"))),
         ("average_fee_ppm".into(), metadata_field("number", false, Some("ppm"), "Mean advertised proportional fee across the candidate's public channel directions.", Some("listchannels"), None)),
@@ -1033,6 +1036,7 @@ fn render_routes_page(
                                     tr {
                                         th { "Rank" }
                                         th { "Alias" }
+                                        th { "Connectable" }
                                         th { "Appearances" }
                                         th { "Avg Fee (ppm)" }
                                         th { "Fee Diversity" }
@@ -1046,6 +1050,7 @@ fn render_routes_page(
                                             td {
                                                 a href={(format!("nodes/{}.html", entry.node_id))} { (&entry.alias) }
                                             }
+                                            td { (if entry.connectable { "Yes" } else { "No" }) }
                                             td class="align-right" { (entry.appearances) }
                                             td class="align-right" { (format!("{:.1}", entry.average_fee_ppm)) }
                                             td class="align-right" { (format!("{:.3}", entry.fee_diversity)) }

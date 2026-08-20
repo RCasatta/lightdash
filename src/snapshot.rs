@@ -13,7 +13,7 @@ use crate::routes;
 use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts, DatasetMetadata};
 use crate::store::{RebalancePart, Store};
 
-pub(crate) const SCHEMA_VERSION: u32 = 22;
+pub(crate) const SCHEMA_VERSION: u32 = 23;
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct SnapshotManifest {

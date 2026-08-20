@@ -616,6 +616,13 @@ impl Store {
             })
     }
 
+    /// Whether the node advertises at least one network address in gossip.
+    pub fn is_node_connectable(&self, node_id: &str) -> bool {
+        self.nodes_by_id
+            .get(node_id)
+            .is_some_and(|node| !node.addresses.is_empty())
+    }
+
     /// Get node IDs that have aliases
     pub fn node_ids_with_aliases(&self) -> Vec<String> {
         self.nodes_by_id.keys().cloned().collect()
