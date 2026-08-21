@@ -42,11 +42,14 @@ the total amount replenished.
 | Dust bootstrap amount | `100,000 sats` |
 | Dust bootstrap maximum budget | `1,100 PPM` |
 
-The 10 PPM minimum and 100,000-sat dust bootstrap amount reuse constants from
-the dynamic fee policy:
+The 10 PPM rebalance budget clamp is independent from the dynamic fee policy's
+1 PPM forwarding floor. For targets with fee history, the existing
+current-channel-PPM cap can still lower the final budget below that clamp. The
+100,000-sat dust bootstrap amount still reuses the dynamic fee depleted
+threshold:
 
 ```text
-ordinary bootstrap budget = PPM_MIN
+ordinary bootstrap budget = BUDGET_PPM_MIN
 dust bootstrap amount = 2 * DEPLETED_LOCAL_BALANCE_SAT
 ```
 
@@ -288,6 +291,8 @@ The current policies are connected in limited but important ways:
 - an ordinary budget is normally capped at the current advertised channel PPM
 - source candidates must advertise an outbound PPM below the target-specific
   ceiling
+- channels may advertise as low as 1 PPM while Sling's independent pre-cap
+  rebalance budget clamp remains 10 PPM
 
 They do not yet share a unified market-price estimate, inventory multiplier,
 replacement-cost floor, demand cap, or source opportunity-cost estimate.

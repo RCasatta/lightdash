@@ -10,8 +10,9 @@ const SOURCE_PPM_TARGET_VALUE_MULTIPLIER: f64 = 0.3;
 const TARGET_ELIGIBLE_MAX_BALANCE: f64 = 0.3;
 const TARGET_REBALANCE_BALANCE: f64 = 0.5;
 const MIN_AMOUNT_SAT: u64 = 10_000;
-const BOOTSTRAP_MAX_PPM: u64 = crate::fees::PPM_MIN;
-const BUDGET_PPM_MIN: u64 = crate::fees::PPM_MIN;
+// This pre-cap floor is intentionally independent from the forwarding fee floor.
+const BUDGET_PPM_MIN: u64 = 10;
+const BOOTSTRAP_MAX_PPM: u64 = BUDGET_PPM_MIN;
 const BUDGET_PPM_REALIZED_FEE_MULTIPLIER: f64 = 0.6;
 // Rebalance budget cap. Keep this below the general channel fee cap because
 // this is what we are willing to pay, not what we are willing to charge.

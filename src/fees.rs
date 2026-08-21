@@ -6,7 +6,7 @@ use chrono::Utc;
 use crate::cmd::Forward;
 use crate::store::Store;
 
-pub const PPM_MIN: u64 = 10;
+pub const PPM_MIN: u64 = 1;
 pub const PPM_MAX: u64 = 5000;
 pub const DEPLETED_LOCAL_BALANCE_SAT: u64 = 50000;
 pub const MIN_HTLC: u64 = 100000; // msat
@@ -322,7 +322,7 @@ mod tests {
         }
         assert_eq!(
             adjusted_ppm(PPM_MIN, FeeState::Depleted, ForwardActivity::MeetsMinimum),
-            11
+            2
         );
     }
 

@@ -125,7 +125,7 @@ there is no recent settlement.
 | No recent settlement, never settled outbound | `-15%` |
 | No recent settlement, established channel | `-2%` |
 
-Every result is clamped to 10–5,000 PPM.
+Every result is clamped to 1–5,000 PPM.
 
 The base fee remains 1,000 msat.
 
@@ -153,8 +153,7 @@ bootstrap_ppm = floor(current_ppm * 0.85)
 normal_ppm = floor(current_ppm * 0.98)
 ```
 
-The final clamp prevents a decrease below 10 PPM or an increase above 5,000
-PPM.
+The final clamp prevents a decrease below 1 PPM or an increase above 5,000 PPM.
 
 ## Forward evidence
 
@@ -219,6 +218,10 @@ The depleted increase can also gradually relax Sling's current-channel-PPM cap
 for established channels when their history-derived rebalance budget is higher.
 Sling retains its independent safety caps and profitability limitations
 documented in `SLING_REBALANCE_STRATEGY.md`.
+
+Sling's ordinary rebalance budget clamp remains independently fixed at 10 PPM
+before the existing current-channel-PPM cap is applied. Lowering the forwarding
+floor to 1 PPM does not change Sling's own budget constant.
 
 For a channel with fewer than 10 local sats, Sling performs one bounded
 100,000-sat bootstrap at up to 1,100 PPM. The amount is twice the depleted
