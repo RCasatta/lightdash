@@ -13,7 +13,8 @@ use crate::routes;
 use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts, DatasetMetadata};
 use crate::store::{RebalancePart, Store};
 
-pub(crate) const SCHEMA_VERSION: u32 = 24;
+pub(crate) const SCHEMA_VERSION: u32 = 25;
+const REBALANCE_SOURCE_90D_SECONDS: u64 = 90 * 24 * 60 * 60;
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct SnapshotManifest {
@@ -126,6 +127,9 @@ pub(crate) struct ChannelSnapshot {
     pub rebalance_target_credit_msat: u64,
     pub rebalance_effective_fee_ppm: Option<f64>,
     pub rebalance_source_cost_msat: u64,
+    pub rebalance_source_debit_msat: u64,
+    pub rebalance_source_debit_90d_msat: u64,
+    pub rebalance_source_effective_fee_ppm: Option<f64>,
     pub lease_fee_earnings_msat: u64,
     pub lease_fee_cost_msat: u64,
     pub net_routing_revenue_msat: i64,
@@ -242,6 +246,9 @@ struct ChannelRebalanceMetrics {
     target_cost_msat: u64,
     target_credit_msat: u64,
     source_cost_msat: u64,
+    source_credit_msat: u64,
+    source_debit_msat: u64,
+    source_debit_90d_msat: u64,
 }
 
 pub fn run_snapshot(
@@ -661,6 +668,12 @@ fn build_channel_snapshot(
             rebalances.target_credit_msat as f64,
         ),
         rebalance_source_cost_msat: rebalances.source_cost_msat,
+        rebalance_source_debit_msat: rebalances.source_debit_msat,
+        rebalance_source_debit_90d_msat: rebalances.source_debit_90d_msat,
+        rebalance_source_effective_fee_ppm: ratio_ppm(
+            rebalances.source_cost_msat as f64,
+            rebalances.source_credit_msat as f64,
+        ),
         lease_fee_earnings_msat: lease_fees.earned_msat,
         lease_fee_cost_msat: lease_fees.paid_msat,
         net_routing_revenue_msat,
@@ -707,6 +720,7 @@ fn aggregate_channel_forwards(store: &Store) -> HashMap<String, ChannelForwardMe
 
 fn aggregate_channel_rebalances(store: &Store) -> HashMap<String, ChannelRebalanceMetrics> {
     let mut metrics: HashMap<String, ChannelRebalanceMetrics> = HashMap::new();
+    let snapshot_timestamp = u64::try_from(store.snapshot_time().timestamp()).unwrap_or_default();
     for part in store.rebalance_parts() {
         if let Some(target_channel_id) = &part.target_channel_id {
             let target = metrics.entry(target_channel_id.clone()).or_default();
@@ -714,13 +728,25 @@ fn aggregate_channel_rebalances(store: &Store) -> HashMap<String, ChannelRebalan
             target.target_credit_msat += part.credit_msat;
         }
         if let Some(source_channel_id) = &part.source_channel_id {
-            metrics
-                .entry(source_channel_id.clone())
-                .or_default()
-                .source_cost_msat += part.fees_msat;
+            let source = metrics.entry(source_channel_id.clone()).or_default();
+            source.source_cost_msat += part.fees_msat;
+            source.source_credit_msat += part.credit_msat;
+            source.source_debit_msat += part.debit_msat;
+            if timestamp_in_lookback(
+                part.timestamp,
+                snapshot_timestamp,
+                REBALANCE_SOURCE_90D_SECONDS,
+            ) {
+                source.source_debit_90d_msat += part.debit_msat;
+            }
         }
     }
     metrics
+}
+
+fn timestamp_in_lookback(timestamp: Option<u64>, end: u64, window_seconds: u64) -> bool {
+    timestamp
+        .is_some_and(|timestamp| (end.saturating_sub(window_seconds)..=end).contains(&timestamp))
 }
 
 fn ratio_ppm(numerator: f64, denominator: f64) -> Option<f64> {
@@ -997,12 +1023,27 @@ mod tests {
 
     use crate::history::ChannelFundsHistoryPoint;
 
-    use super::{annualized_capacity_return_percent, average_channel_funds, percentage, ratio_ppm};
+    use super::{
+        annualized_capacity_return_percent, average_channel_funds, percentage, ratio_ppm,
+        timestamp_in_lookback,
+    };
 
     #[test]
     fn ratio_ppm_returns_none_for_no_volume() {
         assert_eq!(ratio_ppm(10.0, 0.0), None);
         assert_eq!(ratio_ppm(10.0, 1_000.0), Some(10_000.0));
+    }
+
+    #[test]
+    fn timestamp_lookback_includes_boundaries_and_rejects_missing_or_future_values() {
+        let end = 10_000;
+        let window = 1_000;
+
+        assert!(timestamp_in_lookback(Some(9_000), end, window));
+        assert!(timestamp_in_lookback(Some(10_000), end, window));
+        assert!(!timestamp_in_lookback(Some(8_999), end, window));
+        assert!(!timestamp_in_lookback(Some(10_001), end, window));
+        assert!(!timestamp_in_lookback(None, end, window));
     }
 
     #[test]

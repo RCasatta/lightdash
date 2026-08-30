@@ -229,6 +229,9 @@
         appendDetail(activity, "Indirect fees", formatSat(channel.indirect_fees_sat), fields.indirect_fees_sat);
         appendDetail(activity, "Rebalance cost", formatMsat(channel.rebalance_target_cost_msat), fields.rebalance_target_cost_msat);
         appendDetail(activity, "Rebalance fee rate", formatPpm(channel.rebalance_effective_fee_ppm), fields.rebalance_effective_fee_ppm);
+        appendDetail(activity, "Rebalance source debit", formatMsat(channel.rebalance_source_debit_msat), fields.rebalance_source_debit_msat);
+        appendDetail(activity, "Rebalance source debit 90d", formatMsat(channel.rebalance_source_debit_90d_msat), fields.rebalance_source_debit_90d_msat);
+        appendDetail(activity, "Rebalance source fee rate", formatPpm(channel.rebalance_source_effective_fee_ppm), fields.rebalance_source_effective_fee_ppm);
         appendDetail(activity, "Rebalance parts", formatNumber(targetRebalances.length, 0), null);
         appendDetail(activity, "Rebalance payments", formatNumber(new Set(targetRebalances.map(row => row.payment_id)).size, 0), null);
         appendDetail(activity, "First rebalance", targetRebalances.at(-1)?.resolved_at, null);
@@ -797,6 +800,9 @@
             column("historical_effective_fee_ppm", "Historical PPM", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
             column("time_decayed_fee_ppm", "TPPM", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
             column("rebalance_effective_fee_ppm", "Rebalance PPM", "number", { transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
+            column("rebalance_source_debit_msat", "Rebalance source", "number", { transform: msatToSat, suffix: " sats", decimals: 0 }),
+            column("rebalance_source_debit_90d_msat", "Source 90d", "number", { visible: true, transform: msatToSat, suffix: " sats", decimals: 0 }),
+            column("rebalance_source_effective_fee_ppm", "Source PPM", "number", { transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
             column("settled_forward_count", "Forwards", "number", { visible: true, decimals: 0, warningBelow: 1 }),
             column("routed_out_sat", "Routed out", "number", { suffix: " sats", decimals: 0 }),
             column("forwarding_fees_sat", "Fees", "number", { suffix: " sats", decimals: 0 }),
