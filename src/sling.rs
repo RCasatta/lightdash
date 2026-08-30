@@ -13,7 +13,7 @@ const MIN_AMOUNT_SAT: u64 = 10_000;
 // This pre-cap floor is intentionally independent from the forwarding fee floor.
 const BUDGET_PPM_MIN: u64 = 10;
 const BOOTSTRAP_MAX_PPM: u64 = BUDGET_PPM_MIN;
-const BUDGET_PPM_REALIZED_FEE_MULTIPLIER: f64 = 0.6;
+const BUDGET_PPM_TARGET_VALUE_MULTIPLIER: f64 = 0.75;
 // Rebalance budget cap. Keep this below the general channel fee cap because
 // this is what we are willing to pay, not what we are willing to charge.
 const BUDGET_PPM_MAX: u64 = 1100;
@@ -94,33 +94,17 @@ fn compute_source_ppm_max(historical_fee_ppm: Option<f64>, channel_ppm: Option<u
         .clamp(BUDGET_PPM_MIN, BUDGET_PPM_MAX)
 }
 
-fn compute_budget_ppm(
-    tppm: Option<f64>,
-    historical_fee_ppm: Option<f64>,
-    channel_ppm: Option<u64>,
-) -> u64 {
-    let realized_metrics = [usable_ppm(tppm), usable_ppm(historical_fee_ppm)];
-    let has_realized_fee_history = realized_metrics.iter().any(Option::is_some);
-    if !has_realized_fee_history {
+fn compute_budget_ppm(tppm: Option<f64>, channel_ppm: Option<u64>) -> u64 {
+    let Some(channel_ppm) = channel_ppm else {
         return BOOTSTRAP_MAX_PPM;
-    }
+    };
 
-    let (sum, count) = realized_metrics
-        .into_iter()
-        .flatten()
-        .fold((0.0, 0u64), |(sum, count), ppm| (sum + ppm, count + 1));
+    let target_value_ppm = usable_ppm(tppm)
+        .map(|tppm| tppm.min(channel_ppm as f64))
+        .unwrap_or(channel_ppm as f64);
+    let budget = (target_value_ppm * BUDGET_PPM_TARGET_VALUE_MULTIPLIER) as u64;
 
-    if count == 0 {
-        return BOOTSTRAP_MAX_PPM;
-    }
-
-    let budget = (sum / count as f64) * BUDGET_PPM_REALIZED_FEE_MULTIPLIER;
-    let budget = (budget as u64).clamp(BUDGET_PPM_MIN, BUDGET_PPM_MAX);
-
-    match channel_ppm {
-        Some(channel_ppm) => budget.min(channel_ppm),
-        None => budget,
-    }
+    budget.clamp(crate::fees::PPM_MIN, BUDGET_PPM_MAX)
 }
 
 fn compute_base_rebalance_amount(channel_capacity_sat: u64) -> Option<u64> {
@@ -323,7 +307,7 @@ pub fn run_sling(store: &Store) {
             .unwrap_or_else(|| "n/a".to_string());
         let tppm = store.get_channel_time_decayed_fee_ppm(scid);
         let historical_fee_ppm = store.get_channel_effective_fee_ppm(scid);
-        let budget_ppm = compute_budget_ppm(tppm, historical_fee_ppm, my_ppm);
+        let budget_ppm = compute_budget_ppm(tppm, my_ppm);
         let tppm_log = tppm
             .map(|ppm| ppm.trunc().to_string())
             .unwrap_or_else(|| "n/a".to_string());
@@ -466,13 +450,13 @@ mod tests {
         compute_base_rebalance_amount, compute_budget_ppm, compute_capacity_rebalance_amounts,
         compute_job_amount, compute_source_ppm_max, enrich_sling_stats_with_last_channel_partner,
         is_target_eligible, low_local_bootstrap_args, should_bootstrap_low_local,
-        BOOTSTRAP_MAX_PPM, BUDGET_PPM_MAX, BUDGET_PPM_MIN, BUDGET_PPM_REALIZED_FEE_MULTIPLIER,
+        BOOTSTRAP_MAX_PPM, BUDGET_PPM_MAX, BUDGET_PPM_MIN, BUDGET_PPM_TARGET_VALUE_MULTIPLIER,
         SOURCE_PPM_FALLBACK,
     };
     use serde_json::Value;
 
-    fn realized_fee_budget(ppm: f64) -> u64 {
-        (ppm * BUDGET_PPM_REALIZED_FEE_MULTIPLIER) as u64
+    fn target_value_budget(ppm: f64) -> u64 {
+        (ppm * BUDGET_PPM_TARGET_VALUE_MULTIPLIER) as u64
     }
 
     fn read_json(content: &str) -> Value {
@@ -480,70 +464,58 @@ mod tests {
     }
 
     #[test]
-    fn compute_budget_ppm_uses_realized_fee_multiplier_on_metric_average() {
+    fn compute_budget_ppm_uses_seventy_five_percent_of_lower_current_and_tppm() {
+        assert_eq!(compute_budget_ppm(Some(2_947.0), Some(1_223)), 917);
+        assert_eq!(compute_budget_ppm(Some(400.0), Some(300)), 225);
+        assert_eq!(compute_budget_ppm(Some(200.0), Some(300)), 150);
+    }
+
+    #[test]
+    fn compute_budget_ppm_falls_back_to_seventy_five_percent_of_current_ppm() {
         assert_eq!(
-            compute_budget_ppm(Some(2_947.0), Some(316.0), Some(1_223)),
-            realized_fee_budget((2_947.0 + 316.0) / 2.0)
-        );
-        assert_eq!(
-            compute_budget_ppm(Some(400.0), Some(200.0), Some(300)),
-            realized_fee_budget((400.0 + 200.0) / 2.0)
+            compute_budget_ppm(None, Some(400)),
+            target_value_budget(400.0)
         );
     }
 
     #[test]
-    fn compute_budget_ppm_falls_back_to_realized_fee_multiplier_on_available_metric() {
-        assert_eq!(
-            compute_budget_ppm(Some(400.0), None, None),
-            realized_fee_budget(400.0)
-        );
-        assert_eq!(
-            compute_budget_ppm(None, Some(200.0), None),
-            realized_fee_budget(200.0)
-        );
-    }
-
-    #[test]
-    fn compute_budget_ppm_falls_back_without_realized_fee_history() {
-        assert_eq!(compute_budget_ppm(None, None, None), BOOTSTRAP_MAX_PPM);
-        assert_eq!(
-            compute_budget_ppm(None, None, Some(2_500)),
-            BOOTSTRAP_MAX_PPM
-        );
+    fn compute_budget_ppm_falls_back_without_current_ppm() {
+        assert_eq!(compute_budget_ppm(None, None), BOOTSTRAP_MAX_PPM);
+        assert_eq!(compute_budget_ppm(Some(2_500.0), None), BOOTSTRAP_MAX_PPM);
     }
 
     #[test]
     fn compute_budget_ppm_ignores_unusable_metrics() {
         assert_eq!(
-            compute_budget_ppm(Some(f64::NAN), Some(300.0), None),
-            realized_fee_budget(300.0)
+            compute_budget_ppm(Some(f64::NAN), Some(300)),
+            target_value_budget(300.0)
         );
         assert_eq!(
-            compute_budget_ppm(Some(400.0), Some(0.0), None),
-            realized_fee_budget(400.0)
+            compute_budget_ppm(Some(0.0), Some(400)),
+            target_value_budget(400.0)
         );
         assert_eq!(
-            compute_budget_ppm(Some(0.0), Some(f64::INFINITY), None),
-            BOOTSTRAP_MAX_PPM
+            compute_budget_ppm(Some(f64::INFINITY), Some(400)),
+            target_value_budget(400.0)
         );
     }
 
     #[test]
     fn compute_budget_ppm_is_clamped() {
         assert_eq!(
-            compute_budget_ppm(Some(1.0), Some(1.0), None),
-            BUDGET_PPM_MIN
+            compute_budget_ppm(Some(1.0), Some(100)),
+            crate::fees::PPM_MIN
         );
         assert_eq!(
-            compute_budget_ppm(Some(100_000.0), Some(100_000.0), None),
+            compute_budget_ppm(Some(100_000.0), Some(100_000)),
             BUDGET_PPM_MAX
         );
     }
 
     #[test]
     fn compute_budget_ppm_never_exceeds_channel_ppm() {
-        assert_eq!(compute_budget_ppm(Some(7.0), Some(174.0), Some(10)), 10);
-        assert_eq!(compute_budget_ppm(Some(40.0), Some(407.0), Some(78)), 78);
+        assert_eq!(compute_budget_ppm(Some(7.0), Some(10)), 5);
+        assert_eq!(compute_budget_ppm(Some(40.0), Some(7)), 5);
     }
 
     #[test]
