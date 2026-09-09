@@ -315,6 +315,10 @@
             color: "#c084fc",
             value: channel.historical_effective_fee_ppm
         }, {
+            label: "TPPM",
+            color: "#50d890",
+            value: channel.time_decayed_fee_ppm
+        }, {
             label: "Historical rebalance",
             color: "#fb7185",
             value: channel.rebalance_effective_fee_ppm
@@ -336,6 +340,7 @@
                 .sort((a, b) => a.x - b.x)
         }));
         const normalizedReferences = referenceLines
+            .filter(item => item.value != null)
             .map(item => ({ ...item, value: Number(item.value) }))
             .filter(item => Number.isFinite(item.value));
         const points = normalizedSeries.flatMap(item => item.points);
@@ -502,14 +507,15 @@
     }
 
     function renderRebalanceTable(id, rows, channel) {
-        renderSimpleTable(id, ["Direction", "Payment", "Debit", "Credit", "Fees", "Resolved"], rows.slice(0, 100).map(row => [
+        renderSimpleTable(id, ["Direction", "Payment", "Debit", "Credit", "Fees", "Fee PPM", "Resolved"], rows.slice(0, 100).map(row => [
             row.target_channel_id === channel.short_channel_id ? "Inbound" : "Outbound",
             row.payment_id,
             formatMsat(row.debit_msat),
             formatMsat(row.credit_msat),
             formatMsat(row.fees_msat),
+            formatPpm(row.fee_ppm),
             row.resolved_at
-        ]), rows.length, [2, 3, 4]);
+        ]), rows.length, [2, 3, 4, 5]);
     }
 
     function renderSimpleTable(id, headings, rows, total, numericColumns = []) {
