@@ -139,6 +139,10 @@ fn should_bootstrap_low_local(local_balance_sat: u64) -> bool {
     local_balance_sat < LOW_LOCAL_BOOTSTRAP_THRESHOLD_SAT
 }
 
+fn should_skip_unproven_target(historical_fee_ppm: Option<f64>) -> bool {
+    historical_fee_ppm.is_none()
+}
+
 fn rebalance_jitter_seed(scid: &str) -> u64 {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -277,6 +281,7 @@ pub fn run_sling(store: &Store) {
     let mut targets_without_local_channel_info = 0u64;
     let mut skipped_small_amount = 0u64;
     let mut skipped_no_candidates = 0u64;
+    let mut skipped_unproven = 0u64;
     let mut suggested = 0u64;
     let mut bootstrap = 0u64;
 
@@ -361,6 +366,22 @@ pub fn run_sling(store: &Store) {
             continue;
         }
 
+        // A channel with no outbound forwarding history is still in fee discovery.
+        // Do not fund a regular Sling job from its advertised fee alone: the small,
+        // one-shot bootstrap above is enough to make outbound routing possible.
+        if should_skip_unproven_target(historical_fee_ppm) {
+            skipped_unproven += 1;
+            let result = "skip-unproven";
+            log::info!(
+                "balance:{:>5.1}% amount:{:>6}s tppm:{tppm_log:>6} hist_fee_ppm:{historical_fee_ppm_log:>6} channel_ppm:{my_ppm_log:>5} maxppm:{budget_ppm:>4} src_ppm_max:{:>5} cand:{:>3} result:{result:<12} alias:{alias}",
+                balance * 100.0,
+                0,
+                "n/a",
+                0,
+            );
+            continue;
+        }
+
         let source_ppm_max = compute_source_ppm_max(historical_fee_ppm, my_ppm);
         let Some(amount_hint) =
             compute_capacity_rebalance_amounts(channel_capacity_sat, local_balance_sat)
@@ -429,10 +450,11 @@ pub fn run_sling(store: &Store) {
     }
 
     log::info!(
-        "Sling summary: suggested:{} bootstrap:{} skipped_balance:{} skipped_small_amount:{} skipped_no_candidates:{} skipped_missing_scid:{} targets_without_local_channel_info:{}",
+        "Sling summary: suggested:{} bootstrap:{} skipped_balance:{} skipped_unproven:{} skipped_small_amount:{} skipped_no_candidates:{} skipped_missing_scid:{} targets_without_local_channel_info:{}",
         suggested,
         bootstrap,
         skipped_balance,
+        skipped_unproven,
         skipped_small_amount,
         skipped_no_candidates,
         skipped_missing_scid,
@@ -450,8 +472,8 @@ mod tests {
         compute_base_rebalance_amount, compute_budget_ppm, compute_capacity_rebalance_amounts,
         compute_job_amount, compute_source_ppm_max, enrich_sling_stats_with_last_channel_partner,
         is_target_eligible, low_local_bootstrap_args, should_bootstrap_low_local,
-        BOOTSTRAP_MAX_PPM, BUDGET_PPM_MAX, BUDGET_PPM_MIN, BUDGET_PPM_TARGET_VALUE_MULTIPLIER,
-        SOURCE_PPM_FALLBACK,
+        should_skip_unproven_target, BOOTSTRAP_MAX_PPM, BUDGET_PPM_MAX, BUDGET_PPM_MIN,
+        BUDGET_PPM_TARGET_VALUE_MULTIPLIER, SOURCE_PPM_FALLBACK,
     };
     use serde_json::Value;
 
@@ -616,6 +638,13 @@ mod tests {
         assert!(should_bootstrap_low_local(2));
         assert!(should_bootstrap_low_local(9));
         assert!(!should_bootstrap_low_local(10));
+    }
+
+    #[test]
+    fn regular_rebalance_requires_outbound_forwarding_history() {
+        assert!(should_skip_unproven_target(None));
+        assert!(!should_skip_unproven_target(Some(0.0)));
+        assert!(!should_skip_unproven_target(Some(250.0)));
     }
 
     #[test]
