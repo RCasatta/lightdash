@@ -13,7 +13,7 @@ use crate::routes;
 use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts, DatasetMetadata};
 use crate::store::{RebalancePart, Store};
 
-pub(crate) const SCHEMA_VERSION: u32 = 25;
+pub(crate) const SCHEMA_VERSION: u32 = 26;
 const REBALANCE_SOURCE_90D_SECONDS: u64 = 90 * 24 * 60 * 60;
 
 #[derive(Deserialize, Serialize)]

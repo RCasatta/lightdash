@@ -2,7 +2,7 @@ use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use maud::{html, Markup, DOCTYPE};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
 use std::path::{Component, Path};
@@ -15,7 +15,7 @@ use crate::store::Store;
 
 const ROUTE_MAX_FEE_PPM: u64 = 10_000;
 const ROUTE_MIN_MAX_FEE_MSAT: u64 = 5_000;
-const ROUTES_SCHEMA_VERSION: u32 = 7;
+const ROUTES_SCHEMA_VERSION: u32 = 8;
 const ROUTES_MAX_AGE_SECONDS: i64 = 24 * 60 * 60;
 const ROUTE_AMOUNTS_SAT: [u64; 5] = [1_000, 10_000, 100_000, 1_000_000, 10_000_000];
 const ROUTE_AMOUNT_BUDGET: StdDuration = StdDuration::from_secs(10 * 60);
@@ -81,6 +81,7 @@ pub(crate) struct RouteCandidate {
     pub node_id: String,
     pub alias: String,
     pub connectable: bool,
+    pub had_channel_in_past: bool,
     pub appearances: u64,
     pub appearance_ratio: Option<f64>,
     pub average_fee_ppm: f64,
@@ -171,6 +172,12 @@ fn analyze_routes(
     let started = Instant::now();
     let chan_meta = store.chan_meta_per_node();
     let peers_ids = store.peers_ids();
+    let former_peer_ids: HashSet<&str> = store
+        .closed_channels
+        .closedchannels
+        .iter()
+        .filter_map(|channel| channel.peer_id.as_deref())
+        .collect();
     let nodes_by_id_keys = store.node_ids_with_aliases();
 
     let mut counters = HashMap::new();
@@ -303,6 +310,7 @@ fn analyze_routes(
                 node_id: id.clone(),
                 alias: store.get_node_alias(&id),
                 connectable: store.is_node_connectable(&id),
+                had_channel_in_past: former_peer_ids.contains(id.as_str()),
                 appearances: count,
                 appearance_ratio: (total != 0).then_some(count as f64 / total as f64),
                 average_fee_ppm: chan_info.avg_fee(),
@@ -849,6 +857,7 @@ fn route_candidate_fields() -> BTreeMap<String, FieldMetadata> {
         ("node_id".into(), metadata_field("string", false, None, "Public key of the non-peer intermediary node.", Some("getroutes path.node_id_out"), None)),
         ("alias".into(), metadata_field("string", false, None, "Gossip alias advertised by the candidate node.", Some("listnodes"), None)),
         ("connectable".into(), metadata_field("boolean", false, None, "Whether the candidate advertises at least one network address in its current node announcement.", Some("listnodes.addresses"), None)),
+        ("had_channel_in_past".into(), metadata_field("boolean", false, None, "Whether the local node previously had a channel with this candidate.", Some("listclosedchannels.peer_id"), None)),
         ("appearances".into(), metadata_field("integer", false, Some("route"), "Number of successful destination probes whose path contained this node.", Some("getroutes"), None)),
         ("appearance_ratio".into(), metadata_field("number", true, Some("ratio"), "Share of successfully evaluated routes containing this candidate.", None, Some("appearances / evaluated_routes for amount_sat"))),
         ("average_fee_ppm".into(), metadata_field("number", false, Some("ppm"), "Mean advertised proportional fee across the candidate's public channel directions.", Some("listchannels"), None)),
@@ -1037,6 +1046,7 @@ fn render_routes_page(
                                         th { "Rank" }
                                         th { "Alias" }
                                         th { "Connectable" }
+                                        th { "Past Channel" }
                                         th { "Appearances" }
                                         th { "Avg Fee (ppm)" }
                                         th { "Fee Diversity" }
@@ -1051,6 +1061,7 @@ fn render_routes_page(
                                                 a href={(format!("nodes/{}.html", entry.node_id))} { (&entry.alias) }
                                             }
                                             td { (if entry.connectable { "Yes" } else { "No" }) }
+                                            td { (if entry.had_channel_in_past { "Yes" } else { "No" }) }
                                             td class="align-right" { (entry.appearances) }
                                             td class="align-right" { (format!("{:.1}", entry.average_fee_ppm)) }
                                             td class="align-right" { (format!("{:.3}", entry.fee_diversity)) }
@@ -1114,6 +1125,15 @@ mod tests {
         manifest.generated_at =
             (now + Duration::seconds(1)).to_rfc3339_opts(SecondsFormat::Secs, true);
         assert!(!manifest_is_fresh(&manifest, now));
+    }
+
+    #[test]
+    fn route_candidate_contract_includes_past_channel_flag() {
+        let fields = route_candidate_fields();
+        let field = &fields["had_channel_in_past"];
+        assert_eq!(field.json_type, "boolean");
+        assert!(!field.nullable);
+        assert_eq!(field.source.as_deref(), Some("listclosedchannels.peer_id"));
     }
 
     #[test]
