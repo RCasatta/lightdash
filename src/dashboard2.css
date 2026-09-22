@@ -883,6 +883,40 @@ h2 {
     font-weight: 750;
 }
 
+.channel-events-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+}
+
+.channel-events-header h2 {
+    margin: 0;
+}
+
+.channel-events-filter {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 650;
+}
+
+.channel-events-filter select {
+    padding: 0.5rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    outline: none;
+    background: var(--surface-soft);
+    color: var(--text);
+}
+
+.channel-events-filter select:focus {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px rgba(100, 181, 246, 0.12);
+}
+
 .compact-table td.event-positive {
     background: rgba(80, 216, 144, 0.24);
     color: #dffbed;

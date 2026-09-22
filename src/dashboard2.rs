@@ -394,13 +394,42 @@ fn render_channel_page(manifest: &SnapshotManifest) -> String {
                     }
                 }
 
-                (channel_activity_table("Recent channel events", "channel-events", "No fee or connection changes were observed for this channel."))
+                (channel_event_table())
                 (channel_activity_table("Settled forwards", "channel-forwards", "No settled forwards involve this channel."))
                 (channel_activity_table("Rebalances", "channel-rebalances", "No rebalances involve this channel."))
             }
         }
     };
     page_shell("Channel", "channels", manifest, content)
+}
+
+fn channel_event_table() -> Markup {
+    html! {
+        section class="panel detail-panel activity-table-panel" {
+            div class="channel-events-header" {
+                h2 { "Recent channel events" }
+                label class="channel-events-filter" {
+                    span { "Setting" }
+                    select id="channel-events-setting" {
+                        option value="" { "All settings" }
+                        option value="Connection" { "Connection" }
+                        option value="Local FeeRate" { "Local FeeRate" }
+                        option value="Peer FeeRate" { "Peer FeeRate" }
+                    }
+                }
+            }
+            p id="channel-events-status" class="muted" { "Loading…" }
+            div class="table-scroll" {
+                table id="channel-events" class="data-table compact-table" {
+                    thead {}
+                    tbody {}
+                }
+            }
+            p id="channel-events-empty" class="muted" hidden {
+                "No fee or connection changes were observed for this channel."
+            }
+        }
+    }
 }
 
 fn channel_activity_table(title: &str, id: &str, empty_message: &str) -> Markup {
@@ -908,6 +937,8 @@ mod tests {
         let channel = fs::read_to_string(output.join("channel.html")).unwrap();
         assert!(channel.contains("Recent channel events"));
         assert!(channel.contains("id=\"channel-events\""));
+        assert!(channel.contains("id=\"channel-events-setting\""));
+        assert!(channel.contains("Peer FeeRate"));
         let overview = fs::read_to_string(output.join("index.html")).unwrap();
         assert!(overview.contains("Local liquidity"));
         assert!(overview.contains("50.00%"));

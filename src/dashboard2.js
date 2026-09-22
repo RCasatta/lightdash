@@ -326,60 +326,76 @@
             value: channel.rebalance_effective_fee_ppm
         }], { yAxisMax: 3_000 });
         lineChart("htlc-chart", [{ label: "Local", color: "#50d890", rows: policyRows.filter(row => row.direction === "local"), value: row => row.htlc_max_msat / 1000 }], " sats");
-        renderChannelEventTable(channel, policyRows, liquidityRows);
+        renderChannelEventTable(policyRows, liquidityRows);
         note.textContent = `Change-point history: ${formatNumber(liquidityRows.length, 0)} liquidity observations and ${formatNumber(policyRows.length, 0)} policy observations.`;
     }
 
-    function renderChannelEventTable(channel, policyRows, liquidityRows) {
-        const events = buildChannelEvents(channel, policyRows, liquidityRows);
-        const displayedEvents = events.slice(0, 100);
+    function renderChannelEventTable(policyRows, liquidityRows) {
+        const events = buildChannelEvents(policyRows, liquidityRows);
         const table = document.querySelector("#channel-events");
-        const headings = ["Timestamp", "Channel ID", "Peer Alias", "Setting", "Old Value", "New Value", "Change", "Channel Liquidity"];
+        const settingFilter = document.querySelector("#channel-events-setting");
+        const headings = ["Elapsed", "Timestamp", "Setting", "Old Value", "New Value", "Change", "Channel Liquidity"];
         const header = document.createElement("tr");
         headings.forEach(label => header.appendChild(textElement("th", label)));
-        const body = document.createDocumentFragment();
-        const snapshotTime = Date.parse(document.body.dataset.snapshotTime || "") || Date.now();
-
-        displayedEvents.forEach(event => {
-            const row = document.createElement("tr");
-            const timestampCell = document.createElement("td");
-            const timestamp = document.createElement("time");
-            timestamp.dateTime = event.timestamp;
-            timestamp.title = formatExactTimestamp(event.timestamp);
-            timestamp.textContent = formatRelativeTime(event.timestamp, snapshotTime);
-            timestampCell.appendChild(timestamp);
-            row.appendChild(timestampCell);
-            row.appendChild(textElement("td", event.channelId, "mono"));
-            row.appendChild(textElement("td", event.peerAlias));
-            row.appendChild(textElement("td", event.setting));
-            row.appendChild(textElement("td", event.oldValue, "number"));
-
-            const newValue = textElement("td", event.newValue, "number");
-            const change = textElement("td", event.change, "number");
-            if (event.kind === "connection") {
-                newValue.classList.add(event.connected ? "event-positive" : "event-negative");
-            } else if (event.delta > 0) {
-                newValue.classList.add("event-positive");
-                change.classList.add("event-positive");
-            } else if (event.delta < 0) {
-                newValue.classList.add("event-negative");
-                change.classList.add("event-negative");
-            }
-            row.append(newValue, change, renderLiquidityCell(event.localBalancePercent));
-            body.appendChild(row);
-        });
-
         table.querySelector("thead").replaceChildren(header);
-        table.querySelector("tbody").replaceChildren(body);
-        table.hidden = events.length === 0;
-        document.querySelector("#channel-events-empty").hidden = events.length !== 0;
-        const caveat = "Fee timestamps come from gossip; connection timestamps are archive observations.";
-        document.querySelector("#channel-events-status").textContent = events.length > 100
-            ? `Showing the latest 100 of ${formatNumber(events.length, 0)} observed changes. ${caveat}`
-            : `${formatNumber(events.length, 0)} observed changes. ${caveat}`;
+        settingFilter.addEventListener("change", renderFilteredEvents);
+        renderFilteredEvents();
+
+        function renderFilteredEvents() {
+            const filteredEvents = settingFilter.value
+                ? events.filter(event => event.setting === settingFilter.value)
+                : events;
+            const displayedEvents = filteredEvents.slice(0, 100);
+            const body = document.createDocumentFragment();
+            const snapshotTime = Date.parse(document.body.dataset.snapshotTime || "") || Date.now();
+
+            displayedEvents.forEach(event => {
+                const row = document.createElement("tr");
+                const elapsedCell = document.createElement("td");
+                const elapsed = document.createElement("time");
+                elapsed.dateTime = event.timestamp;
+                elapsed.textContent = formatRelativeTime(event.timestamp, snapshotTime);
+                elapsedCell.appendChild(elapsed);
+                row.appendChild(elapsedCell);
+                row.appendChild(textElement("td", formatExactTimestamp(event.timestamp), "mono"));
+                row.appendChild(textElement("td", event.setting));
+                row.appendChild(textElement("td", event.oldValue, "number"));
+
+                const newValue = textElement("td", event.newValue, "number");
+                const change = textElement("td", event.change, "number");
+                if (event.kind === "connection") {
+                    newValue.classList.add(event.connected ? "event-positive" : "event-negative");
+                } else if (event.delta > 0) {
+                    newValue.classList.add("event-positive");
+                    change.classList.add("event-positive");
+                } else if (event.delta < 0) {
+                    newValue.classList.add("event-negative");
+                    change.classList.add("event-negative");
+                }
+                row.append(newValue, change, renderLiquidityCell(event.localBalancePercent));
+                body.appendChild(row);
+            });
+
+            table.querySelector("tbody").replaceChildren(body);
+            table.hidden = filteredEvents.length === 0;
+            const empty = document.querySelector("#channel-events-empty");
+            empty.hidden = filteredEvents.length !== 0;
+            empty.textContent = events.length === 0
+                ? "No fee or connection changes were observed for this channel."
+                : "No events match the selected setting.";
+            const caveat = "Fee timestamps come from gossip; connection timestamps are archive observations.";
+            let count = `${formatNumber(filteredEvents.length, 0)} observed changes.`;
+            if (settingFilter.value) {
+                count = `${formatNumber(filteredEvents.length, 0)} of ${formatNumber(events.length, 0)} observed changes match this setting.`;
+            }
+            if (filteredEvents.length > 100) {
+                count = `Showing the latest 100 of ${formatNumber(filteredEvents.length, 0)} matching changes.`;
+            }
+            document.querySelector("#channel-events-status").textContent = `${count} ${caveat}`;
+        }
     }
 
-    function buildChannelEvents(channel, policyRows, liquidityRows) {
+    function buildChannelEvents(policyRows, liquidityRows) {
         const liquidityTimeline = [...liquidityRows].sort(oldestFirst("observed_at"));
         const events = [];
 
@@ -397,8 +413,6 @@
                 events.push({
                     kind: "fee",
                     timestamp: current.policy_last_updated_at || current.observed_at,
-                    channelId: channel.short_channel_id || channel.channel_id,
-                    peerAlias: channel.peer_alias || "Unknown peer",
                     setting: direction === "local" ? "Local FeeRate" : "Peer FeeRate",
                     oldValue: formatNumber(oldFee, 0),
                     newValue: formatNumber(newFee, 0),
@@ -416,8 +430,6 @@
             events.push({
                 kind: "connection",
                 timestamp: current.observed_at,
-                channelId: channel.short_channel_id || current.short_channel_id || channel.channel_id,
-                peerAlias: channel.peer_alias || "Unknown peer",
                 setting: "Connection",
                 oldValue: previous.connected ? "Online" : "Offline",
                 newValue: current.connected ? "Online" : "Offline",
@@ -467,6 +479,7 @@
     function renderEmptyHistoryEvents(message) {
         const table = document.querySelector("#channel-events");
         table.hidden = true;
+        document.querySelector("#channel-events-setting").disabled = true;
         document.querySelector("#channel-events-empty").hidden = false;
         document.querySelector("#channel-events-status").textContent = message;
     }
