@@ -878,6 +878,47 @@ h2 {
     font-size: 0.78rem;
 }
 
+.compact-table th {
+    padding: 0.68rem 0.8rem;
+    font-weight: 750;
+}
+
+.compact-table td.event-positive {
+    background: rgba(80, 216, 144, 0.24);
+    color: #dffbed;
+}
+
+.compact-table td.event-negative {
+    background: rgba(255, 120, 133, 0.26);
+    color: #ffe3e6;
+}
+
+.liquidity-cell {
+    white-space: nowrap;
+}
+
+.liquidity-badge {
+    display: inline-block;
+    min-width: 2.2rem;
+    padding: 0.08rem 0.28rem;
+    border: 1px solid var(--border-strong);
+    border-radius: 5px;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+
+.liquidity-badge + .liquidity-badge {
+    margin-left: 0.3rem;
+}
+
+.liquidity-badge.local {
+    color: var(--green);
+}
+
+.liquidity-badge.remote {
+    color: #8edcff;
+}
+
 .site-footer {
     display: flex;
     justify-content: center;

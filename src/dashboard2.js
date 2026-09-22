@@ -139,6 +139,7 @@
                 renderEmptyChart("liquidity-chart");
                 renderEmptyChart("fee-chart");
                 renderEmptyChart("htlc-chart");
+                renderEmptyHistoryEvents("Historical events could not be loaded.");
             }
         } catch (caught) {
             showChannelError(`${caught.message}. Serve Dashboard2 over HTTP and regenerate it from a current snapshot.`);
@@ -297,6 +298,7 @@
             renderEmptyChart("liquidity-chart");
             renderEmptyChart("fee-chart");
             renderEmptyChart("htlc-chart");
+            renderEmptyHistoryEvents("Historical archives were not included in this snapshot.");
             return;
         }
 
@@ -324,7 +326,179 @@
             value: channel.rebalance_effective_fee_ppm
         }], { yAxisMax: 3_000 });
         lineChart("htlc-chart", [{ label: "Local", color: "#50d890", rows: policyRows.filter(row => row.direction === "local"), value: row => row.htlc_max_msat / 1000 }], " sats");
+        renderChannelEventTable(channel, policyRows, liquidityRows);
         note.textContent = `Change-point history: ${formatNumber(liquidityRows.length, 0)} liquidity observations and ${formatNumber(policyRows.length, 0)} policy observations.`;
+    }
+
+    function renderChannelEventTable(channel, policyRows, liquidityRows) {
+        const events = buildChannelEvents(channel, policyRows, liquidityRows);
+        const displayedEvents = events.slice(0, 100);
+        const table = document.querySelector("#channel-events");
+        const headings = ["Timestamp", "Channel ID", "Peer Alias", "Setting", "Old Value", "New Value", "Change", "Channel Liquidity"];
+        const header = document.createElement("tr");
+        headings.forEach(label => header.appendChild(textElement("th", label)));
+        const body = document.createDocumentFragment();
+        const snapshotTime = Date.parse(document.body.dataset.snapshotTime || "") || Date.now();
+
+        displayedEvents.forEach(event => {
+            const row = document.createElement("tr");
+            const timestampCell = document.createElement("td");
+            const timestamp = document.createElement("time");
+            timestamp.dateTime = event.timestamp;
+            timestamp.title = formatExactTimestamp(event.timestamp);
+            timestamp.textContent = formatRelativeTime(event.timestamp, snapshotTime);
+            timestampCell.appendChild(timestamp);
+            row.appendChild(timestampCell);
+            row.appendChild(textElement("td", event.channelId, "mono"));
+            row.appendChild(textElement("td", event.peerAlias));
+            row.appendChild(textElement("td", event.setting));
+            row.appendChild(textElement("td", event.oldValue, "number"));
+
+            const newValue = textElement("td", event.newValue, "number");
+            const change = textElement("td", event.change, "number");
+            if (event.kind === "connection") {
+                newValue.classList.add(event.connected ? "event-positive" : "event-negative");
+            } else if (event.delta > 0) {
+                newValue.classList.add("event-positive");
+                change.classList.add("event-positive");
+            } else if (event.delta < 0) {
+                newValue.classList.add("event-negative");
+                change.classList.add("event-negative");
+            }
+            row.append(newValue, change, renderLiquidityCell(event.localBalancePercent));
+            body.appendChild(row);
+        });
+
+        table.querySelector("thead").replaceChildren(header);
+        table.querySelector("tbody").replaceChildren(body);
+        table.hidden = events.length === 0;
+        document.querySelector("#channel-events-empty").hidden = events.length !== 0;
+        const caveat = "Fee timestamps come from gossip; connection timestamps are archive observations.";
+        document.querySelector("#channel-events-status").textContent = events.length > 100
+            ? `Showing the latest 100 of ${formatNumber(events.length, 0)} observed changes. ${caveat}`
+            : `${formatNumber(events.length, 0)} observed changes. ${caveat}`;
+    }
+
+    function buildChannelEvents(channel, policyRows, liquidityRows) {
+        const liquidityTimeline = [...liquidityRows].sort(oldestFirst("observed_at"));
+        const events = [];
+
+        ["local", "remote"].forEach(direction => {
+            const rows = policyRows
+                .filter(row => row.direction === direction)
+                .sort(oldestFirst("observed_at"));
+            for (let index = 1; index < rows.length; index += 1) {
+                const previous = rows[index - 1];
+                const current = rows[index];
+                if (Number(previous.fee_ppm) === Number(current.fee_ppm)) continue;
+                const oldFee = Number(previous.fee_ppm);
+                const newFee = Number(current.fee_ppm);
+                const delta = newFee - oldFee;
+                events.push({
+                    kind: "fee",
+                    timestamp: current.policy_last_updated_at || current.observed_at,
+                    channelId: channel.short_channel_id || channel.channel_id,
+                    peerAlias: channel.peer_alias || "Unknown peer",
+                    setting: direction === "local" ? "Local FeeRate" : "Peer FeeRate",
+                    oldValue: formatNumber(oldFee, 0),
+                    newValue: formatNumber(newFee, 0),
+                    change: oldFee === 0 ? "—" : formatSignedPercent(delta / oldFee * 100),
+                    delta,
+                    localBalancePercent: liquidityAt(liquidityTimeline, current.observed_at)?.local_balance_percent
+                });
+            }
+        });
+
+        for (let index = 1; index < liquidityTimeline.length; index += 1) {
+            const previous = liquidityTimeline[index - 1];
+            const current = liquidityTimeline[index];
+            if (Boolean(previous.connected) === Boolean(current.connected)) continue;
+            events.push({
+                kind: "connection",
+                timestamp: current.observed_at,
+                channelId: channel.short_channel_id || current.short_channel_id || channel.channel_id,
+                peerAlias: channel.peer_alias || "Unknown peer",
+                setting: "Connection",
+                oldValue: previous.connected ? "Online" : "Offline",
+                newValue: current.connected ? "Online" : "Offline",
+                change: "—",
+                connected: Boolean(current.connected),
+                delta: 0,
+                localBalancePercent: current.local_balance_percent
+            });
+        }
+
+        return events
+            .filter(event => Number.isFinite(Date.parse(event.timestamp)))
+            .sort(newestFirst("timestamp"));
+    }
+
+    function liquidityAt(rows, observedAt) {
+        const timestamp = Date.parse(observedAt);
+        let match;
+        for (const row of rows) {
+            if (Date.parse(row.observed_at) > timestamp) break;
+            match = row;
+        }
+        return match;
+    }
+
+    function renderLiquidityCell(localPercent) {
+        const cell = document.createElement("td");
+        cell.className = "liquidity-cell number";
+        if (localPercent == null) {
+            cell.textContent = "—";
+            return cell;
+        }
+        const local = Number(localPercent);
+        if (!Number.isFinite(local)) {
+            cell.textContent = "—";
+            return cell;
+        }
+        const boundedLocal = Math.min(100, Math.max(0, local));
+        const localBadge = textElement("span", formatNumber(boundedLocal, 0, "%"), "liquidity-badge local");
+        localBadge.title = "Local liquidity";
+        const remoteBadge = textElement("span", formatNumber(100 - boundedLocal, 0, "%"), "liquidity-badge remote");
+        remoteBadge.title = "Remote liquidity";
+        cell.append(localBadge, remoteBadge);
+        return cell;
+    }
+
+    function renderEmptyHistoryEvents(message) {
+        const table = document.querySelector("#channel-events");
+        table.hidden = true;
+        document.querySelector("#channel-events-empty").hidden = false;
+        document.querySelector("#channel-events-status").textContent = message;
+    }
+
+    function formatSignedPercent(value) {
+        const prefix = value > 0 ? "+" : "";
+        return `${prefix}${formatNumber(value, 2, "%")}`;
+    }
+
+    function formatExactTimestamp(value) {
+        const timestamp = Date.parse(value);
+        return Number.isFinite(timestamp)
+            ? new Date(timestamp).toISOString().replace("T", " ").replace(".000Z", "Z")
+            : value;
+    }
+
+    function formatRelativeTime(value, referenceTimestamp) {
+        const timestamp = Date.parse(value);
+        if (!Number.isFinite(timestamp)) return value;
+        const elapsedSeconds = Math.max(0, Math.floor((referenceTimestamp - timestamp) / 1000));
+        const units = [
+            [365 * 24 * 60 * 60, "year"],
+            [30 * 24 * 60 * 60, "month"],
+            [7 * 24 * 60 * 60, "week"],
+            [24 * 60 * 60, "day"],
+            [60 * 60, "hour"],
+            [60, "minute"]
+        ];
+        const match = units.find(([seconds]) => elapsedSeconds >= seconds);
+        if (!match) return "just now";
+        const amount = Math.floor(elapsedSeconds / match[0]);
+        return `${formatNumber(amount, 0)} ${match[1]}${amount === 1 ? "" : "s"} ago`;
     }
 
     function lineChart(id, series, suffix, referenceLines = [], options = {}) {
@@ -584,6 +758,10 @@
 
     function newestFirst(key) {
         return (left, right) => Date.parse(right[key] || 0) - Date.parse(left[key] || 0);
+    }
+
+    function oldestFirst(key) {
+        return (left, right) => Date.parse(left[key] || 0) - Date.parse(right[key] || 0);
     }
 
     function textElement(tag, text, className = "") {

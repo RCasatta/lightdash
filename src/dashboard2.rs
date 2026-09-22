@@ -394,6 +394,7 @@ fn render_channel_page(manifest: &SnapshotManifest) -> String {
                     }
                 }
 
+                (channel_activity_table("Recent channel events", "channel-events", "No fee or connection changes were observed for this channel."))
                 (channel_activity_table("Settled forwards", "channel-forwards", "No settled forwards involve this channel."))
                 (channel_activity_table("Rebalances", "channel-rebalances", "No rebalances involve this channel."))
             }
@@ -904,6 +905,9 @@ mod tests {
         assert!(output.join("data/channels.schema.json").is_file());
         assert!(output.join("data/closed-channels.schema.json").is_file());
         assert!(output.join("data/settled-forwards.schema.json").is_file());
+        let channel = fs::read_to_string(output.join("channel.html")).unwrap();
+        assert!(channel.contains("Recent channel events"));
+        assert!(channel.contains("id=\"channel-events\""));
         let overview = fs::read_to_string(output.join("index.html")).unwrap();
         assert!(overview.contains("Local liquidity"));
         assert!(overview.contains("50.00%"));
