@@ -450,6 +450,18 @@ fn channel_activity_table(title: &str, id: &str, empty_message: &str) -> Markup 
 
 fn render_forwards_page(manifest: &SnapshotManifest) -> String {
     let content = html! {
+        section class="panel forwards-chart-section" aria-labelledby="forwards-fee-chart-title" {
+            div class="forwards-chart-heading" {
+                div {
+                    h2 id="forwards-fee-chart-title" { "Fees earned over time" }
+                    p id="forwards-fee-chart-description" class="muted" aria-live="polite" {
+                        "Loading fee totals…"
+                    }
+                }
+                p class="chart-unit" { "Total fee (sats)" }
+            }
+            div id="forwards-fee-chart" class="chart-host forwards-fee-chart" {}
+        }
         (dynamic_table_panel(
             "Forwards",
             "forwards",
@@ -953,6 +965,8 @@ mod tests {
         let forwards = fs::read_to_string(output.join("forwards.html")).unwrap();
         assert!(forwards.contains("aria-atomic=\"true\""));
         assert!(forwards.contains("id=\"table-summary\""));
+        assert!(forwards.contains("id=\"forwards-fee-chart\""));
+        assert!(forwards.contains("Fees earned over time"));
         let routes = fs::read_to_string(output.join("routes.html")).unwrap();
         assert!(routes.contains("Potential relay partners"));
         assert!(routes.contains("2026-07-16T09:00:00Z"));

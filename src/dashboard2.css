@@ -737,6 +737,49 @@ h2 {
     margin-bottom: var(--space-4);
 }
 
+.forwards-chart-section {
+    margin-bottom: var(--space-4);
+    padding: var(--space-4);
+}
+
+.forwards-chart-heading {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: var(--space-3);
+}
+
+.forwards-chart-heading h2 {
+    margin-bottom: 0.25rem;
+}
+
+.chart-unit {
+    flex: 0 0 auto;
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.forwards-fee-chart {
+    min-height: 260px;
+    margin-top: var(--space-3);
+}
+
+.chart-grid-line {
+    stroke: var(--border);
+    stroke-width: 1;
+}
+
+.fee-chart-bar {
+    fill: var(--accent);
+    opacity: 0.82;
+}
+
+.fee-chart-bar:hover {
+    opacity: 1;
+}
+
 .chart-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -1031,6 +1074,10 @@ h2 {
     .detail-heading {
         display: grid;
         align-items: start;
+    }
+
+    .forwards-chart-heading {
+        display: grid;
     }
 
     .table-toolbar,

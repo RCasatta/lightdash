@@ -1373,11 +1373,135 @@
         renderBody(pageRows, visibleColumns);
         renderStatus(rows.length, pageRows.length);
         renderSummary(rows);
+        if (config.datasetKey === "settled_forwards") renderForwardsFeeChart(rows);
         renderPagination(pageCount);
         document.querySelectorAll("[data-view]").forEach(button => {
             button.classList.toggle("is-active", button.dataset.view === state.view);
         });
         updateUrl();
+    }
+
+    function renderForwardsFeeChart(rows) {
+        const host = document.querySelector("#forwards-fee-chart");
+        const description = document.querySelector("#forwards-fee-chart-description");
+        if (!host || !description) return;
+
+        const hour = 60 * 60 * 1000;
+        const day = 24 * hour;
+        const periods = {
+            "last-day": { count: 24, duration: hour, unit: "hourly" },
+            "last-week": { count: 7, duration: day, unit: "daily" },
+            "last-month": { count: 30, duration: day, unit: "daily" },
+            "last-year": { count: 365, duration: day, unit: "daily" }
+        };
+        let period = periods[state.view];
+        if (!period) {
+            period = Object.values(periods).find(candidate => {
+                const minimum = filterBoundary(columns[0], state.filters.received_at?.min);
+                return minimum !== null
+                    && Math.abs(minimum - (snapshotTime - candidate.count * candidate.duration)) < 60 * 1000;
+            });
+        }
+        if (!period) {
+            const firstTimestamp = rows.reduce((earliest, row) => (
+                Number.isFinite(row._receivedAt) ? Math.min(earliest, row._receivedAt) : earliest
+            ), snapshotTime);
+            const dayCount = Math.max(1, Math.ceil((snapshotTime - firstTimestamp) / day));
+            const daysPerBar = Math.max(1, Math.ceil(dayCount / 365));
+            period = {
+                count: Math.ceil(dayCount / daysPerBar),
+                duration: daysPerBar * day,
+                unit: daysPerBar === 1 ? "daily" : `${formatInteger(daysPerBar)}-day`
+            };
+        }
+
+        const end = snapshotTime;
+        const start = end - period.count * period.duration;
+        const buckets = Array.from({ length: period.count }, (_, index) => ({
+            start: start + index * period.duration,
+            feeMsat: 0
+        }));
+        rows.forEach(row => {
+            const timestamp = row._receivedAt;
+            if (!Number.isFinite(timestamp) || timestamp < start || timestamp > end) return;
+            const index = Math.min(period.count - 1, Math.floor((timestamp - start) / period.duration));
+            const feeMsat = Number(row.fee_msat);
+            if (Number.isFinite(feeMsat)) buckets[index].feeMsat += feeMsat;
+        });
+
+        const width = 960;
+        const height = 300;
+        const pad = { left: 68, right: 18, top: 18, bottom: 48 };
+        const plotWidth = width - pad.left - pad.right;
+        const plotHeight = height - pad.top - pad.bottom;
+        const maximum = Math.max(0, ...buckets.map(bucket => bucket.feeMsat / 1000));
+        const yMaximum = maximum || 1;
+        const svg = svgElement("svg", {
+            viewBox: `0 0 ${width} ${height}`,
+            role: "img",
+            "aria-labelledby": "forwards-fee-chart-title forwards-fee-chart-description"
+        });
+
+        for (let tick = 0; tick <= 4; tick += 1) {
+            const value = yMaximum * tick / 4;
+            const y = pad.top + plotHeight - plotHeight * tick / 4;
+            svg.appendChild(svgElement("line", {
+                x1: pad.left,
+                y1: y,
+                x2: width - pad.right,
+                y2: y,
+                class: tick === 0 ? "chart-axis" : "chart-grid-line"
+            }));
+            svg.appendChild(svgText(pad.left - 9, y + 4, formatCompact(value, " sats"), "end"));
+        }
+
+        const slotWidth = plotWidth / period.count;
+        const barWidth = Math.max(0.8, slotWidth * 0.76);
+        buckets.forEach((bucket, index) => {
+            const feeSat = bucket.feeMsat / 1000;
+            const barHeight = feeSat / yMaximum * plotHeight;
+            const bar = svgElement("rect", {
+                x: pad.left + index * slotWidth + (slotWidth - barWidth) / 2,
+                y: pad.top + plotHeight - barHeight,
+                width: barWidth,
+                height: barHeight,
+                rx: Math.min(2, barWidth / 3),
+                class: "fee-chart-bar"
+            });
+            const bucketEnd = bucket.start + period.duration;
+            const title = svgElement("title", {});
+            title.textContent = `${formatChartRange(bucket.start, bucketEnd, period.duration)}: ${formatNumber(feeSat, 0, " sats")}`;
+            bar.appendChild(title);
+            svg.appendChild(bar);
+        });
+
+        const desiredLabels = period.count <= 30 ? Math.min(period.count, 7) : 6;
+        const labelStep = Math.max(1, Math.ceil(period.count / desiredLabels));
+        buckets.forEach((bucket, index) => {
+            if (index % labelStep !== 0 && index !== period.count - 1) return;
+            const x = pad.left + (index + 0.5) * slotWidth;
+            const label = period.duration === hour
+                ? new Date(bucket.start).toISOString().slice(11, 16)
+                : new Date(bucket.start).toISOString().slice(0, 10);
+            svg.appendChild(svgText(x, height - 18, label, "middle"));
+        });
+
+        const periodLabel = period.unit === "hourly"
+            ? `${formatInteger(period.count)} hourly bars`
+            : period.unit === "daily"
+                ? `${formatInteger(period.count)} daily bars`
+                : `${formatInteger(period.count)} ${period.unit} bars`;
+        description.textContent = `${periodLabel}, ending at the snapshot time. Hover a bar for its interval and total.`;
+        host.replaceChildren(svg);
+    }
+
+    function formatChartRange(start, end, duration) {
+        const startDate = new Date(start);
+        const endDate = new Date(end);
+        if (duration < 24 * 60 * 60 * 1000) {
+            return `${startDate.toISOString().slice(0, 16).replace("T", " ")}–${endDate.toISOString().slice(11, 16)} UTC`;
+        }
+        return `${startDate.toISOString().slice(0, 10)} ${startDate.toISOString().slice(11, 16)}–${endDate.toISOString().slice(0, 10)} ${endDate.toISOString().slice(11, 16)} UTC`;
     }
 
     function renderStatus(matchCount, pageCount) {
