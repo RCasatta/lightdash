@@ -1389,10 +1389,10 @@
         const hour = 60 * 60 * 1000;
         const day = 24 * hour;
         const periods = {
-            "last-day": { count: 24, duration: hour, unit: "hourly" },
-            "last-week": { count: 7, duration: day, unit: "daily" },
-            "last-month": { count: 30, duration: day, unit: "daily" },
-            "last-year": { count: 365, duration: day, unit: "daily" }
+            "last-day": { count: 24, duration: hour, unit: "hourly", trendWindow: 3, trendLabel: "3-hour" },
+            "last-week": { count: 7, duration: day, unit: "daily", trendWindow: 3, trendLabel: "3-day" },
+            "last-month": { count: 30, duration: day, unit: "daily", trendWindow: 7, trendLabel: "7-day" },
+            "last-year": { count: 365, duration: day, unit: "daily", trendWindow: 30, trendLabel: "30-day" }
         };
         let period = periods[state.view];
         if (!period) {
@@ -1408,10 +1408,13 @@
             ), snapshotTime);
             const dayCount = Math.max(1, Math.ceil((snapshotTime - firstTimestamp) / day));
             const daysPerBar = Math.max(1, Math.ceil(dayCount / 365));
+            const trendWindow = Math.min(30, Math.max(1, Math.round(dayCount / daysPerBar / 12)));
             period = {
                 count: Math.ceil(dayCount / daysPerBar),
                 duration: daysPerBar * day,
-                unit: daysPerBar === 1 ? "daily" : `${formatInteger(daysPerBar)}-day`
+                unit: daysPerBar === 1 ? "daily" : `${formatInteger(daysPerBar)}-day`,
+                trendWindow,
+                trendLabel: `${formatInteger(trendWindow * daysPerBar)}-day`
             };
         }
 
@@ -1457,8 +1460,14 @@
 
         const slotWidth = plotWidth / period.count;
         const barWidth = Math.max(0.8, slotWidth * 0.76);
+        const feeTotals = buckets.map(bucket => bucket.feeMsat / 1000);
+        const trend = feeTotals.map((_, index) => {
+            const first = Math.max(0, index - period.trendWindow + 1);
+            const values = feeTotals.slice(first, index + 1);
+            return values.reduce((sum, value) => sum + value, 0) / values.length;
+        });
         buckets.forEach((bucket, index) => {
-            const feeSat = bucket.feeMsat / 1000;
+            const feeSat = feeTotals[index];
             const barHeight = feeSat / yMaximum * plotHeight;
             const bar = svgElement("rect", {
                 x: pad.left + index * slotWidth + (slotWidth - barWidth) / 2,
@@ -1470,20 +1479,31 @@
             });
             const bucketEnd = bucket.start + period.duration;
             const title = svgElement("title", {});
-            title.textContent = `${formatChartRange(bucket.start, bucketEnd, period.duration)}: ${formatNumber(feeSat, 0, " sats")}`;
+            title.textContent = `${formatChartRange(bucket.start, bucketEnd, period.duration)}: ${formatNumber(feeSat, 0, " sats")} · ${period.trendLabel} average: ${formatNumber(trend[index], 0, " sats")}`;
             bar.appendChild(title);
             svg.appendChild(bar);
         });
+
+        const trendPath = trend.map((value, index) => {
+            const x = pad.left + (index + 0.5) * slotWidth;
+            const y = pad.top + plotHeight - value / yMaximum * plotHeight;
+            return `${index ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`;
+        }).join(" ");
+        svg.appendChild(svgElement("path", {
+            d: trendPath,
+            class: "fee-chart-trend"
+        }));
 
         const desiredLabels = period.count <= 30 ? Math.min(period.count, 7) : 6;
         const labelStep = Math.max(1, Math.ceil(period.count / desiredLabels));
         buckets.forEach((bucket, index) => {
             if (index % labelStep !== 0 && index !== period.count - 1) return;
-            const x = pad.left + (index + 0.5) * slotWidth;
+            const isLast = index === period.count - 1;
+            const x = isLast ? width - pad.right : pad.left + (index + 0.5) * slotWidth;
             const label = period.duration === hour
                 ? new Date(bucket.start).toISOString().slice(11, 16)
                 : new Date(bucket.start).toISOString().slice(0, 10);
-            svg.appendChild(svgText(x, height - 18, label, "middle"));
+            svg.appendChild(svgText(x, height - 18, label, isLast ? "end" : "middle"));
         });
 
         const periodLabel = period.unit === "hourly"
@@ -1491,8 +1511,21 @@
             : period.unit === "daily"
                 ? `${formatInteger(period.count)} daily bars`
                 : `${formatInteger(period.count)} ${period.unit} bars`;
-        description.textContent = `${periodLabel}, ending at the snapshot time. Hover a bar for its interval and total.`;
-        host.replaceChildren(svg);
+        description.textContent = `${periodLabel}, ending at the snapshot time, with a ${period.trendLabel} rolling average. Hover a bar for details.`;
+        const legend = document.createElement("div");
+        legend.className = "chart-legend";
+        const barsLegend = document.createElement("span");
+        barsLegend.append(svgLegendSwatch("bar"), document.createTextNode("Fee total"));
+        const trendLegend = document.createElement("span");
+        trendLegend.append(svgLegendSwatch("trend"), document.createTextNode(`${period.trendLabel} rolling average`));
+        legend.append(barsLegend, trendLegend);
+        host.replaceChildren(svg, legend);
+    }
+
+    function svgLegendSwatch(className) {
+        const swatch = document.createElement("i");
+        swatch.className = className;
+        return swatch;
     }
 
     function formatChartRange(start, end, duration) {

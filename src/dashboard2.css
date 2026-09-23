@@ -780,6 +780,25 @@ h2 {
     opacity: 1;
 }
 
+.fee-chart-trend {
+    fill: none;
+    stroke: var(--blue);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2.5;
+    pointer-events: none;
+}
+
+.forwards-fee-chart .chart-legend i.bar {
+    height: 0.65rem;
+    border-radius: 2px;
+    background: var(--accent);
+}
+
+.forwards-fee-chart .chart-legend i.trend {
+    background: var(--blue);
+}
+
 .chart-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
