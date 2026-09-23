@@ -32,6 +32,8 @@ const CANDIDATE_DEPLETE_UP_TO_AMOUNT_SAT: u64 = 1_000_000;
 const CMD: &str = "lightning-cli";
 /// Minimum balance percentage (our funds / total capacity) for a channel to be used as candidate.
 const MIN_CANDIDATE_BALANCE: f64 = 0.7;
+const TARGET_PROFITABILITY_DAYS: i64 = 90;
+const TARGET_MIN_FEE_TO_COST_RATIO: u64 = 2;
 
 /// Computes candidates with liquidity for a target's Sling rebalance.
 ///
@@ -139,8 +141,9 @@ fn should_bootstrap_low_local(local_balance_sat: u64) -> bool {
     local_balance_sat < LOW_LOCAL_BOOTSTRAP_THRESHOLD_SAT
 }
 
-fn should_skip_unproven_target(historical_fee_ppm: Option<f64>) -> bool {
-    historical_fee_ppm.is_none()
+fn should_skip_unprofitable_target(recent_fees_msat: u64, recent_cost_msat: u64) -> bool {
+    recent_fees_msat == 0
+        || recent_fees_msat < recent_cost_msat.saturating_mul(TARGET_MIN_FEE_TO_COST_RATIO)
 }
 
 fn rebalance_jitter_seed(scid: &str) -> u64 {
@@ -259,10 +262,12 @@ fn enrich_sling_stats_with_last_channel_partner(
 pub fn run_sling(store: &Store) {
     let channels = store.normal_channels();
     log::info!(
-        "Sling inputs: channels:{} target_eligible_balance<={:.0}% rebalance_target:{:.0}% candidate_balance>=:{:.0}% candidate_fallback_ppm:<{} candidate_target_value_multiplier:{:.0}% min_amount:{}sat depleteuptopercent:{} depleteuptoamount:{}",
+        "Sling inputs: channels:{} target_eligible_balance<={:.0}% rebalance_target:{:.0}% target_profitability_days:{} target_min_fee_to_cost_ratio:{} candidate_balance>=:{:.0}% candidate_fallback_ppm:<{} candidate_target_value_multiplier:{:.0}% min_amount:{}sat depleteuptopercent:{} depleteuptoamount:{}",
         channels.len(),
         TARGET_ELIGIBLE_MAX_BALANCE * 100.0,
         TARGET_REBALANCE_BALANCE * 100.0,
+        TARGET_PROFITABILITY_DAYS,
+        TARGET_MIN_FEE_TO_COST_RATIO,
         MIN_CANDIDATE_BALANCE * 100.0,
         SOURCE_PPM_FALLBACK,
         SOURCE_PPM_TARGET_VALUE_MULTIPLIER * 100.0,
@@ -281,7 +286,7 @@ pub fn run_sling(store: &Store) {
     let mut targets_without_local_channel_info = 0u64;
     let mut skipped_small_amount = 0u64;
     let mut skipped_no_candidates = 0u64;
-    let mut skipped_unproven = 0u64;
+    let mut skipped_profitability = 0u64;
     let mut suggested = 0u64;
     let mut bootstrap = 0u64;
 
@@ -312,6 +317,10 @@ pub fn run_sling(store: &Store) {
             .unwrap_or_else(|| "n/a".to_string());
         let tppm = store.get_channel_time_decayed_fee_ppm(scid);
         let historical_fee_ppm = store.get_channel_effective_fee_ppm(scid);
+        let recent_fees_msat =
+            store.get_channel_forwarding_fees_last_days_msat(scid, TARGET_PROFITABILITY_DAYS);
+        let recent_cost_msat =
+            store.get_channel_rebalance_target_cost_last_days_msat(scid, TARGET_PROFITABILITY_DAYS);
         let budget_ppm = compute_budget_ppm(tppm, my_ppm);
         let tppm_log = tppm
             .map(|ppm| ppm.trunc().to_string())
@@ -366,14 +375,14 @@ pub fn run_sling(store: &Store) {
             continue;
         }
 
-        // A channel with no outbound forwarding history is still in fee discovery.
-        // Do not fund a regular Sling job from its advertised fee alone: the small,
-        // one-shot bootstrap above is enough to make outbound routing possible.
-        if should_skip_unproven_target(historical_fee_ppm) {
-            skipped_unproven += 1;
-            let result = "skip-unproven";
+        // Regular jobs require recent outbound revenue and at least twice as much
+        // revenue as target-attributed rebalance cost. The small one-shot bootstrap
+        // above remains enough for an unproven channel to enter fee discovery.
+        if should_skip_unprofitable_target(recent_fees_msat, recent_cost_msat) {
+            skipped_profitability += 1;
+            let result = "skip-profit";
             log::info!(
-                "balance:{:>5.1}% amount:{:>6}s tppm:{tppm_log:>6} hist_fee_ppm:{historical_fee_ppm_log:>6} channel_ppm:{my_ppm_log:>5} maxppm:{budget_ppm:>4} src_ppm_max:{:>5} cand:{:>3} result:{result:<12} alias:{alias}",
+                "balance:{:>5.1}% amount:{:>6}s recent_fees_msat:{recent_fees_msat} recent_cost_msat:{recent_cost_msat} tppm:{tppm_log:>6} hist_fee_ppm:{historical_fee_ppm_log:>6} channel_ppm:{my_ppm_log:>5} maxppm:{budget_ppm:>4} src_ppm_max:{:>5} cand:{:>3} result:{result:<12} alias:{alias}",
                 balance * 100.0,
                 0,
                 "n/a",
@@ -450,11 +459,11 @@ pub fn run_sling(store: &Store) {
     }
 
     log::info!(
-        "Sling summary: suggested:{} bootstrap:{} skipped_balance:{} skipped_unproven:{} skipped_small_amount:{} skipped_no_candidates:{} skipped_missing_scid:{} targets_without_local_channel_info:{}",
+        "Sling summary: suggested:{} bootstrap:{} skipped_balance:{} skipped_profitability:{} skipped_small_amount:{} skipped_no_candidates:{} skipped_missing_scid:{} targets_without_local_channel_info:{}",
         suggested,
         bootstrap,
         skipped_balance,
-        skipped_unproven,
+        skipped_profitability,
         skipped_small_amount,
         skipped_no_candidates,
         skipped_missing_scid,
@@ -472,7 +481,7 @@ mod tests {
         compute_base_rebalance_amount, compute_budget_ppm, compute_capacity_rebalance_amounts,
         compute_job_amount, compute_source_ppm_max, enrich_sling_stats_with_last_channel_partner,
         is_target_eligible, low_local_bootstrap_args, should_bootstrap_low_local,
-        should_skip_unproven_target, BOOTSTRAP_MAX_PPM, BUDGET_PPM_MAX, BUDGET_PPM_MIN,
+        should_skip_unprofitable_target, BOOTSTRAP_MAX_PPM, BUDGET_PPM_MAX, BUDGET_PPM_MIN,
         BUDGET_PPM_TARGET_VALUE_MULTIPLIER, SOURCE_PPM_FALLBACK,
     };
     use serde_json::Value;
@@ -641,10 +650,11 @@ mod tests {
     }
 
     #[test]
-    fn regular_rebalance_requires_outbound_forwarding_history() {
-        assert!(should_skip_unproven_target(None));
-        assert!(!should_skip_unproven_target(Some(0.0)));
-        assert!(!should_skip_unproven_target(Some(250.0)));
+    fn regular_rebalance_requires_recent_profitable_forwarding() {
+        assert!(should_skip_unprofitable_target(0, 0));
+        assert!(!should_skip_unprofitable_target(1, 0));
+        assert!(should_skip_unprofitable_target(1_999, 1_000));
+        assert!(!should_skip_unprofitable_target(2_000, 1_000));
     }
 
     #[test]

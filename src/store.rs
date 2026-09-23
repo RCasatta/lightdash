@@ -1029,6 +1029,26 @@ impl Store {
             .unwrap_or_default()
     }
 
+    /// Get exact forwarding fees earned by a channel during the trailing day window.
+    pub fn get_channel_forwarding_fees_last_days_msat(
+        &self,
+        short_channel_id: &str,
+        days: i64,
+    ) -> u64 {
+        self.forward_cache
+            .settled
+            .iter()
+            .filter(|forward| forward.out_channel == short_channel_id)
+            .filter(|forward| {
+                self.now
+                    .signed_duration_since(forward.resolved_time)
+                    .num_hours()
+                    <= days * 24
+            })
+            .map(|forward| forward.fee_msat)
+            .sum()
+    }
+
     /// Get fees attributed indirectly to a channel acting as the incoming channel.
     pub fn get_channel_indirect_fees(&self, short_channel_id: &str) -> u64 {
         self.forward_cache
@@ -1082,6 +1102,19 @@ impl Store {
     pub fn get_channel_rebalance_target_cost_msat(&self, short_channel_id: &str) -> u64 {
         self.rebalance_parts
             .iter()
+            .filter(|part| part.target_channel_id.as_deref() == Some(short_channel_id))
+            .map(|part| part.fees_msat)
+            .sum()
+    }
+
+    /// Get target-attributed rebalance cost during the trailing day window.
+    pub fn get_channel_rebalance_target_cost_last_days_msat(
+        &self,
+        short_channel_id: &str,
+        days: i64,
+    ) -> u64 {
+        self.rebalance_parts_last_days(days)
+            .into_iter()
             .filter(|part| part.target_channel_id.as_deref() == Some(short_channel_id))
             .map(|part| part.fees_msat)
             .sum()
@@ -1704,6 +1737,56 @@ mod tests {
             .get_channel_time_decayed_fee_ppm(OUTGOING_SCID)
             .unwrap();
         assert!((tppm - 1_666.666_666_666_666_7).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn channel_profitability_metrics_use_trailing_window() {
+        let recent_timestamp = NOW_TIMESTAMP - 60;
+        let old_timestamp = NOW_TIMESTAMP - 91 * 24 * 60 * 60;
+        let rebalance_part = |part_id, fees_msat, timestamp| RebalancePart {
+            payment_id: format!("payment-{part_id}"),
+            part_id,
+            source_account: "source-account".to_string(),
+            target_account: "target-account".to_string(),
+            source_channel_id: Some(INCOMING_SCID.to_string()),
+            target_channel_id: Some(OUTGOING_SCID.to_string()),
+            debit_msat: 1_000_000 + fees_msat,
+            credit_msat: 1_000_000,
+            fees_msat,
+            timestamp: Some(timestamp as u64),
+        };
+        let store = test_store(
+            vec![fund(OUTGOING_SCID, 1_000_000_000)],
+            vec![
+                forward(
+                    INCOMING_SCID,
+                    OUTGOING_SCID,
+                    3_000,
+                    "settled",
+                    recent_timestamp,
+                ),
+                forward(
+                    INCOMING_SCID,
+                    OUTGOING_SCID,
+                    7_000,
+                    "settled",
+                    old_timestamp,
+                ),
+            ],
+            vec![
+                rebalance_part(0, 1_000, recent_timestamp),
+                rebalance_part(1, 2_000, old_timestamp),
+            ],
+        );
+
+        assert_eq!(
+            store.get_channel_forwarding_fees_last_days_msat(OUTGOING_SCID, 90),
+            3_000
+        );
+        assert_eq!(
+            store.get_channel_rebalance_target_cost_last_days_msat(OUTGOING_SCID, 90),
+            1_000
+        );
     }
 
     fn test_store(
