@@ -13,7 +13,7 @@ const MIN_AMOUNT_SAT: u64 = 10_000;
 // This pre-cap floor is intentionally independent from the forwarding fee floor.
 const BUDGET_PPM_MIN: u64 = 10;
 const BOOTSTRAP_MAX_PPM: u64 = BUDGET_PPM_MIN;
-const BUDGET_PPM_TARGET_VALUE_MULTIPLIER: f64 = 0.75;
+const BUDGET_PPM_TARGET_VALUE_MULTIPLIER: f64 = 0.60;
 // Rebalance budget cap. Keep this below the general channel fee cap because
 // this is what we are willing to pay, not what we are willing to charge.
 const BUDGET_PPM_MAX: u64 = 1100;
@@ -486,14 +486,14 @@ mod tests {
     }
 
     #[test]
-    fn compute_budget_ppm_uses_seventy_five_percent_of_lower_current_and_tppm() {
-        assert_eq!(compute_budget_ppm(Some(2_947.0), Some(1_223)), 917);
-        assert_eq!(compute_budget_ppm(Some(400.0), Some(300)), 225);
-        assert_eq!(compute_budget_ppm(Some(200.0), Some(300)), 150);
+    fn compute_budget_ppm_uses_sixty_percent_of_lower_current_and_tppm() {
+        assert_eq!(compute_budget_ppm(Some(2_947.0), Some(1_223)), 733);
+        assert_eq!(compute_budget_ppm(Some(400.0), Some(300)), 180);
+        assert_eq!(compute_budget_ppm(Some(200.0), Some(300)), 120);
     }
 
     #[test]
-    fn compute_budget_ppm_falls_back_to_seventy_five_percent_of_current_ppm() {
+    fn compute_budget_ppm_falls_back_to_sixty_percent_of_current_ppm() {
         assert_eq!(
             compute_budget_ppm(None, Some(400)),
             target_value_budget(400.0)
@@ -536,8 +536,8 @@ mod tests {
 
     #[test]
     fn compute_budget_ppm_never_exceeds_channel_ppm() {
-        assert_eq!(compute_budget_ppm(Some(7.0), Some(10)), 5);
-        assert_eq!(compute_budget_ppm(Some(40.0), Some(7)), 5);
+        assert_eq!(compute_budget_ppm(Some(7.0), Some(10)), 4);
+        assert_eq!(compute_budget_ppm(Some(40.0), Some(7)), 4);
     }
 
     #[test]
