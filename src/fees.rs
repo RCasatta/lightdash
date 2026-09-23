@@ -91,8 +91,9 @@ pub fn largest_power_of_two_leq(n: u64) -> u64 {
     }
 }
 
-fn fee_state(local_balance_sat: u64, ever_forwarded: bool) -> FeeState {
-    if local_balance_sat < DEPLETED_LOCAL_BALANCE_SAT {
+fn fee_state(local_balance_sat: u64, channel_capacity_sat: u64, ever_forwarded: bool) -> FeeState {
+    let depleted_threshold_sat = DEPLETED_LOCAL_BALANCE_SAT.max(channel_capacity_sat / 20);
+    if local_balance_sat < depleted_threshold_sat {
         FeeState::Depleted
     } else if ever_forwarded {
         FeeState::Normal
@@ -165,7 +166,8 @@ pub fn calc_setchannel(
     let current_min_htlc_sat = our.htlc_minimum_msat;
     let our_amount_msat = fund.our_amount_msat;
     let local_balance_sat = our_amount_msat / 1000;
-    let state = fee_state(local_balance_sat, ever_forwarded);
+    let channel_capacity_sat = fund.amount_msat / 1000;
+    let state = fee_state(local_balance_sat, channel_capacity_sat, ever_forwarded);
 
     if let Some(avail) = avail {
         if avail < 0.8 {
@@ -281,11 +283,11 @@ mod tests {
     #[test]
     fn fee_state_gives_depleted_balance_precedence() {
         assert_eq!(
-            fee_state(DEPLETED_LOCAL_BALANCE_SAT - 1, false),
+            fee_state(DEPLETED_LOCAL_BALANCE_SAT - 1, 1_000_000, false),
             FeeState::Depleted
         );
         assert_eq!(
-            fee_state(DEPLETED_LOCAL_BALANCE_SAT - 1, true),
+            fee_state(DEPLETED_LOCAL_BALANCE_SAT - 1, 1_000_000, true),
             FeeState::Depleted
         );
     }
@@ -293,13 +295,19 @@ mod tests {
     #[test]
     fn fee_state_distinguishes_bootstrap_and_normal_channels() {
         assert_eq!(
-            fee_state(DEPLETED_LOCAL_BALANCE_SAT, false),
+            fee_state(DEPLETED_LOCAL_BALANCE_SAT, 1_000_000, false),
             FeeState::Bootstrap
         );
         assert_eq!(
-            fee_state(DEPLETED_LOCAL_BALANCE_SAT, true),
+            fee_state(DEPLETED_LOCAL_BALANCE_SAT, 1_000_000, true),
             FeeState::Normal
         );
+    }
+
+    #[test]
+    fn fee_state_scales_depleted_threshold_with_channel_capacity() {
+        assert_eq!(fee_state(249_999, 5_000_000, true), FeeState::Depleted);
+        assert_eq!(fee_state(250_000, 5_000_000, true), FeeState::Normal);
     }
 
     #[test]
