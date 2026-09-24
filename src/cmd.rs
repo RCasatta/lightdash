@@ -426,6 +426,8 @@ pub struct ListPeerChannelsChannel {
     pub spendable_msat: u64,
     #[serde(default)]
     pub maximum_htlc_out_msat: u64,
+    #[serde(default)]
+    pub status: Vec<String>,
 }
 
 #[derive(Deserialize, Debug)]

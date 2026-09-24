@@ -13,7 +13,7 @@ use crate::routes;
 use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts, DatasetMetadata};
 use crate::store::{RebalancePart, Store};
 
-pub(crate) const SCHEMA_VERSION: u32 = 26;
+pub(crate) const SCHEMA_VERSION: u32 = 27;
 const REBALANCE_SOURCE_90D_SECONDS: u64 = 90 * 24 * 60 * 60;
 
 #[derive(Deserialize, Serialize)]
@@ -51,6 +51,9 @@ pub(crate) struct SummarySnapshot {
     pub forward_attempt_count: usize,
     pub settled_forward_count: usize,
     pub onchain_balance_msat: u64,
+    pub pending_channel_balance_msat: u64,
+    pub pending_channel_count: usize,
+    pub estimated_total_balance_msat: u64,
     pub channel_funds_sat: u64,
     pub normal_channel_capacity_sat: u64,
     pub channel_funds_percent_of_capacity: Option<f64>,
@@ -447,6 +450,31 @@ fn build_summary(
         .sum();
     let (network_average_fee_ppm, network_median_fee_ppm) = store.network_channel_fees();
     let (node_average_fee_ppm, node_median_fee_ppm) = store.node_channel_fees();
+    let onchain_balance_msat = store
+        .funds
+        .outputs
+        .iter()
+        .map(|output| output.amount_msat)
+        .sum();
+    let pending_channels = store
+        .funds
+        .channels
+        .iter()
+        .filter(|channel| {
+            let peer_status = store
+                .get_peer_channel(&channel.channel_id)
+                .map(|peer_channel| peer_channel.status.as_slice());
+            is_pending_channel_balance(&channel.state, peer_status)
+        })
+        .collect::<Vec<_>>();
+    let pending_channel_balance_msat = pending_channels
+        .iter()
+        .map(|channel| channel.our_amount_msat)
+        .sum();
+    let normal_channel_balance_msat = normal_channels
+        .iter()
+        .map(|channel| channel.our_amount_msat)
+        .sum::<u64>();
     SummarySnapshot {
         node_id: store.info.id.clone(),
         block_height: store.info.blockheight,
@@ -457,12 +485,12 @@ fn build_summary(
         closed_channel_count: store.closed_channels.closedchannels.len(),
         forward_attempt_count: store.forwards_len(),
         settled_forward_count: store.settled_forwards().len(),
-        onchain_balance_msat: store
-            .funds
-            .outputs
-            .iter()
-            .map(|output| output.amount_msat)
-            .sum(),
+        onchain_balance_msat,
+        pending_channel_balance_msat,
+        pending_channel_count: pending_channels.len(),
+        estimated_total_balance_msat: normal_channel_balance_msat
+            + onchain_balance_msat
+            + pending_channel_balance_msat,
         channel_funds_sat: roic.total_funds,
         normal_channel_capacity_sat,
         channel_funds_percent_of_capacity: percentage(
@@ -497,6 +525,15 @@ fn build_summary(
             },
         },
     }
+}
+
+fn is_pending_channel_balance(state: &str, peer_status: Option<&[String]>) -> bool {
+    state != "CHANNELD_NORMAL"
+        && peer_status.is_none_or(|statuses| {
+            !statuses
+                .iter()
+                .any(|status| status.contains("All outputs resolved"))
+        })
 }
 
 fn average_channel_funds(
@@ -1024,9 +1061,28 @@ mod tests {
     use crate::history::ChannelFundsHistoryPoint;
 
     use super::{
-        annualized_capacity_return_percent, average_channel_funds, percentage, ratio_ppm,
-        timestamp_in_lookback,
+        annualized_capacity_return_percent, average_channel_funds, is_pending_channel_balance,
+        percentage, ratio_ppm, timestamp_in_lookback,
     };
+
+    #[test]
+    fn pending_channel_balance_excludes_normal_and_fully_resolved_channels() {
+        let unresolved = vec![
+            "ONCHAIN:Tracking our own unilateral close".to_string(),
+            "ONCHAIN:1 outputs unresolved: in 93 blocks will spend DELAYED_OUTPUT_TO_US"
+                .to_string(),
+        ];
+        let resolved = vec![
+            "ONCHAIN:Tracking mutual close transaction".to_string(),
+            "ONCHAIN:All outputs resolved: waiting 51 more blocks before forgetting channel"
+                .to_string(),
+        ];
+
+        assert!(!is_pending_channel_balance("CHANNELD_NORMAL", None));
+        assert!(is_pending_channel_balance("CLOSINGD_SIGEXCHANGE", None));
+        assert!(is_pending_channel_balance("ONCHAIN", Some(&unresolved)));
+        assert!(!is_pending_channel_balance("ONCHAIN", Some(&resolved)));
+    }
 
     #[test]
     fn ratio_ppm_returns_none_for_no_volume() {

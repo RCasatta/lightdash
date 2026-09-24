@@ -205,6 +205,11 @@ fn render_overview_page(manifest: &SnapshotManifest, summary: &SummarySnapshot) 
 
         section class="metric-grid" aria-label="Node summary" {
             (metric_card(
+                "Estimated node balance",
+                &format!("{} sats", format_number(summary.estimated_total_balance_msat / 1000)),
+                "Normal channels + wallet outputs + pending channel funds",
+            ))
+            (metric_card(
                 "Local liquidity",
                 &format_optional_percent(summary.channel_funds_percent_of_capacity),
                 &format!(
@@ -217,6 +222,15 @@ fn render_overview_page(manifest: &SnapshotManifest, summary: &SummarySnapshot) 
                 "On-chain balance",
                 &format!("{} sats", format_number(summary.onchain_balance_msat / 1000)),
                 "Spendable wallet outputs",
+            ))
+            (metric_card(
+                "Pending channel funds",
+                &format!("{} sats", format_number(summary.pending_channel_balance_msat / 1000)),
+                &format!(
+                    "{} unresolved channel{}; approximate until on-chain settlement",
+                    format_number(summary.pending_channel_count),
+                    if summary.pending_channel_count == 1 { "" } else { "s" },
+                ),
             ))
             (metric_card("Current channels", &format_number(summary.current_channel_count), &format!("{} normal", format_number(summary.normal_channel_count))))
             (metric_card("Settled forwards", &format_number(summary.settled_forward_count), &format!("{} attempts recorded", format_number(summary.forward_attempt_count))))
@@ -854,6 +868,9 @@ mod tests {
             forward_attempt_count: 0,
             settled_forward_count: 0,
             onchain_balance_msat: 123_456_000,
+            pending_channel_balance_msat: 6_044_137_000,
+            pending_channel_count: 2,
+            estimated_total_balance_msat: 6_167_693_000,
             channel_funds_sat: 100,
             normal_channel_capacity_sat: 200,
             channel_funds_percent_of_capacity: Some(50.0),
@@ -957,6 +974,11 @@ mod tests {
         assert!(overview.contains("100 of 200 sats normal-channel capacity"));
         assert!(overview.contains("On-chain balance"));
         assert!(overview.contains("123,456 sats"));
+        assert!(overview.contains("Estimated node balance"));
+        assert!(overview.contains("6,167,693 sats"));
+        assert!(overview.contains("Pending channel funds"));
+        assert!(overview.contains("6,044,137 sats"));
+        assert!(overview.contains("2 unresolved channels"));
         assert!(overview.contains("38.83 pp from 50%"));
         assert!(overview.contains("728 ppm (0.073%)"));
         assert!(overview.contains("220 ppm (0.022%)"));
