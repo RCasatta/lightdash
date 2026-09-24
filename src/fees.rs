@@ -1,5 +1,5 @@
 use std::cmp::{max, min, Ordering};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use chrono::Utc;
 
@@ -16,6 +16,9 @@ pub const BOOTSTRAP_DECREASE_PERCENT: u64 = 15;
 pub const NORMAL_DECREASE_PERCENT: u64 = 2;
 pub const FEE_BASE: u64 = 1000; // msat
 pub const MIN_ROUTED_24H_SAT: u64 = 5000;
+/// Datastore key under `lightdash` holding the unrounded ppm of each channel, so that the
+/// percentage steps are applied without integer rounding bias at low ppm values.
+const EXACT_PPM_KEY: &str = "fee_ppm_exact";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum FeeState {
@@ -45,6 +48,7 @@ pub fn run_fees(store: &Store) {
     let normal_channels = store.normal_channels();
     let forwards_24h = store.filter_forwards_by_hours(24);
     let ever_settled_out_channels: HashSet<&str> = store.settled_out_channel_ids().collect();
+    let exact_ppms = load_exact_ppms();
 
     let mut equ_count = 0;
     let mut inc_count = 0;
@@ -61,13 +65,13 @@ pub fn run_fees(store: &Store) {
         let avail = store.avail_map.get(&fund.peer_id).cloned();
 
         let trend = calc_setchannel(
-            &short_channel_id,
             &alias_or_id,
             fund,
             our,
             &forwards_24h,
             ever_settled_out_channels.contains(short_channel_id.as_str()),
             avail,
+            exact_ppms.get(&short_channel_id).copied(),
         );
         match trend {
             "EQU" => equ_count += 1,
@@ -102,14 +106,50 @@ fn fee_state(local_balance_sat: u64, channel_capacity_sat: u64, ever_forwarded: 
     }
 }
 
-fn increase_ppm_ceil(current_ppm: u64, percent: u64) -> u64 {
-    let numerator = current_ppm as u128 * (100 + percent) as u128;
-    ((numerator + 99) / 100).min(u64::MAX as u128) as u64
+/// Loads the unrounded ppm persisted by previous runs, keyed by short channel id.
+fn load_exact_ppms() -> HashMap<String, f64> {
+    let mut exact_ppms = HashMap::new();
+    match crate::cmd::listdatastore(Some(&["lightdash", EXACT_PPM_KEY])) {
+        Ok(datastore) => {
+            for entry in datastore.datastore {
+                // The key format is ["lightdash", EXACT_PPM_KEY, "short_channel_id"]
+                if entry.key.len() != 3 {
+                    continue;
+                }
+                if let Some(ppm) = entry.string.and_then(|s| s.parse::<f64>().ok()) {
+                    exact_ppms.insert(entry.key[2].clone(), ppm);
+                }
+            }
+            log::info!(
+                "Loaded {} exact ppm values from datastore",
+                exact_ppms.len()
+            );
+        }
+        Err(e) => log::error!("Failed to load exact ppm values from datastore: {e}"),
+    }
+    exact_ppms
 }
 
-fn decrease_ppm_floor(current_ppm: u64, percent: u64) -> u64 {
-    let numerator = current_ppm as u128 * (100 - percent) as u128;
-    (numerator / 100).min(u64::MAX as u128) as u64
+fn round_ppm(exact_ppm: f64) -> u64 {
+    exact_ppm.round() as u64
+}
+
+/// The unrounded ppm to adjust from. The stored value is used only when it still rounds to
+/// the ppm currently set on the channel; otherwise the channel fee was changed outside this
+/// algorithm (manually, or never stored) and the current ppm is the new starting point.
+fn starting_ppm(current_ppm: u64, stored_exact_ppm: Option<f64>) -> f64 {
+    match stored_exact_ppm {
+        Some(exact) if exact.is_finite() && round_ppm(exact) == current_ppm => exact,
+        _ => current_ppm as f64,
+    }
+}
+
+fn increase_ppm(exact_ppm: f64, percent: u64) -> f64 {
+    exact_ppm * (100 + percent) as f64 / 100.0
+}
+
+fn decrease_ppm(exact_ppm: f64, percent: u64) -> f64 {
+    exact_ppm * (100 - percent) as f64 / 100.0
 }
 
 fn forward_activity(settled_forward_count: usize, routed_msat: u64) -> ForwardActivity {
@@ -122,29 +162,42 @@ fn forward_activity(settled_forward_count: usize, routed_msat: u64) -> ForwardAc
     }
 }
 
-fn adjusted_ppm(current_ppm: u64, state: FeeState, activity: ForwardActivity) -> u64 {
+/// Returns the new unrounded ppm; callers round it only when setting the channel fee.
+fn adjusted_ppm(exact_ppm: f64, state: FeeState, activity: ForwardActivity) -> f64 {
     let adjusted = match activity {
-        ForwardActivity::MeetsMinimum => increase_ppm_ceil(current_ppm, FORWARD_INCREASE_PERCENT),
-        ForwardActivity::BelowMinimum => current_ppm,
+        ForwardActivity::MeetsMinimum => increase_ppm(exact_ppm, FORWARD_INCREASE_PERCENT),
+        ForwardActivity::BelowMinimum => exact_ppm,
         ForwardActivity::None => match state {
-            FeeState::Bootstrap => decrease_ppm_floor(current_ppm, BOOTSTRAP_DECREASE_PERCENT),
-            FeeState::Normal => decrease_ppm_floor(current_ppm, NORMAL_DECREASE_PERCENT),
-            FeeState::Depleted => increase_ppm_ceil(current_ppm, DEPLETED_INCREASE_PERCENT),
+            FeeState::Bootstrap => decrease_ppm(exact_ppm, BOOTSTRAP_DECREASE_PERCENT),
+            FeeState::Normal => decrease_ppm(exact_ppm, NORMAL_DECREASE_PERCENT),
+            FeeState::Depleted => increase_ppm(exact_ppm, DEPLETED_INCREASE_PERCENT),
         },
     };
 
-    adjusted.clamp(PPM_MIN, PPM_MAX)
+    adjusted.clamp(PPM_MIN as f64, PPM_MAX as f64)
+}
+
+fn save_exact_ppm(short_channel_id: &str, exact_ppm: f64) {
+    if let Err(e) = crate::cmd::datastore_string(
+        &["lightdash", EXACT_PPM_KEY, short_channel_id],
+        &format!("{exact_ppm:.6}"),
+        crate::cmd::DatastoreMode::CreateOrReplace,
+    ) {
+        log::error!("Failed to save exact ppm for {short_channel_id}: {e}");
+    }
 }
 
 pub fn calc_setchannel(
-    short_channel_id: &str,
     alias: &str,
     fund: &crate::cmd::Fund,
     our: &crate::cmd::Channel,
     forwards_24h: &[Forward],
     ever_forwarded: bool,
     avail: Option<f64>,
+    stored_exact_ppm: Option<f64>,
 ) -> &'static str {
+    let short_channel_id = fund.short_channel_id();
+    let short_channel_id = short_channel_id.as_str();
     let channel_fund_perc_ours = fund.perc_float(); // how full of our funds is the channel
     let disp_perc = format!("{:.1}%", channel_fund_perc_ours * 100.0);
     let current_channel_forwards = did_forward(short_channel_id, forwards_24h);
@@ -196,7 +249,9 @@ pub fn calc_setchannel(
         max(new_max_htlc_msat, 1), // min_htlc cannot be greater than max_htlc and lower than 1
     );
 
-    let new_ppm = adjusted_ppm(current_ppm, state, activity);
+    let exact_ppm = starting_ppm(current_ppm, stored_exact_ppm);
+    let new_exact_ppm = adjusted_ppm(exact_ppm, state, activity);
+    let new_ppm = round_ppm(new_exact_ppm);
 
     let changes = current_ppm != new_ppm
         || current_max_htlc_sat != new_max_htlc_msat
@@ -211,7 +266,9 @@ pub fn calc_setchannel(
     if changes {
         let mut change_parts = Vec::new();
         if current_ppm != new_ppm {
-            change_parts.push(format!("ppm:{current_ppm}->{new_ppm}"));
+            change_parts.push(format!(
+                "ppm:{current_ppm}->{new_ppm} exact_ppm:{exact_ppm:.3}->{new_exact_ppm:.3}"
+            ));
         }
         if current_max_htlc_sat != new_max_htlc_msat {
             change_parts.push(format!(
@@ -259,10 +316,18 @@ pub fn calc_setchannel(
         }
     } else {
         log::info!(
-            "EQU state:{} routed_24h_msat:{routed_24h_msat} no changes in {short_channel_id} with {alias}, skipping",
+            "EQU state:{} routed_24h_msat:{routed_24h_msat} exact_ppm:{exact_ppm:.3}->{new_exact_ppm:.3} no changes in {short_channel_id} with {alias}, skipping",
             state.as_str()
         )
     };
+
+    // Persist the unrounded ppm even when the rounded channel fee did not change, so that
+    // small steps accumulate across runs.
+    if std::env::var("EXECUTE_SETCHANNEL").is_ok()
+        && stored_exact_ppm.map(|p| format!("{p:.6}")) != Some(format!("{new_exact_ppm:.6}"))
+    {
+        save_exact_ppm(short_channel_id, new_exact_ppm);
+    }
     data
 }
 
@@ -310,34 +375,85 @@ mod tests {
         assert_eq!(fee_state(250_000, 5_000_000, true), FeeState::Normal);
     }
 
-    #[test]
-    fn percentage_increases_round_up() {
-        assert_eq!(increase_ppm_ceil(10, FORWARD_INCREASE_PERCENT), 11);
-        assert_eq!(increase_ppm_ceil(100, FORWARD_INCREASE_PERCENT), 105);
-        assert_eq!(increase_ppm_ceil(101, DEPLETED_INCREASE_PERCENT), 103);
+    fn assert_close(actual: f64, expected: f64) {
+        assert!(
+            (actual - expected).abs() < 1e-9,
+            "expected {expected}, got {actual}"
+        );
     }
 
     #[test]
-    fn percentage_decreases_round_down() {
-        assert_eq!(decrease_ppm_floor(2_500, BOOTSTRAP_DECREASE_PERCENT), 2_125);
-        assert_eq!(decrease_ppm_floor(100, NORMAL_DECREASE_PERCENT), 98);
+    fn percentage_steps_are_exact() {
+        assert_close(increase_ppm(10.0, FORWARD_INCREASE_PERCENT), 10.5);
+        assert_close(increase_ppm(101.0, DEPLETED_INCREASE_PERCENT), 102.01);
+        assert_close(decrease_ppm(2_500.0, BOOTSTRAP_DECREASE_PERCENT), 2_125.0);
+        assert_close(decrease_ppm(14.0, NORMAL_DECREASE_PERCENT), 13.72);
+    }
+
+    #[test]
+    fn round_ppm_rounds_to_nearest() {
+        assert_eq!(round_ppm(13.72), 14);
+        assert_eq!(round_ppm(1.05), 1);
+        assert_eq!(round_ppm(1.5), 2);
+    }
+
+    #[test]
+    fn starting_ppm_uses_stored_value_only_when_it_matches_current_ppm() {
+        assert_close(starting_ppm(14, Some(13.72)), 13.72);
+        assert_close(starting_ppm(14, None), 14.0);
+        // Fee changed outside the algorithm, e.g. a manual bump.
+        assert_close(starting_ppm(50, Some(1.3)), 50.0);
+        assert_close(starting_ppm(14, Some(f64::NAN)), 14.0);
+    }
+
+    #[test]
+    fn idle_day_at_low_ppm_decreases_by_two_percent_not_one_ppm() {
+        // Integer floor rounding used to turn 14 into 13 (-7%); now it stays at 14.
+        let exact = adjusted_ppm(14.0, FeeState::Normal, ForwardActivity::None);
+        assert_close(exact, 13.72);
+        assert_eq!(round_ppm(exact), 14);
+    }
+
+    #[test]
+    fn low_ppm_keeps_intended_forward_to_idle_balance() {
+        // One forwarding day recovers about two and a half idle days, at any ppm level.
+        let mut exact = 10.0;
+        for _ in 0..20 {
+            exact = adjusted_ppm(exact, FeeState::Normal, ForwardActivity::MeetsMinimum);
+            for _ in 0..2 {
+                exact = adjusted_ppm(exact, FeeState::Normal, ForwardActivity::None);
+            }
+        }
+        // 1.05 * 0.98^2 > 1, so the fee rises instead of sinking to PPM_MIN.
+        assert!(exact > 10.0, "exact ppm drifted down to {exact}");
+    }
+
+    #[test]
+    fn small_steps_accumulate_from_ppm_min() {
+        let mut exact = PPM_MIN as f64;
+        for _ in 0..9 {
+            exact = adjusted_ppm(exact, FeeState::Normal, ForwardActivity::MeetsMinimum);
+        }
+        assert_eq!(round_ppm(exact), 2);
     }
 
     #[test]
     fn recent_forward_increases_every_channel_state() {
         for state in [FeeState::Bootstrap, FeeState::Normal, FeeState::Depleted] {
-            assert_eq!(adjusted_ppm(100, state, ForwardActivity::MeetsMinimum), 105);
+            assert_close(
+                adjusted_ppm(100.0, state, ForwardActivity::MeetsMinimum),
+                105.0,
+            );
         }
-        assert_eq!(
-            adjusted_ppm(PPM_MIN, FeeState::Depleted, ForwardActivity::MeetsMinimum),
-            2
-        );
     }
 
     #[test]
     fn low_volume_forwarding_keeps_ppm_unchanged() {
         for state in [FeeState::Bootstrap, FeeState::Normal, FeeState::Depleted] {
-            assert_eq!(adjusted_ppm(100, state, ForwardActivity::BelowMinimum), 100);
+            assert_close(
+                adjusted_ppm(100.0, state, ForwardActivity::BelowMinimum),
+                100.0,
+            );
         }
     }
 
@@ -356,29 +472,29 @@ mod tests {
 
     #[test]
     fn idle_policy_depends_on_channel_state() {
-        assert_eq!(
-            adjusted_ppm(100, FeeState::Bootstrap, ForwardActivity::None),
-            85
+        assert_close(
+            adjusted_ppm(100.0, FeeState::Bootstrap, ForwardActivity::None),
+            85.0,
         );
-        assert_eq!(
-            adjusted_ppm(100, FeeState::Normal, ForwardActivity::None),
-            98
+        assert_close(
+            adjusted_ppm(100.0, FeeState::Normal, ForwardActivity::None),
+            98.0,
         );
-        assert_eq!(
-            adjusted_ppm(100, FeeState::Depleted, ForwardActivity::None),
-            101
+        assert_close(
+            adjusted_ppm(100.0, FeeState::Depleted, ForwardActivity::None),
+            101.0,
         );
     }
 
     #[test]
     fn adjusted_ppm_respects_bounds() {
-        assert_eq!(
-            adjusted_ppm(PPM_MIN, FeeState::Bootstrap, ForwardActivity::None),
-            PPM_MIN
+        assert_close(
+            adjusted_ppm(PPM_MIN as f64, FeeState::Bootstrap, ForwardActivity::None),
+            PPM_MIN as f64,
         );
-        assert_eq!(
-            adjusted_ppm(PPM_MAX, FeeState::Depleted, ForwardActivity::None),
-            PPM_MAX
+        assert_close(
+            adjusted_ppm(PPM_MAX as f64, FeeState::Depleted, ForwardActivity::None),
+            PPM_MAX as f64,
         );
     }
 
