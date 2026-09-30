@@ -1,4 +1,4 @@
-use crate::cmd::{self, datastore_string, DatastoreMode, Forward, SettledForward};
+use crate::cmd::{self, Forward, SettledForward};
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -303,16 +303,6 @@ impl Store {
                 }
             }
         }
-
-        let timestamp = Utc::now().timestamp().to_string();
-        let result = datastore_string(
-            &["lightdash", "last_run", &timestamp],
-            &timestamp,
-            DatastoreMode::CreateOrReplace,
-        )
-        .unwrap();
-
-        log::info!("Last run timestamp saved: {:?}", result);
 
         let store = Self {
             info,
