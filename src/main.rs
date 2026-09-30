@@ -5,7 +5,6 @@ use std::io::Write;
 use crate::store::Store;
 
 mod cmd;
-mod common;
 mod dashboard;
 mod fees;
 mod history;

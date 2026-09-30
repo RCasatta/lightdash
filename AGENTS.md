@@ -229,7 +229,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::cmd::{self, DatastoreMode};
-use crate::common::ChannelFee;
+use crate::store::Store;
 ```
 
 ### Error Handling
@@ -320,7 +320,6 @@ enum Commands {
 | `src/sling.rs` | Sling job execution |
 | `src/fees.rs` | Fee adjustments |
 | `src/htlc.rs` | HTLC maximum adjustments |
-| `src/common.rs` | Small shared helpers |
 
 ### Common Development Tasks
 

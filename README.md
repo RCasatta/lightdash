@@ -137,6 +137,5 @@ src/
 ├── lnplus.rs            # LN+ Liquidity Pool fetcher
 ├── sling.rs             # Sling job execution
 ├── fees.rs              # Fee adjustments
-├── htlc.rs              # HTLC maximum adjustments
-└── common.rs            # Small shared helpers
+└── htlc.rs              # HTLC maximum adjustments
 ```

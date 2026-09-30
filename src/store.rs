@@ -1,5 +1,4 @@
 use crate::cmd::{self, datastore_string, DatastoreMode, Forward, SettledForward};
-use crate::common::ChannelFee;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -807,6 +806,27 @@ fn feature_bit_is_set(features: &str, bit: usize) -> bool {
     };
 
     byte & (1 << (bit % 8)) != 0
+}
+
+/// Helper struct to compute the average fee of the channels of a node
+#[derive(Default)]
+pub struct ChannelFee {
+    pub count: u64,
+    pub fee_sum: u64,
+    pub fee_rates: HashSet<u64>,
+}
+
+impl ChannelFee {
+    pub fn avg_fee(&self) -> f64 {
+        self.fee_sum as f64 / self.count as f64
+    }
+
+    pub fn fee_diversity(&self) -> f64 {
+        if self.count == 0 {
+            return 0.0;
+        }
+        self.fee_rates.len() as f64 / self.count as f64
+    }
 }
 
 /// ROIC calculation data.

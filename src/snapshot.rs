@@ -8,7 +8,6 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::cmd::{self, ClosedChannel, Forward, Fund};
-use crate::common::channel_balance_target_stddev_percentage_points;
 use crate::history;
 use crate::lnplus::{self, PoolNode, PoolNodesSource};
 use crate::routes::{self, RouteCandidate, RouteRun};
@@ -941,6 +940,23 @@ fn annualized_capacity_return_percent(
     Some((revenue_msat as f64 / capacity_msat as f64) * (365.0 / age_days as f64) * 100.0)
 }
 
+fn channel_balance_target_stddev_percentage_points(channels: &[Fund]) -> f64 {
+    if channels.is_empty() {
+        return 0.0;
+    }
+
+    let mean_squared_distance = channels
+        .iter()
+        .map(|channel| {
+            let distance_from_target = channel.perc_float() - 0.5;
+            distance_from_target * distance_from_target
+        })
+        .sum::<f64>()
+        / channels.len() as f64;
+
+    mean_squared_distance.sqrt() * 100.0
+}
+
 fn percentage(numerator: u64, denominator: u64) -> Option<f64> {
     (denominator != 0).then(|| numerator as f64 / denominator as f64 * 100.0)
 }
@@ -1400,9 +1416,11 @@ mod tests {
 
     use super::{
         annualized_capacity_return_percent, average_channel_funds, build_route_snapshots,
-        is_node_id, is_pending_channel_balance, percentage, ratio_ppm, route_amount_weight,
-        timestamp_in_lookback, weighted_route_scores, ClosedChannelSnapshot, LnPlusPoolSnapshot,
+        channel_balance_target_stddev_percentage_points, is_node_id, is_pending_channel_balance,
+        percentage, ratio_ppm, route_amount_weight, timestamp_in_lookback, weighted_route_scores,
+        ClosedChannelSnapshot, LnPlusPoolSnapshot,
     };
+    use crate::cmd::Fund;
     use crate::routes::{RouteCandidate, RouteRun};
 
     #[test]
@@ -1693,5 +1711,30 @@ mod tests {
         assert!(is_node_id(&"02".repeat(33)));
         assert!(!is_node_id("javascript:alert(1)"));
         assert!(!is_node_id(&"0g".repeat(33)));
+    }
+
+    #[test]
+    fn channel_balance_target_stddev_measures_distance_from_fifty_percent() {
+        let channels = [fund(250, 1_000), fund(750, 1_000)];
+
+        assert_eq!(
+            channel_balance_target_stddev_percentage_points(&channels),
+            25.0
+        );
+        assert_eq!(channel_balance_target_stddev_percentage_points(&[]), 0.0);
+    }
+
+    fn fund(our_amount_msat: u64, amount_msat: u64) -> Fund {
+        Fund {
+            peer_id: "peer".to_string(),
+            connected: true,
+            state: "CHANNELD_NORMAL".to_string(),
+            channel_id: "channel".to_string(),
+            short_channel_id: Some("1x1x1".to_string()),
+            our_amount_msat,
+            amount_msat,
+            funding_txid: "txid".to_string(),
+            funding_output: 0,
+        }
     }
 }
