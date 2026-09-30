@@ -80,12 +80,6 @@ enum Commands {
     },
     /// Adjust HTLC max on channels where local balance is lower than current htlc max
     Htlc,
-    /// Fetch data from LightningNetwork.Plus API
-    LnPlus {
-        /// Output directory for JSON files
-        #[arg(long, default_value = ".")]
-        output_dir: String,
-    },
 }
 
 #[derive(Subcommand)]
@@ -207,9 +201,6 @@ fn main() {
         }
         Commands::Htlc => {
             htlc::run_htlc();
-        }
-        Commands::LnPlus { output_dir } => {
-            lnplus::run_lnplus(&output_dir);
         }
     }
 }

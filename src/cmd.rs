@@ -216,14 +216,6 @@ fn parse_get_routes_outcome(v: Value) -> GetRoutesOutcome {
     }
 }
 
-/// Sign a message with the node's key for authentication purposes
-pub fn signmessage(message: &str) -> String {
-    let v = cmd_result("lightning-cli", &["signmessage", message]);
-    serde_json::from_value::<SignMessageResponse>(v)
-        .unwrap()
-        .zbase
-}
-
 pub fn cmd_result(cmd: &str, args: &[impl AsRef<str>]) -> Value {
     let args: Vec<&str> = args.iter().map(|s| s.as_ref()).collect();
     let (description, result) = execute_command(cmd, &args);
@@ -373,11 +365,6 @@ fn gz_json_file(path: &str) -> Value {
 pub struct GetInfo {
     pub id: String,
     pub blockheight: u64,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct SignMessageResponse {
-    pub zbase: String,
 }
 
 #[derive(Deserialize, Debug)]
