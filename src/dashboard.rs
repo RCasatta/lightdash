@@ -7,10 +7,10 @@ use serde::de::DeserializeOwned;
 use crate::routes::{RouteRun, RoutesManifest};
 use crate::snapshot::{SnapshotManifest, SummarySnapshot, SCHEMA_VERSION};
 
-const APP_CSS: &str = include_str!("dashboard2.css");
-const APP_JS: &str = include_str!("dashboard2.js");
+const APP_CSS: &str = include_str!("dashboard.css");
+const APP_JS: &str = include_str!("dashboard.js");
 
-pub fn run_dashboard2(snapshot_directory: &str, output_directory: &str) -> Result<(), String> {
+pub fn run_dashboard(snapshot_directory: &str, output_directory: &str) -> Result<(), String> {
     let snapshot_directory = Path::new(snapshot_directory);
     let output_directory = Path::new(output_directory);
 
@@ -20,7 +20,7 @@ pub fn run_dashboard2(snapshot_directory: &str, output_directory: &str) -> Resul
     )?;
     if manifest.schema_version != SCHEMA_VERSION {
         return Err(format!(
-            "unsupported snapshot schema version {}; dashboard2 supports version {SCHEMA_VERSION}",
+            "unsupported snapshot schema version {}; dashboard supports version {SCHEMA_VERSION}",
             manifest.schema_version
         ));
     }
@@ -149,7 +149,7 @@ pub fn run_dashboard2(snapshot_directory: &str, output_directory: &str) -> Resul
     }
 
     log::info!(
-        "Dashboard2 generated successfully in {} from snapshot {}",
+        "Dashboard generated successfully in {} from snapshot {}",
         output_directory.display(),
         snapshot_directory.display()
     );
@@ -723,7 +723,7 @@ fn page_shell(
                     a class="brand" href="index.html" aria-label="Lightdash overview" {
                         span class="brand-mark" aria-hidden="true" { "⚡" }
                         span { "Lightdash" }
-                        span class="version-pill" { "dashboard2" }
+                        span class="version-pill" { "dashboard" }
                     }
                     nav class="site-nav" aria-label="Primary navigation" {
                         a href="index.html" aria-current=(if active_page == "overview" { "page" } else { "false" }) { "Overview" }
@@ -800,7 +800,7 @@ mod tests {
     };
     use crate::snapshot_metadata::{build_dataset_metadata, DatasetCounts, DatasetMetadata};
 
-    use super::{format_number, run_dashboard2, snapshot_file};
+    use super::{format_number, run_dashboard, snapshot_file};
 
     #[test]
     fn formats_grouped_numbers() {
@@ -968,7 +968,7 @@ mod tests {
             .unwrap();
         }
 
-        run_dashboard2(snapshot.to_str().unwrap(), output.to_str().unwrap()).unwrap();
+        run_dashboard(snapshot.to_str().unwrap(), output.to_str().unwrap()).unwrap();
 
         assert!(output.join("index.html").is_file());
         assert!(output.join("channels.html").is_file());
@@ -1034,7 +1034,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!(
-            "lightdash-dashboard2-test-{}-{nonce}",
+            "lightdash-dashboard-test-{}-{nonce}",
             std::process::id()
         ))
     }

@@ -7,11 +7,10 @@ dashboard generation. It interfaces with a Core Lightning node through
 `lightning-cli`, either locally, through SSH, or from bundled test data.
 
 The dashboard is a two-stage flow: `snapshot` exports a versioned,
-self-descriptive analytical dataset, then `dashboard2` generates a dynamic site
-using only those files. The older single-process `dashboard` command has been
-removed.
+self-descriptive analytical dataset, then `dashboard` generates a dynamic site
+using only those files.
 
-Do not make Dashboard2 query `Store` or invoke `lightning-cli`; it must remain a
+Do not make Dashboard query `Store` or invoke `lightning-cli`; it must remain a
 pure snapshot consumer.
 
 ## Local Core Lightning Reference
@@ -82,13 +81,13 @@ The dev shell includes: rust-toolchain, miniserve, just.
 All build, test, formatting, and CLI commands must be run through
 `direnv exec .` on NixOS.
 
-## Snapshot and Dashboard2 Architecture
+## Snapshot and Dashboard Architecture
 
-Generate the analytical snapshot first, then render Dashboard2:
+Generate the analytical snapshot first, then render Dashboard:
 
 ```bash
 direnv exec . cargo run -- snapshot target/snapshot
-direnv exec . cargo run -- dashboard2 target/snapshot target/site2
+direnv exec . cargo run -- dashboard target/snapshot target/site
 ```
 
 For a remote node, `--ssh` is a global argument and belongs before the
@@ -96,17 +95,17 @@ subcommand:
 
 ```bash
 direnv exec . cargo run -- --ssh name@host snapshot target/snapshot
-direnv exec . cargo run -- dashboard2 target/snapshot target/site2
+direnv exec . cargo run -- dashboard target/snapshot target/site
 ```
 
 The snapshot contract is versioned by `SCHEMA_VERSION` in `src/snapshot.rs`.
-Dashboard2 intentionally rejects unsupported versions. When changing exported
+Dashboard intentionally rejects unsupported versions. When changing exported
 field names, types, meaning, or file layout:
 
 1. Update the serialized snapshot structs and generation logic.
 2. Update the canonical catalog in `src/snapshot_metadata.rs`.
 3. Increment `SCHEMA_VERSION`.
-4. Update Dashboard2 to consume the new contract.
+4. Update Dashboard to consume the new contract.
 5. Regenerate fixtures or validation snapshots rather than expecting old
    snapshots to work.
 
@@ -121,7 +120,7 @@ Snapshot datasets currently include:
 - `summary.json`: node-level balances, counts, revenue, and ROIC.
 - `channels.json`: current channels with routing, rebalance, and ROIC metrics.
 - `closed-channels.json`: closed-channel history and return attribution.
-- `settled-forwards.jsonl`: successful forwards used by Dashboard2.
+- `settled-forwards.jsonl`: successful forwards used by Dashboard.
 - `other-forwards.jsonl`: failed, offered, pending, and other noisy attempts.
 - `rebalances.jsonl`: matched bookkeeper rebalance parts.
 - `route-runs.json`: coverage summaries for cached single-part route probes.
@@ -130,7 +129,7 @@ Snapshot datasets currently include:
   and joined LN+ Liquidity Pool offer fields.
 - `route-partners.json`: one row per route candidate node with appearances per
   probe amount, the weighted score, aggregated past-channel results, and LN+
-  offer fields. This is the default Dashboard2 Routes view.
+  offer fields. This is the default Dashboard Routes view.
 - `lnplus-pools.json`: every node in the public LN+ Liquidity Pool when the
   snapshot was taken.
 
@@ -145,7 +144,7 @@ direnv exec . cargo run -- history rebuild
 The command writes a self-descriptive manifest, schema companions, and gzip
 JSONL datasets to `/var/lib/lightdash/history/processed`. It intentionally
 rescans the complete raw archive so processed-schema changes remain easy to
-rebuild. Keep raw archives as the source of truth; do not make Dashboard2 read
+rebuild. Keep raw archives as the source of truth; do not make Dashboard read
 the raw `listchannels` or `listfunds` files.
 
 `lightdash history export` streams a tar archive to stdout containing only the
@@ -178,7 +177,7 @@ to skip it. The route-candidate enrichment happens during snapshot import, so
 it does not change the routes cache schema or require redeploying the node
 binary.
 
-Keep settled and non-settled forwards separate. The Dashboard2 forwards page
+Keep settled and non-settled forwards separate. The Dashboard forwards page
 must load only `settled-forwards.jsonl`; failed forwards are high-volume,
 spammy, and not economically meaningful enough for the default interactive
 view.
@@ -187,13 +186,13 @@ Derived values that are part of the analytical contract, such as `fee_ppm` and
 `elapsed_seconds`, should be computed during snapshot generation. Avoid
 reimplementing metric formulas independently in browser JavaScript.
 
-Dashboard2 copies only the data it uses into its `data/` directory. Its tables
+Dashboard copies only the data it uses into its `data/` directory. Its tables
 are client-side and support filtering, sorting, presets, column visibility, URL
 state, pagination where appropriate, and filtered exports. Column descriptions
 and tooltips must come from snapshot metadata instead of duplicated prose in
 HTML or JavaScript.
 
-For Dashboard2 presentation, truncate sats and PPM to whole numbers, format
+For Dashboard presentation, truncate sats and PPM to whole numbers, format
 numbers with `en-US` comma grouping, and right-align numeric columns with
 tabular digits. Keep sorting and filtering based on raw numeric values.
 
@@ -209,7 +208,7 @@ tabular digits. Keep sorting and filtering based on raw numeric values.
 ### Naming Conventions
 
 - **Structs/Enums**: `PascalCase` (e.g., `Store`, `ListChannels`)
-- **Functions/Methods**: `snake_case` (e.g., `run_dashboard2`, `list_channels`)
+- **Functions/Methods**: `snake_case` (e.g., `run_dashboard`, `list_channels`)
 - **Variables**: `snake_case` (e.g., `min_channels`, `avail_map`)
 - **Constants**: `SCREAMING_SNAKE_CASE` for true constants, `snake_case` otherwise
 - **Modules**: `snake_case` (e.g., `mod channels;`)
@@ -312,9 +311,9 @@ enum Commands {
 | `src/store.rs` | Data store for fetched node data |
 | `src/snapshot.rs` | Versioned JSON/JSONL analytical snapshot generation |
 | `src/snapshot_metadata.rs` | Canonical dataset and metric descriptions |
-| `src/dashboard2.rs` | Snapshot-driven site generation and shared HTML shell |
-| `src/dashboard2.js` | Dynamic Dashboard2 tables and metadata tooltips |
-| `src/dashboard2.css` | Dashboard2 shared styling |
+| `src/dashboard.rs` | Snapshot-driven site generation and shared HTML shell |
+| `src/dashboard.js` | Dynamic Dashboard tables and metadata tooltips |
+| `src/dashboard.css` | Dashboard shared styling |
 | `src/history.rs` | Full rebuild of normalized historical channel datasets |
 | `src/routes.rs` | Cached route analysis used by snapshots |
 | `src/lnplus.rs` | LN+ Liquidity Pool fetcher used by snapshots |
@@ -326,29 +325,29 @@ enum Commands {
 ### Common Development Tasks
 
 ```bash
-# Generate a test-data snapshot and Dashboard2 site
+# Generate a test-data snapshot and Dashboard site
 direnv exec . cargo run -- snapshot target/snapshot
-direnv exec . cargo run -- dashboard2 target/snapshot target/site2
+direnv exec . cargo run -- dashboard target/snapshot target/site
 
-# Serve Dashboard2 locally; opening through file:// will not load JSON data
+# Serve Dashboard locally; opening through file:// will not load JSON data
 direnv exec . miniserve --index index.html --port 3535 \
-  --interfaces 127.0.0.1 target/site2
+  --interfaces 127.0.0.1 target/site
 
 # Or use just
 direnv exec . just serve
 ```
 
-Before completing changes to snapshots or Dashboard2, run:
+Before completing changes to snapshots or Dashboard, run:
 
 ```bash
 direnv exec . cargo fmt --check
 direnv exec . cargo check --quiet
 direnv exec . cargo clippy --quiet -- -D warnings
 direnv exec . cargo test --quiet
-direnv exec . node --check src/dashboard2.js
+direnv exec . node --check src/dashboard.js
 ```
 
-For contract changes, also generate a fresh snapshot and Dashboard2 site, then
+For contract changes, also generate a fresh snapshot and Dashboard site, then
 inspect `manifest.json`, the companion schema files, and at least one record
 from each affected dataset. Browser-test dynamic tables over HTTP when their
 JavaScript or metadata integration changes.

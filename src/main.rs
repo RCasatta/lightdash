@@ -6,7 +6,7 @@ use crate::store::Store;
 
 mod cmd;
 mod common;
-mod dashboard2;
+mod dashboard;
 mod fees;
 mod history;
 mod htlc;
@@ -31,7 +31,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Generate the dashboard site from a snapshot directory
-    Dashboard2 {
+    Dashboard {
         /// Directory containing manifest.json and snapshot data files
         snapshot_directory: String,
         /// Directory for the generated site
@@ -129,12 +129,12 @@ fn main() {
     }
 
     match cli.command {
-        Commands::Dashboard2 {
+        Commands::Dashboard {
             snapshot_directory,
             directory,
         } => {
-            if let Err(e) = dashboard2::run_dashboard2(&snapshot_directory, &directory) {
-                error_panic!("creating dashboard2 in `{directory}` failed: {e}");
+            if let Err(e) = dashboard::run_dashboard(&snapshot_directory, &directory) {
+                error_panic!("creating dashboard in `{directory}` failed: {e}");
             }
         }
         Commands::Snapshot {

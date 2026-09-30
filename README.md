@@ -41,10 +41,10 @@ read from the remote host.
 Generate the dashboard site from the snapshot in a separate step:
 
 ```bash
-lightdash dashboard2 target/snapshot target/site2
+lightdash dashboard target/snapshot target/site
 ```
 
-Dashboard2 provides an overview and dynamic channel, forward, rebalance, and
+Dashboard provides an overview and dynamic channel, forward, rebalance, and
 route tables with presets, generic filters, sorting, column visibility, URL
 state, and filtered CSV/JSON exports. The routes page ranks potential channel
 partners by node, joined with open LN+ Liquidity Pool offers.
@@ -117,7 +117,7 @@ to reduce bandwidth usage for the JSON responses.
 
 ```bash
 lightdash --ssh name@host snapshot target/snapshot
-lightdash dashboard2 target/snapshot target/site2
+lightdash dashboard target/snapshot target/site
 ```
 
 In debug builds, specifying `--ssh` overrides the bundled test data.
@@ -131,7 +131,7 @@ src/
 ├── store.rs             # Data fetched from the node
 ├── snapshot.rs          # Versioned analytical snapshot export
 ├── snapshot_metadata.rs # Dataset and field catalog
-├── dashboard2.rs        # Snapshot-driven site renderer (+ .js, .css)
+├── dashboard.rs        # Snapshot-driven site renderer (+ .js, .css)
 ├── history.rs           # Processed channel history
 ├── routes.rs            # Cached route analysis
 ├── lnplus.rs            # LN+ Liquidity Pool fetcher

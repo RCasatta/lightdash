@@ -148,7 +148,7 @@
                 renderEmptyHistoryEvents("Historical events could not be loaded.");
             }
         } catch (caught) {
-            showChannelError(`${caught.message}. Serve Dashboard2 over HTTP and regenerate it from a current snapshot.`);
+            showChannelError(`${caught.message}. Serve Dashboard over HTTP and regenerate it from a current snapshot.`);
         }
 
         function showChannelError(message) {
@@ -854,7 +854,7 @@
                 format: "json",
                 itemLabel: "closed channels",
                 fileBase: "lightdash-closed-channels",
-                storageKey: "lightdash.dashboard2.closedChannelColumns.v2",
+                storageKey: "lightdash.dashboard.closedChannelColumns.v2",
                 defaultSort: "short_channel_id",
                 defaultDirection: "desc",
                 pageSize: 0,
@@ -875,7 +875,7 @@
                 format: "json",
                 itemLabel: "channels",
                 fileBase: "lightdash-channels",
-                storageKey: "lightdash.dashboard2.channelColumns.v4",
+                storageKey: "lightdash.dashboard.channelColumns.v4",
                 defaultSort: "short_channel_id",
                 defaultDirection: "desc",
                 pageSize: 0,
@@ -897,7 +897,7 @@
                 format: "jsonl",
                 itemLabel: "settled forwards",
                 fileBase: "lightdash-forwards",
-                storageKey: "lightdash.dashboard2.forwardColumns.v2",
+                storageKey: "lightdash.dashboard.forwardColumns.v2",
                 defaultSort: "received_at",
                 defaultDirection: "desc",
                 defaultView: "last-week",
@@ -924,7 +924,7 @@
                 format: "jsonl",
                 itemLabel: "successful rebalance parts",
                 fileBase: "lightdash-rebalances",
-                storageKey: "lightdash.dashboard2.rebalanceColumns.v2",
+                storageKey: "lightdash.dashboard.rebalanceColumns.v2",
                 defaultSort: "resolved_at",
                 defaultDirection: "desc",
                 pageSize: 100,
@@ -943,7 +943,7 @@
                 format: "json",
                 itemLabel: "rebalance statuses",
                 fileBase: "lightdash-rebalance-status",
-                storageKey: "lightdash.dashboard2.rebalanceStatusColumns.v2",
+                storageKey: "lightdash.dashboard.rebalanceStatusColumns.v2",
                 defaultSort: "last_success_at",
                 defaultDirection: "desc",
                 pageSize: 100,
@@ -963,7 +963,7 @@
                 format: "json",
                 itemLabel: "route partners",
                 fileBase: "lightdash-route-partners",
-                storageKey: "lightdash.dashboard2.routePartnerColumns.v1",
+                storageKey: "lightdash.dashboard.routePartnerColumns.v1",
                 defaultSort: "weighted_route_score",
                 defaultDirection: "desc",
                 defaultView: "recurring",
@@ -984,7 +984,7 @@
                 format: "json",
                 itemLabel: "route candidates",
                 fileBase: "lightdash-route-candidates",
-                storageKey: "lightdash.dashboard2.routeCandidateColumns.v4",
+                storageKey: "lightdash.dashboard.routeCandidateColumns.v4",
                 defaultSort: "weighted_route_score",
                 defaultDirection: "desc",
                 defaultView: "recurring",
@@ -1240,7 +1240,7 @@
             render();
         } catch (error) {
             errorBanner.hidden = false;
-            errorBanner.textContent = `Unable to load table data: ${error.message}. Serve dashboard2 over HTTP rather than opening it through file://.`;
+            errorBanner.textContent = `Unable to load table data: ${error.message}. Serve dashboard over HTTP rather than opening it through file://.`;
             status.textContent = "Table data unavailable";
         }
     }

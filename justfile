@@ -7,8 +7,8 @@ dataset:
 # Generate a snapshot and the dashboard from it
 dashboard:
     cargo run -- snapshot target/snapshot
-    cargo run -- dashboard2 target/snapshot target/site2
+    cargo run -- dashboard target/snapshot target/site
 
 # Serve the generated dashboard with miniserve
 serve: dashboard
-    miniserve --index index.html --port 3535 target/site2 -i 127.0.0.1
+    miniserve --index index.html --port 3535 target/site -i 127.0.0.1
