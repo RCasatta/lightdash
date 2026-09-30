@@ -111,11 +111,6 @@ pub fn list_channels() -> ListChannels {
     serde_json::from_value(v).unwrap()
 }
 
-pub fn read_xz_channels(path: &str) -> ListChannels {
-    let v = cmd_result("xzcat", &[path]);
-    serde_json::from_value(v).unwrap()
-}
-
 pub fn list_peers() -> ListPeers {
     let v = if using_test_data() {
         gz_json_file("test-json/listpeers.gz")

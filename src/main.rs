@@ -4,7 +4,6 @@ use std::io::Write;
 
 use crate::store::Store;
 
-mod channels;
 mod cmd;
 mod common;
 mod dashboard2;
@@ -78,15 +77,6 @@ enum Commands {
         /// Override the availdb path; remote when --ssh is used
         #[arg(long)]
         availdb: Option<String>,
-    },
-    /// Display channels information
-    Channels {
-        /// Path to directory with channel fee history
-        #[arg(long)]
-        path: String,
-        /// Output directory for CSV files
-        #[arg(long)]
-        output_dir: String,
     },
     /// Adjust HTLC max on channels where local balance is lower than current htlc max
     Htlc,
@@ -214,9 +204,6 @@ fn main() {
             let store = Store::new(availdb);
 
             fees::run_fees(&store);
-        }
-        Commands::Channels { path, output_dir } => {
-            channels::run_channels(path.as_str(), output_dir.as_str());
         }
         Commands::Htlc => {
             htlc::run_htlc();

@@ -1,21 +1,5 @@
 use std::collections::HashSet;
 
-const SATS_GROUP_SEPARATOR: char = '\u{2009}';
-
-pub fn format_sats(amount: u64) -> String {
-    let digits = amount.to_string();
-    let mut formatted = String::with_capacity(digits.len() + digits.len() / 3);
-
-    for (i, ch) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i) % 3 == 0 {
-            formatted.push(SATS_GROUP_SEPARATOR);
-        }
-        formatted.push(ch);
-    }
-
-    formatted
-}
-
 pub fn channel_balance_target_stddev_percentage_points(channels: &[crate::cmd::Fund]) -> f64 {
     if channels.is_empty() {
         return 0.0;
@@ -58,18 +42,7 @@ impl ChannelFee {
 mod tests {
     use crate::cmd::Fund;
 
-    use super::{channel_balance_target_stddev_percentage_points, format_sats};
-
-    #[test]
-    fn formats_sats_with_thin_space_groups() {
-        assert_eq!(format_sats(0), "0");
-        assert_eq!(format_sats(999), "999");
-        assert_eq!(format_sats(1_000), "1\u{2009}000");
-        assert_eq!(
-            format_sats(1_234_567_890),
-            "1\u{2009}234\u{2009}567\u{2009}890"
-        );
-    }
+    use super::channel_balance_target_stddev_percentage_points;
 
     #[test]
     fn channel_balance_target_stddev_measures_distance_from_fifty_percent() {
