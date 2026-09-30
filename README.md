@@ -38,15 +38,16 @@ Lightdash automatically reads Summars availability data from
 `AVAILDB_PATH` environment variable to override it. With `--ssh`, the path is
 read from the remote host.
 
-Generate the experimental snapshot-driven site in a separate step:
+Generate the dashboard site from the snapshot in a separate step:
 
 ```bash
 lightdash dashboard2 target/snapshot target/site2
 ```
 
-Dashboard2 currently provides a shared site shell, an overview, and dynamic
-channel, forward, rebalance, and route-candidate tables with presets, generic
-filters, sorting, column visibility, URL state, and filtered CSV/JSON exports.
+Dashboard2 provides an overview and dynamic channel, forward, rebalance, and
+route tables with presets, generic filters, sorting, column visibility, URL
+state, and filtered CSV/JSON exports. The routes page ranks potential channel
+partners by node, joined with open LN+ Liquidity Pool offers.
 The forwards page streams only `settled-forwards.jsonl` and paginates the result
 instead of loading noisy failed attempts or rendering the complete history into
 the DOM. Serve the output over HTTP so the browser can load its data files.
@@ -125,12 +126,17 @@ In debug builds, specifying `--ssh` overrides the bundled test data.
 
 ```
 src/
-├── main.rs      # CLI entry point and command routing
-├── cmd.rs       # Lightning CLI command wrappers
-├── common.rs    # Shared constants, structs, and utilities
-├── dashboard2.rs # Snapshot-driven site renderer
-├── snapshot.rs  # Versioned analytical snapshot export
-├── routes.rs    # Cached route analysis
-├── sling.rs     # Sling job execution
-└── fees.rs      # Fee adjustments
+├── main.rs              # CLI entry point and command routing
+├── cmd.rs               # Lightning CLI command wrappers
+├── store.rs             # Data fetched from the node
+├── snapshot.rs          # Versioned analytical snapshot export
+├── snapshot_metadata.rs # Dataset and field catalog
+├── dashboard2.rs        # Snapshot-driven site renderer (+ .js, .css)
+├── history.rs           # Processed channel history
+├── routes.rs            # Cached route analysis
+├── lnplus.rs            # LN+ Liquidity Pool fetcher
+├── sling.rs             # Sling job execution
+├── fees.rs              # Fee adjustments
+├── htlc.rs              # HTLC maximum adjustments
+└── common.rs            # Small shared helpers
 ```

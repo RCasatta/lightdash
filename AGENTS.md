@@ -152,7 +152,7 @@ the raw `listchannels` or `listfunds` files.
 manifest and files referenced by it. This is the transport for retrieving
 processed history over SSH; do not rsync the raw archives into a snapshot.
 
-Snapshot schema v4 imports processed history by default. In local mode it reads
+Snapshots import processed history by default. In local mode it reads
 the processed directory directly; with `--ssh` it invokes the remote history
 export and validates both the history schema version and node ID before merging
 the datasets into the snapshot manifest. Use `--without-history` only when an
@@ -252,21 +252,22 @@ use crate::common::ChannelFee;
 
 ### Testing Patterns
 
-The codebase uses `cfg!(debug_assertions)` to switch between test and production
-modes:
+Debug builds read bundled fixtures instead of calling `lightning-cli`, unless
+`--ssh` is given. `cmd::using_test_data()` makes that decision:
 
 ```rust
-pub fn list_channels() -> ListChannels {
-    let v = if cfg!(debug_assertions) {
-        cmd_result("zcat", &["test-json/listchannels.gz"])
+pub fn list_funds() -> ListFunds {
+    let v = if using_test_data() {
+        gz_json_file("test-json/listfunds.gz")
     } else {
-        cmd_result("lightning-cli", &["listchannels"])
+        cmd_result("lightning-cli", &["listfunds"])
     };
     serde_json::from_value(v).unwrap()
 }
 ```
 
-Test data is located in `test-json/` directory.
+Test data is located in the `test-json/` directory. Remove fixtures that no
+code reads anymore.
 
 ### Struct and Enum Patterns
 
@@ -316,8 +317,11 @@ enum Commands {
 | `src/dashboard2.css` | Dashboard2 shared styling |
 | `src/history.rs` | Full rebuild of normalized historical channel datasets |
 | `src/routes.rs` | Cached route analysis used by snapshots |
+| `src/lnplus.rs` | LN+ Liquidity Pool fetcher used by snapshots |
 | `src/sling.rs` | Sling job execution |
 | `src/fees.rs` | Fee adjustments |
+| `src/htlc.rs` | HTLC maximum adjustments |
+| `src/common.rs` | Small shared helpers |
 
 ### Common Development Tasks
 
