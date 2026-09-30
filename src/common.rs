@@ -1,4 +1,3 @@
-use chrono::Duration;
 use std::collections::HashSet;
 
 const SATS_GROUP_SEPARATOR: char = '\u{2009}';
@@ -15,22 +14,6 @@ pub fn format_sats(amount: u64) -> String {
     }
 
     formatted
-}
-
-pub fn format_signed_sats(amount: i64) -> String {
-    if amount < 0 {
-        format!("-{}", format_sats(amount.unsigned_abs()))
-    } else {
-        format_sats(amount as u64)
-    }
-}
-
-pub fn format_sats_str(amount: &str) -> String {
-    let normalized = amount.replace([',', '_'], "");
-    normalized
-        .parse::<u64>()
-        .map(format_sats)
-        .unwrap_or_else(|_| amount.replace(',', &SATS_GROUP_SEPARATOR.to_string()))
 }
 
 pub fn channel_balance_target_stddev_percentage_points(channels: &[crate::cmd::Fund]) -> f64 {
@@ -71,70 +54,11 @@ impl ChannelFee {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Rebalance {
-    PushOut,
-    PullIn,
-    Nothing,
-}
-
-pub struct ChannelMeta {
-    pub fund: crate::cmd::Fund,
-    pub is_sink: f64,
-    pub is_sink_last_month: f64,
-    pub rebalance: Rebalance,
-    pub alias_or_id: String,
-    pub block_born: u64,
-}
-
-impl ChannelMeta {
-    pub fn is_sink_perc(&self) -> String {
-        format!("{:.0}%", self.is_sink * 100.0)
-    }
-    pub fn is_sink_last_month_perc(&self) -> String {
-        format!("{:.0}%", self.is_sink_last_month * 100.0)
-    }
-
-    pub fn alias_or_id(&self) -> String {
-        self.alias_or_id.clone()
-    }
-}
-
-pub fn cut_days(d: i64) -> String {
-    if d > 99 {
-        "99+".to_string()
-    } else {
-        format!("{d:>2}d")
-    }
-}
-
-/// Format a duration in a human-readable way
-pub fn format_duration(duration: Duration) -> String {
-    let total_seconds = duration.num_seconds().abs();
-    let days = total_seconds / 86400;
-    let hours = (total_seconds % 86400) / 3600;
-    let minutes = (total_seconds % 3600) / 60;
-    let seconds = total_seconds % 60;
-
-    if days > 0 {
-        format!("{}d {}h {}m", days, hours, minutes)
-    } else if hours > 0 {
-        format!("{}h {}m {}s", hours, minutes, seconds)
-    } else if minutes > 0 {
-        format!("{}m {}s", minutes, seconds)
-    } else {
-        format!("{}s", seconds)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::cmd::Fund;
 
-    use super::{
-        channel_balance_target_stddev_percentage_points, format_sats, format_sats_str,
-        format_signed_sats,
-    };
+    use super::{channel_balance_target_stddev_percentage_points, format_sats};
 
     #[test]
     fn formats_sats_with_thin_space_groups() {
@@ -145,18 +69,6 @@ mod tests {
             format_sats(1_234_567_890),
             "1\u{2009}234\u{2009}567\u{2009}890"
         );
-    }
-
-    #[test]
-    fn formats_signed_sats_with_thin_space_groups() {
-        assert_eq!(format_signed_sats(-1_234_567), "-1\u{2009}234\u{2009}567");
-        assert_eq!(format_signed_sats(1_234_567), "1\u{2009}234\u{2009}567");
-    }
-
-    #[test]
-    fn formats_sats_strings_with_thin_space_groups() {
-        assert_eq!(format_sats_str("25,799"), "25\u{2009}799");
-        assert_eq!(format_sats_str("25799"), "25\u{2009}799");
     }
 
     #[test]

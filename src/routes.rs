@@ -1,5 +1,4 @@
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
-use maud::{html, Markup, DOCTYPE};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -9,7 +8,6 @@ use std::path::{Component, Path};
 use std::time::{Duration as StdDuration, Instant};
 
 use crate::cmd::*;
-use crate::common::format_sats;
 use crate::snapshot_metadata::{DatasetMetadata, FieldMetadata};
 use crate::store::Store;
 
@@ -103,37 +101,6 @@ struct RouteAnalysisBatch {
 struct RoutesExportBundle {
     manifest: RoutesManifest,
     files: BTreeMap<String, Value>,
-}
-
-pub fn run_routes(store: &Store, directory: &str) {
-    for analysis in analyze_route_amounts(store).analyses {
-        write_routes_page(directory, &analysis);
-    }
-}
-
-fn write_routes_page(directory: &str, analysis: &RouteAnalysis) {
-    let summary = RoutesSummary::from(&analysis.run);
-    let route_entries: Vec<_> = analysis
-        .candidates
-        .iter()
-        .filter(|candidate| candidate.appearances >= 3)
-        .cloned()
-        .collect();
-    let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string();
-    let amount_sat = analysis.run.amount_sat;
-    let routes_html = render_routes_page(&route_entries, &summary, &timestamp, amount_sat * 1000);
-
-    if let Err(e) = fs::create_dir_all(directory) {
-        log::error!("Error creating directory {directory}: {e}");
-        return;
-    }
-
-    let routes_file_path = format!("{directory}/routes-{amount_sat}.html");
-
-    match fs::write(&routes_file_path, routes_html.into_string()) {
-        Ok(_) => log::info!("Routes page generated: {routes_file_path}"),
-        Err(e) => log::error!("Error writing routes page {routes_file_path}: {e}"),
-    }
 }
 
 fn analyze_route_amounts(store: &Store) -> RouteAnalysisBatch {
@@ -361,42 +328,6 @@ fn destination_sample_score(node_id: &str, seed: u64) -> u64 {
         hash = hash.wrapping_mul(0x100000001b3);
     }
     hash
-}
-
-struct RoutesSummary {
-    scanned_nodes: usize,
-    eligible_destinations: usize,
-    processed_destinations: usize,
-    queried_destinations: usize,
-    capacity_filtered_destinations: usize,
-    evaluated_routes: usize,
-    failed_routes: usize,
-    timed_out_routes: usize,
-    budget_exhausted: bool,
-    elapsed_seconds: f64,
-    candidate_nodes: usize,
-    average_hops: f64,
-    max_fee_msat: u64,
-}
-
-impl From<&RouteRun> for RoutesSummary {
-    fn from(run: &RouteRun) -> Self {
-        Self {
-            scanned_nodes: run.scanned_nodes,
-            eligible_destinations: run.eligible_destinations,
-            processed_destinations: run.processed_destinations,
-            queried_destinations: run.queried_destinations,
-            capacity_filtered_destinations: run.capacity_filtered_destinations,
-            evaluated_routes: run.evaluated_routes,
-            failed_routes: run.failed_routes,
-            timed_out_routes: run.timed_out_routes,
-            budget_exhausted: run.budget_exhausted,
-            elapsed_seconds: run.elapsed_seconds,
-            candidate_nodes: run.recurring_candidate_nodes,
-            average_hops: run.average_hops,
-            max_fee_msat: run.max_fee_msat,
-        }
-    }
 }
 
 fn route_max_fee_msat(amount_msat: u64) -> u64 {
@@ -864,221 +795,6 @@ fn route_candidate_fields() -> BTreeMap<String, FieldMetadata> {
         ("fee_diversity".into(), metadata_field("number", false, Some("ratio"), "Existing fee-diversity score derived from the candidate's public channel policies.", Some("listchannels"), None)),
         ("channel_count".into(), metadata_field("integer", false, Some("channel"), "Number of public channel records associated with the candidate.", Some("listchannels"), None)),
     ])
-}
-
-fn render_routes_page(
-    entries: &[RouteCandidate],
-    summary: &RoutesSummary,
-    timestamp: &str,
-    amount_msat: u64,
-) -> Markup {
-    html! {
-        (DOCTYPE)
-        html {
-            head {
-                meta charset="utf-8";
-                title { "Routing Insights" }
-                style {
-                    r#"
-                    body {
-                        font-family: 'Courier New', monospace;
-                        background-color: #1e1e1e;
-                        color: #f8f8f2;
-                        margin: 0;
-                        padding: 20px;
-                        line-height: 1.4;
-                    }
-                    .container {
-                        max-width: 1400px;
-                        margin: 0 auto;
-                    }
-                    .header {
-                        background-color: #2c3e50;
-                        color: white;
-                        padding: 20px;
-                        border-radius: 8px;
-                        margin-bottom: 20px;
-                        text-align: center;
-                    }
-                    .content {
-                        background-color: #2d3748;
-                        padding: 20px;
-                        border-radius: 8px;
-                        margin-bottom: 20px;
-                        overflow-x: auto;
-                        white-space: pre-wrap;
-                    }
-                    section {
-                        background-color: #2d3748;
-                        padding: 20px;
-                        border-radius: 8px;
-                        margin-bottom: 20px;
-                    }
-                    a {
-                        color: #63b3ed;
-                        text-decoration: none;
-                    }
-                    a:hover {
-                        text-decoration: underline;
-                    }
-                    section h2 {
-                        color: #63b3ed;
-                        margin-top: 0;
-                    }
-                    section p {
-                        color: #a0aec0;
-                        margin: 10px 0;
-                    }
-                    .back-link {
-                        display: inline-block;
-                        margin-top: 10px;
-                        color: #63b3ed;
-                    }
-                    table {
-                        width: 100%;
-                        border-collapse: collapse;
-                        margin-top: 10px;
-                    }
-                    th, td {
-                        border: 1px solid #4a5568;
-                        padding: 8px 12px;
-                        text-align: left;
-                    }
-                    th {
-                        background-color: #2d3748;
-                        color: #63b3ed;
-                    }
-                    tbody tr:nth-child(even) {
-                        background-color: #2d3748;
-                    }
-                    tbody tr:nth-child(odd) {
-                        background-color: #1a202c;
-                    }
-                    tbody tr:hover {
-                        background-color: #4a5568;
-                    }
-                    .align-right {
-                        text-align: right;
-                    }
-                    footer {
-                        text-align: center;
-                        color: #a0aec0;
-                        margin-top: 30px;
-                    }
-                    "#
-                }
-            }
-            body {
-                div class="container" {
-                    div class="header" {
-                        h1 {
-                            "Routing Insights - "
-                            (format!("{} sats", format_sats(amount_msat / 1000)))
-                        }
-                        div class="back-link" {
-                            a href="index.html" { "Home" } " | "
-                            a href="nodes/" { "Nodes" } " | "
-                            a href="channels/" { "Channels" } " | "
-                            a href="forwards-week.html" { "Forwards" } " | "
-                            a href="routes-10000.html" { "Routes" } " | "
-                            a href="failures.html" { "Failures" } " | "
-                            a href="roic.html" { "ROIC" } " | "
-                            a href="closed-channels.html" { "Closed" }
-                        }
-                    }
-
-                    section {
-                        h2 { "Route Amount Variants" }
-                        p {
-                            "Analysis performed for different payment amounts:"
-                        }
-                        ul {
-                            li { a href="routes-1000.html" { (format!("{} sats (0.00001 BTC)", format_sats(1_000))) } }
-                            li { a href="routes-10000.html" { (format!("{} sats (0.0001 BTC)", format_sats(10_000))) } }
-                            li { a href="routes-100000.html" { (format!("{} sats (0.001 BTC)", format_sats(100_000))) } }
-                            li { a href="routes-1000000.html" { (format!("{} sats (0.01 BTC)", format_sats(1_000_000))) } }
-                        }
-                    }
-
-                    section {
-                        h2 { "Random Route Coverage" }
-                        p {
-                            "Average hops per route: "
-                            (format!("{:.2}", summary.average_hops))
-                        }
-                        p {
-                            "Routes evaluated: " (summary.evaluated_routes)
-                            " | Nodes scanned: " (summary.scanned_nodes)
-                            " | Candidate relays: " (summary.candidate_nodes)
-                        }
-                        p {
-                            "Destinations: " (summary.processed_destinations) " processed of "
-                            (summary.eligible_destinations) " eligible | Queried: "
-                            (summary.queried_destinations) " | Capacity-filtered: "
-                            (summary.capacity_filtered_destinations) " | Failed: "
-                            (summary.failed_routes) " | Timed out: " (summary.timed_out_routes)
-                            " | Elapsed: " (format!("{:.1} seconds", summary.elapsed_seconds))
-                        }
-                        @if summary.budget_exhausted {
-                            p { "The per-amount time budget expired before all eligible destinations were processed." }
-                        }
-                        p {
-                            "Maximum route fee: "
-                            (format!("{} sats", format_sats(summary.max_fee_msat / 1000)))
-                            " (1% of the payment amount, with a 5 sat minimum)."
-                        }
-                        p {
-                            "Nodes listed below appeared at least three times in random routes and are not currently direct peers."
-                        }
-                    }
-
-                    section {
-                        h2 { "Top Potential Relay Partners" }
-                        @if entries.is_empty() {
-                            p {
-                                "No recurring third-party relay nodes detected. Try increasing the number of eligible nodes or ensure your node has sufficient channels."
-                            }
-                        } @else {
-                            table {
-                                thead {
-                                    tr {
-                                        th { "Rank" }
-                                        th { "Alias" }
-                                        th { "Connectable" }
-                                        th { "Past Channel" }
-                                        th { "Appearances" }
-                                        th { "Avg Fee (ppm)" }
-                                        th { "Fee Diversity" }
-                                        th { "Channels" }
-                                    }
-                                }
-                                tbody {
-                                    @for (idx, entry) in entries.iter().enumerate() {
-                                        tr {
-                                            td class="align-right" { (idx + 1) }
-                                            td {
-                                                a href={(format!("nodes/{}.html", entry.node_id))} { (&entry.alias) }
-                                            }
-                                            td { (if entry.connectable { "Yes" } else { "No" }) }
-                                            td { (if entry.had_channel_in_past { "Yes" } else { "No" }) }
-                                            td class="align-right" { (entry.appearances) }
-                                            td class="align-right" { (format!("{:.1}", entry.average_fee_ppm)) }
-                                            td class="align-right" { (format!("{:.3}", entry.fee_diversity)) }
-                                            td class="align-right" { (entry.channel_count) }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    footer {
-                        "Generated at: " (timestamp)
-                    }
-                }
-            }
-        }
-    }
 }
 
 #[cfg(test)]

@@ -7,7 +7,6 @@ use crate::store::Store;
 mod channels;
 mod cmd;
 mod common;
-mod dashboard;
 mod dashboard2;
 mod fees;
 mod funds;
@@ -33,21 +32,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Display the main dashboard
-    Dashboard {
-        /// Directory for dashboard files
-        directory: String,
-        /// Minimum number of channels a node must have to be included
-        #[arg(long, default_value = "10")]
-        min_channels: usize,
-        /// Override the availdb path; remote when --ssh is used
-        #[arg(long)]
-        availdb: Option<String>,
-        /// Base URL where funds charts are served, e.g. /auth/funds-charts
-        #[arg(long)]
-        funds_charts_url: Option<String>,
-    },
-    /// Generate the experimental site from a snapshot directory
+    /// Generate the dashboard site from a snapshot directory
     Dashboard2 {
         /// Directory containing manifest.json and snapshot data files
         snapshot_directory: String,
@@ -82,12 +67,10 @@ enum Commands {
         #[command(subcommand)]
         command: HistoryCommands,
     },
-    /// Generate routing analysis page
+    /// Maintain the cached route analysis used by snapshots
     Routes {
-        /// Directory for legacy routes HTML output
-        directory: Option<String>,
         #[command(subcommand)]
-        command: Option<RoutesCommands>,
+        command: RoutesCommands,
     },
     /// Execute sling jobs for rebalancing
     Sling,
@@ -172,16 +155,6 @@ fn main() {
     }
 
     match cli.command {
-        Commands::Dashboard {
-            directory,
-            min_channels,
-            availdb,
-            funds_charts_url,
-        } => {
-            let store = Store::new(availdb);
-            log::debug!("Dashboard directory: {}", directory);
-            dashboard::run_dashboard(&store, directory, min_channels, funds_charts_url);
-        }
         Commands::Dashboard2 {
             snapshot_directory,
             directory,
@@ -227,26 +200,19 @@ fn main() {
                 }
             }
         },
-        Commands::Routes { directory, command } => match command {
-            Some(RoutesCommands::Refresh { directory }) => {
+        Commands::Routes { command } => match command {
+            RoutesCommands::Refresh { directory } => {
                 if let Err(e) = routes::run_cache_refresh(&directory) {
                     error_panic!("refreshing cached route analysis failed: {e}");
                 }
             }
-            Some(RoutesCommands::Export {
+            RoutesCommands::Export {
                 directory,
                 refresh_if_stale,
-            }) => {
+            } => {
                 if let Err(e) = routes::run_export(&directory, refresh_if_stale) {
                     error_panic!("exporting cached route analysis failed: {e}");
                 }
-            }
-            None => {
-                let directory = directory.unwrap_or_else(|| {
-                    error_panic!("routes requires an output directory or a subcommand");
-                });
-                let store = Store::new(None);
-                routes::run_routes(&store, &directory);
             }
         },
         Commands::Sling => {

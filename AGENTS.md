@@ -6,17 +6,13 @@ Lightdash is a Rust CLI tool for Lightning Network channel management and
 dashboard generation. It interfaces with a Core Lightning node through
 `lightning-cli`, either locally, through SSH, or from bundled test data.
 
-There are currently two dashboard flows:
+The dashboard is a two-stage flow: `snapshot` exports a versioned,
+self-descriptive analytical dataset, then `dashboard2` generates a dynamic site
+using only those files. The older single-process `dashboard` command has been
+removed.
 
-- `dashboard` is the existing direct flow: query the node and generate the
-  complete legacy HTML site in one process.
-- `snapshot` + `dashboard2` is the new two-stage flow: first export a versioned,
-  self-descriptive analytical dataset, then generate a simpler dynamic site
-  using only those files.
-
-Prefer extending the snapshot-driven flow for new Dashboard2 features. Do not
-make Dashboard2 query `Store` or invoke `lightning-cli`; it must remain a pure
-snapshot consumer.
+Do not make Dashboard2 query `Store` or invoke `lightning-cli`; it must remain a
+pure snapshot consumer.
 
 ## Local Core Lightning Reference
 
@@ -33,10 +29,6 @@ direnv exec . cargo check
 
 # Build in release mode
 direnv exec . cargo build --release
-
-# Run the legacy dashboard
-direnv exec . cargo run -- dashboard target/site --min-channels 100 \
-  --availdb test-json/availdb.json
 
 # Run with custom arguments
 direnv exec . cargo run -- <command> [args]
@@ -217,7 +209,7 @@ tabular digits. Keep sorting and filtering based on raw numeric values.
 ### Naming Conventions
 
 - **Structs/Enums**: `PascalCase` (e.g., `Store`, `ListChannels`)
-- **Functions/Methods**: `snake_case` (e.g., `run_dashboard`, `list_channels`)
+- **Functions/Methods**: `snake_case` (e.g., `run_dashboard2`, `list_channels`)
 - **Variables**: `snake_case` (e.g., `min_channels`, `avail_map`)
 - **Constants**: `SCREAMING_SNAKE_CASE` for true constants, `snake_case` otherwise
 - **Modules**: `snake_case` (e.g., `mod channels;`)
@@ -317,14 +309,13 @@ enum Commands {
 | `src/main.rs` | CLI entry point, command routing |
 | `src/cmd.rs` | Lightning CLI command wrappers |
 | `src/store.rs` | Data store for fetched node data |
-| `src/dashboard.rs` | Legacy direct HTML dashboard generation |
 | `src/snapshot.rs` | Versioned JSON/JSONL analytical snapshot generation |
 | `src/snapshot_metadata.rs` | Canonical dataset and metric descriptions |
 | `src/dashboard2.rs` | Snapshot-driven site generation and shared HTML shell |
 | `src/dashboard2.js` | Dynamic Dashboard2 tables and metadata tooltips |
 | `src/dashboard2.css` | Dashboard2 shared styling |
 | `src/history.rs` | Full rebuild of normalized historical channel datasets |
-| `src/routes.rs` | Routing analysis |
+| `src/routes.rs` | Cached route analysis used by snapshots |
 | `src/sling.rs` | Sling job execution |
 | `src/fees.rs` | Fee adjustments |
 
@@ -334,10 +325,6 @@ enum Commands {
 # Generate a test-data snapshot and Dashboard2 site
 direnv exec . cargo run -- snapshot target/snapshot
 direnv exec . cargo run -- dashboard2 target/snapshot target/site2
-
-# Generate the legacy dashboard
-direnv exec . cargo run -- dashboard target/site --min-channels 100 \
-  --availdb test-json/availdb.json
 
 # Serve Dashboard2 locally; opening through file:// will not load JSON data
 direnv exec . miniserve --index index.html --port 3535 \

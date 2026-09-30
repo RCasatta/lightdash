@@ -480,7 +480,6 @@ pub struct ListNodes {
 pub struct Node {
     pub nodeid: String,
     pub alias: Option<String>,
-    pub last_timestamp: Option<u64>,
     #[serde(default)]
     pub addresses: Vec<Value>,
 }
@@ -510,24 +509,12 @@ pub struct Output {
 }
 
 impl Fund {
-    pub fn perc(&self) -> u64 {
-        (self.perc_float() * 100.0).floor() as u64
-    }
     pub fn perc_float(&self) -> f64 {
         (self.our_amount_msat as f64 / self.amount_msat as f64).clamp(0.0, 1.0)
     }
 
     pub fn short_channel_id(&self) -> String {
         self.short_channel_id.clone().unwrap_or("".to_string())
-    }
-
-    pub fn block_born(&self) -> Option<u64> {
-        self.short_channel_id
-            .as_ref()?
-            .split("x")
-            .next()?
-            .parse()
-            .ok()
     }
 }
 
@@ -608,25 +595,6 @@ pub struct ClosedChannel {
     pub close_cause: String,
 }
 
-impl ClosedChannel {
-    /// Get the block height when this channel was opened from the short_channel_id
-    pub fn block_born(&self) -> Option<u64> {
-        self.short_channel_id
-            .as_ref()?
-            .split("x")
-            .next()?
-            .parse()
-            .ok()
-    }
-
-    /// Get short_channel_id or a placeholder if not available
-    pub fn short_channel_id_display(&self) -> String {
-        self.short_channel_id
-            .clone()
-            .unwrap_or_else(|| "N/A".to_string())
-    }
-}
-
 #[derive(Deserialize, Debug, Clone)]
 pub struct Forward {
     pub in_channel: String,
@@ -651,9 +619,7 @@ pub struct SettledForward {
     pub out_msat: u64,
     pub fee_sat: u64,
     pub out_sat: u64,
-    pub fee_ppm: u64,
     pub resolved_time: DateTime<Utc>,
-    pub received_time: DateTime<Utc>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -692,11 +658,6 @@ impl TryFrom<Forward> for SettledForward {
     fn try_from(value: Forward) -> Result<Self, Self::Error> {
         let fee_msat = value.fee_msat.ok_or(())?;
         let out_msat = value.out_msat.ok_or(())?;
-        let fee_ppm = if out_msat == 0 {
-            0
-        } else {
-            ((fee_msat as f64 / out_msat as f64) * 1_000_000.0) as u64
-        };
 
         Ok(Self {
             in_channel: value.in_channel,
@@ -705,10 +666,8 @@ impl TryFrom<Forward> for SettledForward {
             out_msat,
             fee_sat: fee_msat / 1000,
             out_sat: out_msat / 1000,
-            fee_ppm,
             resolved_time: DateTime::from_timestamp(value.resolved_time.ok_or(())? as i64, 0)
                 .ok_or(())?,
-            received_time: DateTime::from_timestamp(value.received_time as i64, 0).ok_or(())?,
         })
     }
 }

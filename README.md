@@ -102,7 +102,6 @@ Export it as a self-contained JSON bundle, refreshing only when stale:
 lightdash routes export --refresh-if-stale > routes.json
 ```
 
-The legacy HTML generator remains available as `lightdash routes DIRECTORY`.
 The cache contains a versioned manifest, route-run summaries, candidate rows,
 and matching schema companions. Snapshot import gives these files stable names
 while preserving the route-analysis generation time separately from the
@@ -117,7 +116,7 @@ to reduce bandwidth usage for the JSON responses.
 
 ```bash
 lightdash --ssh name@host snapshot target/snapshot
-lightdash --ssh production-node dashboard target
+lightdash dashboard2 target/snapshot target/site2
 ```
 
 In debug builds, specifying `--ssh` overrides the bundled test data.
@@ -129,25 +128,9 @@ src/
 ├── main.rs      # CLI entry point and command routing
 ├── cmd.rs       # Lightning CLI command wrappers
 ├── common.rs    # Shared constants, structs, and utilities
-├── dashboard.rs # Main dashboard display
-├── dashboard2.rs # Experimental snapshot-driven site renderer
+├── dashboard2.rs # Snapshot-driven site renderer
 ├── snapshot.rs  # Versioned analytical snapshot export
-├── routes.rs    # Routing analysis
+├── routes.rs    # Cached route analysis
 ├── sling.rs     # Sling job execution
 └── fees.rs      # Fee adjustments
-```
-
-
-## Dashboard created HTML pages
-
-```
-directory/
-├── index.html              # Main overview page with navigation links
-├── dashboard.html          # Detailed dashboard output (terminal-style)
-├── peers/
-│   ├── index.html         # Peer directory listing with connection status
-│   └── *.html             # Individual peer detail pages
-└── channels/
-    ├── index.html         # Channel directory listing with balances
-    └── *.html             # Individual channel detail pages
 ```
