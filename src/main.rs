@@ -9,7 +9,6 @@ mod cmd;
 mod common;
 mod dashboard2;
 mod fees;
-mod funds;
 mod history;
 mod htlc;
 mod lnplus;
@@ -86,15 +85,6 @@ enum Commands {
         #[arg(long)]
         path: String,
         /// Output directory for CSV files
-        #[arg(long)]
-        output_dir: String,
-    },
-    /// Display funds information
-    Funds {
-        /// Path to directory with listfunds history
-        #[arg(long)]
-        path: String,
-        /// Output directory for charts
         #[arg(long)]
         output_dir: String,
     },
@@ -227,9 +217,6 @@ fn main() {
         }
         Commands::Channels { path, output_dir } => {
             channels::run_channels(path.as_str(), output_dir.as_str());
-        }
-        Commands::Funds { path, output_dir } => {
-            funds::run_funds(path.as_str(), output_dir.as_str());
         }
         Commands::Htlc => {
             htlc::run_htlc();
