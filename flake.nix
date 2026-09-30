@@ -63,6 +63,24 @@
               default = bin;
             };
 
+          # `nix flake check` runs the same gates AGENTS.md asks for before a change is done.
+          # Building `bin` also runs `cargo test`.
+          checks = {
+            inherit bin;
+
+            clippy = craneLib.cargoClippy (commonArgs // {
+              inherit cargoArtifacts;
+              cargoClippyExtraArgs = "--all-targets -- -D warnings";
+            });
+
+            fmt = craneLib.cargoFmt { inherit src; };
+
+            dashboard-js = pkgs.runCommand "dashboard-js-check" { nativeBuildInputs = [ pkgs.nodejs ]; } ''
+              node --check ${./src/dashboard.js}
+              touch $out
+            '';
+          };
+
           devShells.default = pkgs.mkShell {
             inputsFrom = [ bin ];
 

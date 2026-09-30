@@ -346,6 +346,9 @@ direnv exec . cargo test --quiet
 direnv exec . node --check src/dashboard.js
 ```
 
+`nix flake check` runs the same gates in a clean build (tests, clippy with
+`-D warnings`, rustfmt, and the JS syntax check).
+
 For contract changes, also generate a fresh snapshot and Dashboard site, then
 inspect `manifest.json`, the companion schema files, and at least one record
 from each affected dataset. Browser-test dynamic tables over HTTP when their
