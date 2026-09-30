@@ -387,9 +387,9 @@
             const empty = document.querySelector("#channel-events-empty");
             empty.hidden = filteredEvents.length !== 0;
             empty.textContent = events.length === 0
-                ? "No fee or connection changes were observed for this channel."
+                ? "No fee, max HTLC, or connection changes were observed for this channel."
                 : "No events match the selected setting.";
-            const caveat = "Fee timestamps come from gossip; connection timestamps are archive observations.";
+            const caveat = "Policy timestamps come from gossip; connection timestamps are archive observations. Archives are periodic, so several changes between two observations appear as one.";
             let count = `${formatNumber(filteredEvents.length, 0)} observed changes.`;
             if (settingFilter.value) {
                 count = `${formatNumber(filteredEvents.length, 0)} of ${formatNumber(events.length, 0)} observed changes match this setting.`;
@@ -409,23 +409,44 @@
             const rows = policyRows
                 .filter(row => row.direction === direction)
                 .sort(oldestFirst("observed_at"));
+            const prefix = direction === "local" ? "Local" : "Peer";
             for (let index = 1; index < rows.length; index += 1) {
                 const previous = rows[index - 1];
                 const current = rows[index];
-                if (Number(previous.fee_ppm) === Number(current.fee_ppm)) continue;
+                const timestamp = current.policy_last_updated_at || current.observed_at;
+                const localBalancePercent = liquidityAt(liquidityTimeline, current.observed_at)?.local_balance_percent;
+
                 const oldFee = Number(previous.fee_ppm);
                 const newFee = Number(current.fee_ppm);
-                const delta = newFee - oldFee;
-                events.push({
-                    kind: "fee",
-                    timestamp: current.policy_last_updated_at || current.observed_at,
-                    setting: direction === "local" ? "Local FeeRate" : "Peer FeeRate",
-                    oldValue: formatNumber(oldFee, 0),
-                    newValue: formatNumber(newFee, 0),
-                    change: oldFee === 0 ? "—" : formatSignedPercent(delta / oldFee * 100),
-                    delta,
-                    localBalancePercent: liquidityAt(liquidityTimeline, current.observed_at)?.local_balance_percent
-                });
+                if (oldFee !== newFee) {
+                    const delta = newFee - oldFee;
+                    events.push({
+                        kind: "fee",
+                        timestamp,
+                        setting: `${prefix} FeeRate`,
+                        oldValue: formatNumber(oldFee, 0),
+                        newValue: formatNumber(newFee, 0),
+                        change: oldFee === 0 ? "—" : formatSignedPercent(delta / oldFee * 100),
+                        delta,
+                        localBalancePercent
+                    });
+                }
+
+                const oldHtlcMax = Number(previous.htlc_max_msat);
+                const newHtlcMax = Number(current.htlc_max_msat);
+                if (oldHtlcMax !== newHtlcMax) {
+                    const delta = newHtlcMax - oldHtlcMax;
+                    events.push({
+                        kind: "htlc",
+                        timestamp,
+                        setting: `${prefix} Max HTLC`,
+                        oldValue: formatMsat(oldHtlcMax),
+                        newValue: formatMsat(newHtlcMax),
+                        change: oldHtlcMax === 0 ? "—" : formatSignedPercent(delta / oldHtlcMax * 100),
+                        delta,
+                        localBalancePercent
+                    });
+                }
             }
         });
 

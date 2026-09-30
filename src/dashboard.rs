@@ -435,6 +435,8 @@ fn channel_event_table() -> Markup {
                         option value="Connection" { "Connection" }
                         option value="Local FeeRate" { "Local FeeRate" }
                         option value="Peer FeeRate" { "Peer FeeRate" }
+                        option value="Local Max HTLC" { "Local Max HTLC" }
+                        option value="Peer Max HTLC" { "Peer Max HTLC" }
                     }
                 }
             }
@@ -999,6 +1001,7 @@ mod tests {
         assert!(channel.contains("id=\"channel-events\""));
         assert!(channel.contains("id=\"channel-events-setting\""));
         assert!(channel.contains("Peer FeeRate"));
+        assert!(channel.contains("Local Max HTLC"));
         let overview = fs::read_to_string(output.join("index.html")).unwrap();
         assert!(overview.contains("Local liquidity"));
         assert!(overview.contains("50.00%"));
