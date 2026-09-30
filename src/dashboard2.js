@@ -955,8 +955,8 @@
                 format: "json",
                 itemLabel: "route candidates",
                 fileBase: "lightdash-route-candidates",
-                storageKey: "lightdash.dashboard2.routeCandidateColumns.v3",
-                defaultSort: "appearances",
+                storageKey: "lightdash.dashboard2.routeCandidateColumns.v4",
+                defaultSort: "weighted_route_score",
                 defaultDirection: "desc",
                 defaultView: "recurring",
                 pageSize: 100,
@@ -965,6 +965,7 @@
                 presets: {
                     all: {},
                     recurring: { appearances: { min: 3 } },
+                    "lnplus-pool": { lnplus_pool_offer_open: { eq: "true" } },
                     "amount-1000": { amount_sat: { eq: "1000" } },
                     "amount-10000": { amount_sat: { eq: "10000" } },
                     "amount-100000": { amount_sat: { eq: "100000" } },
@@ -1076,6 +1077,14 @@
             column("amount_sat", "Probe amount", "number", { visible: true, suffix: " sats", decimals: 0 }),
             column("rank", "Rank", "number", { visible: true, decimals: 0 }),
             column("alias", "Candidate", "text", { visible: true }),
+            column("weighted_route_score", "Weighted score", "number", { visible: true, decimals: 1 }),
+            column("weighted_route_rank", "Node rank", "number", { visible: true, decimals: 0 }),
+            column("lnplus_pool_member", "LN+ pool", "boolean", { visible: true }),
+            column("lnplus_pool_offer_open", "Offer open", "boolean", { visible: true }),
+            column("lnplus_pool_credits_sat", "Pool credits", "number", { visible: true, suffix: " sats", decimals: 0 }),
+            column("lnplus_pool_min_channel_size_sat", "Pool min size", "number", { visible: true, suffix: " sats", decimals: 0 }),
+            column("lnplus_connection", "LN+ connection", "text"),
+            column("lnplus_negative_ratings", "LN+ negative ratings", "number", { decimals: 0 }),
             column("connectable", "Connectable", "boolean", { visible: true }),
             column("had_channel_in_past", "Past channel", "boolean", { visible: true }),
             column("node_id", "Node ID", "text", { monospace: true, value: row => abbreviateValue(row.node_id) }),
@@ -1649,6 +1658,8 @@
         } else if (config.datasetKey === "rebalances" && ["target_peer_alias", "source_peer_alias"].includes(item.key)) {
             const direction = item.key === "target_peer_alias" ? "target" : "source";
             appendPeerChannel(cell, rawValue, row[`${direction}_channel_id`], `${direction} channel`);
+        } else if (config.datasetKey === "route_candidates" && item.key === "alias") {
+            appendLnPlusProfile(cell, rawValue, row.lnplus_url);
         } else if (["channels", "closed_channels"].includes(config.datasetKey) && item.key === "short_channel_id") {
             const link = document.createElement("a");
             link.href = `channel.html?channel=${encodeURIComponent(row.short_channel_id || row.channel_id)}`;
@@ -1686,6 +1697,23 @@
         link.href = `channel.html?channel=${encodeURIComponent(channel)}`;
         link.textContent = "(C)";
         link.title = `Open ${channelLabel} ${channel}`;
+        link.setAttribute("aria-label", link.title);
+        cell.appendChild(link);
+    }
+
+    function appendLnPlusProfile(cell, alias, url) {
+        const label = document.createElement("span");
+        label.textContent = alias === null || alias === undefined || alias === "" ? "—" : String(alias);
+        cell.appendChild(label);
+        if (!url) return;
+
+        const link = document.createElement("a");
+        link.className = "channel-shortcut";
+        link.href = url;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = "(LN+)";
+        link.title = "Open LN+ Liquidity Pool profile";
         link.setAttribute("aria-label", link.title);
         cell.appendChild(link);
     }

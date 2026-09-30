@@ -73,6 +73,9 @@ enum Commands {
         /// Generate the snapshot without cached route analysis
         #[arg(long)]
         without_routes: bool,
+        /// Generate the snapshot without fetching LN+ Liquidity Pool offers
+        #[arg(long)]
+        without_lnplus: bool,
     },
     /// Process raw listchannels and listfunds archives into normalized history datasets
     History {
@@ -194,6 +197,7 @@ fn main() {
             without_history,
             routes_directory,
             without_routes,
+            without_lnplus,
         } => {
             let store = Store::new(availdb);
             if let Err(e) = snapshot::run_snapshot(
@@ -203,6 +207,7 @@ fn main() {
                 without_history,
                 routes_directory.as_deref(),
                 without_routes,
+                without_lnplus,
             ) {
                 error_panic!("creating snapshot in `{directory}` failed: {e}");
             }

@@ -143,6 +143,7 @@ pub(crate) fn field_tooltip(dataset_name: &str, field_name: &str) -> Option<Stri
         "settled_forwards" | "other_forwards" => forward_fields(),
         "rebalances" => rebalance_fields(),
         "rebalance_status" => rebalance_status_fields(),
+        "lnplus_pools" => lnplus_pool_fields(),
         _ => return None,
     };
     let metadata = fields.get(field_name)?;
@@ -516,6 +517,55 @@ fn rebalance_status_fields() -> BTreeMap<String, FieldMetadata> {
         ("weighted_fee_ppm".into(), source(field("integer", false, Some("ppm"), "Weighted fee rate reported by Sling."), "sling-stats.w_feeppm")),
         ("last_route_at".into(), source(field("string", true, Some("rfc3339_utc"), "Time of the most recent route attempt, or null when Sling reports `Never`."), "sling-stats.last_route_taken")),
         ("last_success_at".into(), source(field("string", true, Some("rfc3339_utc"), "Time of the most recent successful rebalance, or null when Sling reports `Never`."), "sling-stats.last_success_reb")),
+    ])
+}
+
+pub(crate) fn lnplus_pools_dataset(path: &str, record_count: usize) -> DatasetMetadata {
+    dataset(
+        path,
+        "lnplus-pools.schema.json",
+        "json-array",
+        "Nodes offering LightningNetwork.Plus Liquidity Pool credits when the snapshot was generated. Opening a channel to a pool node earns LN+ credits worth the channel size, which can be spent to receive inbound channels. Offers change within hours; see the manifest `lnplus_pools_source.fetched_at`.",
+        record_count,
+        Some("node_id"),
+        lnplus_pool_fields(),
+    )
+}
+
+fn lnplus_pool_fields() -> BTreeMap<String, FieldMetadata> {
+    BTreeMap::from([
+        ("node_id".into(), source(field("string", false, None, "Public key of the pool node."), "get_pool_nodes.pubkey")),
+        ("alias".into(), source(field("string", true, None, "Alias shown by LN+."), "get_pool_nodes.alias")),
+        ("credits_balance_sat".into(), warning(source(field("integer", false, Some("sat"), "Credits the pool node can still spend; the largest channel it can reward right now."), "get_pool_nodes.credits_balance_sats"), "Pool balances drop as other nodes open channels; confirm on LN+ before opening.")),
+        ("min_channel_size_sat".into(), source(field("integer", false, Some("sat"), "Smallest channel the pool node accepts, or 0 when it sets no minimum."), "get_pool_nodes.min_channel_size_sats")),
+        ("capacity_sat".into(), source(field("integer", false, Some("sat"), "Total public channel capacity of the pool node as reported by LN+."), "get_pool_nodes.capacity_sats")),
+        ("open_channels".into(), source(field("integer", false, Some("channel"), "Public channel count of the pool node as reported by LN+."), "get_pool_nodes.open_channels")),
+        ("connection".into(), source(field("string", false, None, "Reachability advertised on LN+: `Clearnet`, `Tor`, or `Clearnet / Tor`."), "get_pool_nodes.connection")),
+        ("clearnet_address".into(), source(field("string", true, None, "Clearnet connection string `pubkey@host:port`."), "get_pool_nodes.clearnet_address")),
+        ("tor_address".into(), source(field("string", true, None, "Tor connection string `pubkey@onion:port`."), "get_pool_nodes.tor_address")),
+        ("lnp_rank".into(), source(field("integer", false, Some("rank"), "LN+ reputation rank number; higher is better."), "get_pool_nodes.lnp_rank")),
+        ("lnp_rank_name".into(), source(field("string", false, None, "LN+ reputation rank name."), "get_pool_nodes.lnp_rank_name")),
+        ("positive_ratings".into(), source(field("integer", false, Some("rating"), "Positive LN+ ratings received by the pool node."), "get_pool_nodes.lnp_positive_ratings_received")),
+        ("negative_ratings".into(), source(field("integer", false, Some("rating"), "Negative LN+ ratings received by the pool node."), "get_pool_nodes.lnp_negative_ratings_received")),
+        ("url".into(), formula(field("string", false, None, "LN+ profile page of the pool node."), "https://lightningnetwork.plus/nodes/<node_id>")),
+        ("offer_open".into(), formula(field("boolean", false, None, "Whether the pool node can currently reward at least one channel: it has credits and they cover its own minimum channel size."), "credits_balance_sat > 0 and credits_balance_sat >= min_channel_size_sat")),
+        ("is_current_peer".into(), source(field("boolean", false, None, "Whether the local node currently has at least one channel with the pool node."), "listpeers.num_channels")),
+        ("had_channel_in_past".into(), source(field("boolean", false, None, "Whether the local node previously had a channel with the pool node."), "listclosedchannels.peer_id")),
+    ])
+}
+
+/// Fields added to imported route candidates during snapshot generation
+pub(crate) fn route_candidate_snapshot_fields() -> BTreeMap<String, FieldMetadata> {
+    BTreeMap::from([
+        ("weighted_route_score".into(), warning(formula(field("number", false, Some("score"), "Node-level route importance across all probe amounts, favoring larger payments and discounting amounts with few evaluated routes. Identical on every row of the same node."), "1000 * sum over amounts of log10(amount_sat / 100) * appearances / (evaluated_routes + 100)"), "Larger probe amounts usually evaluate far fewer routes, so their contribution remains noisy even after smoothing.")),
+        ("weighted_route_rank".into(), formula(field("integer", false, Some("rank"), "Node rank by descending weighted_route_score, shared by every row of the same node."), "1-based position of the node after sorting by descending weighted_route_score, then ascending node_id")),
+        ("lnplus_pool_member".into(), source(field("boolean", true, None, "Whether the candidate currently offers LN+ Liquidity Pool credits; null when LN+ data was not fetched."), "lnplus_pools.node_id")),
+        ("lnplus_pool_offer_open".into(), source(field("boolean", true, None, "Whether the candidate is a pool member whose credits currently cover its minimum channel size; null when LN+ data was not fetched."), "lnplus_pools.offer_open")),
+        ("lnplus_pool_credits_sat".into(), source(field("integer", true, Some("sat"), "Credits the candidate can still spend in the LN+ pool; null when it is not a pool member."), "lnplus_pools.credits_balance_sat")),
+        ("lnplus_pool_min_channel_size_sat".into(), source(field("integer", true, Some("sat"), "Smallest channel the candidate accepts for pool credits; null when it is not a pool member."), "lnplus_pools.min_channel_size_sat")),
+        ("lnplus_connection".into(), source(field("string", true, None, "LN+ advertised reachability; null when it is not a pool member."), "lnplus_pools.connection")),
+        ("lnplus_negative_ratings".into(), source(field("integer", true, Some("rating"), "Negative LN+ ratings received; null when it is not a pool member."), "lnplus_pools.negative_ratings")),
+        ("lnplus_url".into(), source(field("string", true, None, "LN+ profile page; null when it is not a pool member."), "lnplus_pools.url")),
     ])
 }
 

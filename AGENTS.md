@@ -134,7 +134,10 @@ Snapshot datasets currently include:
 - `rebalances.jsonl`: matched bookkeeper rebalance parts.
 - `route-runs.json`: coverage summaries for cached single-part route probes.
 - `route-candidates.json`: non-peer intermediaries ranked as potential channel
-  partners.
+  partners, enriched at snapshot time with a node-level `weighted_route_score`
+  and joined LN+ Liquidity Pool offer fields.
+- `lnplus-pools.json`: every node in the public LN+ Liquidity Pool when the
+  snapshot was taken.
 
 Historical archives are a separate server-side source under
 `/var/lib/lightdash/history/raw/{channels,funds}`. Rebuild their normalized
@@ -170,6 +173,15 @@ path or `--without-routes` to intentionally omit it. Test-data mode omits
 routes unless `--routes-directory` is supplied. Cache refreshes write
 generation-specific datasets and schemas before atomically replacing the
 manifest; a failed refresh reuses the last valid cache when available.
+
+Snapshots also fetch the public LN+ `get_pool_nodes` endpoint (all pages, no
+filters) from the machine running `snapshot`, not the node. Pool offers go
+stale within hours, so they are never cached; the fetch time is recorded in the
+manifest `lnplus_pools_source`. A failed fetch logs a warning and omits the
+dataset, leaving the joined route-candidate fields null. Use `--without-lnplus`
+to skip it. The route-candidate enrichment happens during snapshot import, so
+it does not change the routes cache schema or require redeploying the node
+binary.
 
 Keep settled and non-settled forwards separate. The Dashboard2 forwards page
 must load only `settled-forwards.jsonl`; failed forwards are high-volume,

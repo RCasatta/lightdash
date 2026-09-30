@@ -579,6 +579,7 @@ fn render_routes_page(
                 div class="preset-group" role="group" aria-label="Route candidate views" {
                     button type="button" class="preset-button" data-view="recurring" { "Recurring" }
                     button type="button" class="preset-button" data-view="all" { "All" }
+                    button type="button" class="preset-button" data-view="lnplus-pool" { "Open LN+ offers" }
                     button type="button" class="preset-button" data-view="amount-1000" { "1K sats" }
                     button type="button" class="preset-button" data-view="amount-10000" { "10K sats" }
                     button type="button" class="preset-button" data-view="amount-100000" { "100K sats" }
@@ -814,12 +815,14 @@ mod tests {
             rebalance_status: "rebalance-status.json".to_string(),
             history_manifest: None,
             routes_manifest: Some("routes-manifest.json".to_string()),
+            lnplus_pools: None,
         };
         let mut manifest = SnapshotManifest {
             schema_version: SCHEMA_VERSION,
             generated_at: "2026-07-16T10:00:00Z".to_string(),
             node_id: "02testnode".to_string(),
             block_height: 950_000,
+            lnplus_pools_source: None,
             datasets: build_dataset_metadata(
                 &files,
                 DatasetCounts {
