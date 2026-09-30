@@ -135,6 +135,8 @@ src/
 ├── cmd.rs               # Lightning CLI command wrappers
 ├── store.rs             # Data fetched from the node
 ├── snapshot.rs          # Versioned analytical snapshot export
+├── snapshot/
+│   └── route_partners.rs # Route scores, per-node partners, LN+ pool join
 ├── snapshot_metadata.rs # Dataset and field catalog
 ├── dashboard.rs        # Snapshot-driven site renderer (+ .js, .css)
 ├── history.rs           # Processed channel history
