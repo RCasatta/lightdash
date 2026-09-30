@@ -74,6 +74,12 @@
         document.querySelectorAll("[data-rebalance-view-presets]").forEach(group => {
             group.hidden = group.dataset.rebalanceViewPresets !== config.rebalanceView;
         });
+        document.querySelectorAll("[data-route-view-link]").forEach(link => {
+            if (link.dataset.routeViewLink === config.routeView) link.setAttribute("aria-current", "page");
+        });
+        document.querySelectorAll("[data-route-view-presets]").forEach(group => {
+            group.hidden = group.dataset.routeViewPresets !== config.routeView;
+        });
     }
 
     async function renderRebalanceSummary() {
@@ -839,6 +845,7 @@
     function tableConfig(kind, referenceTime) {
         const channelView = new URLSearchParams(location.search).get("view") === "closed" ? "closed" : "open";
         const rebalanceView = new URLSearchParams(location.search).get("view") === "history" ? "history" : "status";
+        const routeView = new URLSearchParams(location.search).get("view") === "amounts" ? "amounts" : "nodes";
         const configs = {
             channels: channelView === "closed" ? {
                 channelView,
@@ -949,7 +956,29 @@
                 },
                 columns: rebalanceStatusColumns()
             },
-            routes: {
+            routes: routeView === "nodes" ? {
+                routeView,
+                datasetKey: "route_partners",
+                source: "data/route-partners.json",
+                format: "json",
+                itemLabel: "route partners",
+                fileBase: "lightdash-route-partners",
+                storageKey: "lightdash.dashboard2.routePartnerColumns.v1",
+                defaultSort: "weighted_route_score",
+                defaultDirection: "desc",
+                defaultView: "recurring",
+                pageSize: 100,
+                emptyMessage: "No route partners match the current filters.",
+                prepare: row => row,
+                presets: {
+                    all: {},
+                    recurring: { total_appearances: { min: 3 } },
+                    "lnplus-pool": { lnplus_pool_offer_open: { eq: "true" } },
+                    "lnplus-new": { lnplus_pool_offer_open: { eq: "true" }, past_channel_count: { max: 0 } }
+                },
+                columns: routePartnerColumns()
+            } : {
+                routeView,
                 datasetKey: "route_candidates",
                 source: "data/route-candidates.json",
                 format: "json",
@@ -969,8 +998,7 @@
                     "amount-1000": { amount_sat: { eq: "1000" } },
                     "amount-10000": { amount_sat: { eq: "10000" } },
                     "amount-100000": { amount_sat: { eq: "100000" } },
-                    "amount-1000000": { amount_sat: { eq: "1000000" } },
-                    "amount-10000000": { amount_sat: { eq: "10000000" } }
+                    "amount-1000000": { amount_sat: { eq: "1000000" } }
                 },
                 columns: routeCandidateColumns()
             }
@@ -1093,6 +1121,38 @@
             column("average_fee_ppm", "Average fee", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
             column("fee_diversity", "Fee diversity", "number", { decimals: 3 }),
             column("channel_count", "Channels", "number", { visible: true, decimals: 0 })
+        ];
+    }
+
+    function routePartnerColumns() {
+        return [
+            column("weighted_route_rank", "Node rank", "number", { visible: true, decimals: 0 }),
+            column("alias", "Candidate", "text", { visible: true }),
+            column("weighted_route_score", "Weighted score", "number", { visible: true, decimals: 1 }),
+            column("total_appearances", "Appearances", "number", { visible: true, decimals: 0 }),
+            column("appearances_1k_sat", "1K", "number", { visible: true, decimals: 0 }),
+            column("appearances_10k_sat", "10K", "number", { visible: true, decimals: 0 }),
+            column("appearances_100k_sat", "100K", "number", { visible: true, decimals: 0 }),
+            column("appearances_1m_sat", "1M", "number", { visible: true, decimals: 0 }),
+            column("largest_amount_sat", "Largest probe", "number", { suffix: " sats", decimals: 0 }),
+            column("average_fee_ppm", "Average fee", "number", { visible: true, transform: ppmToInteger, suffix: " ppm", decimals: 0 }),
+            column("channel_count", "Channels", "number", { decimals: 0 }),
+            column("connectable", "Connectable", "boolean", { visible: true }),
+            column("past_channel_count", "Past channels", "number", { visible: true, decimals: 0 }),
+            column("past_net_revenue_msat", "Past net revenue", "number", { visible: true, transform: msatToSat, suffix: " sats", decimals: 0, signedClass: true }),
+            column("past_net_capacity_return_percent", "Past net cap ret", "number", { visible: true, suffix: "%", decimals: 2, signedClass: true }),
+            column("past_lifetime_days", "Past lifetime", "number", { suffix: " d", decimals: 0 }),
+            column("past_capacity_msat", "Past capacity", "number", { transform: msatToSat, suffix: " sats", decimals: 0 }),
+            column("past_local_closes", "Closed by us", "number", { decimals: 0 }),
+            column("past_remote_closes", "Closed by peer", "number", { visible: true, decimals: 0 }),
+            column("lnplus_pool_offer_open", "Offer open", "boolean", { visible: true }),
+            column("lnplus_pool_credits_sat", "Pool credits", "number", { visible: true, suffix: " sats", decimals: 0 }),
+            column("lnplus_pool_min_channel_size_sat", "Pool min size", "number", { visible: true, suffix: " sats", decimals: 0 }),
+            column("lnplus_pool_member", "LN+ pool", "boolean"),
+            column("lnplus_connection", "LN+ connection", "text"),
+            column("lnplus_negative_ratings", "LN+ negative ratings", "number", { decimals: 0 }),
+            column("fee_diversity", "Fee diversity", "number", { decimals: 3 }),
+            column("node_id", "Node ID", "text", { monospace: true, value: row => abbreviateValue(row.node_id) })
         ];
     }
 
@@ -1658,7 +1718,7 @@
         } else if (config.datasetKey === "rebalances" && ["target_peer_alias", "source_peer_alias"].includes(item.key)) {
             const direction = item.key === "target_peer_alias" ? "target" : "source";
             appendPeerChannel(cell, rawValue, row[`${direction}_channel_id`], `${direction} channel`);
-        } else if (config.datasetKey === "route_candidates" && item.key === "alias") {
+        } else if (["route_candidates", "route_partners"].includes(config.datasetKey) && item.key === "alias") {
             appendLnPlusProfile(cell, rawValue, row.lnplus_url);
         } else if (["channels", "closed_channels"].includes(config.datasetKey) && item.key === "short_channel_id") {
             const link = document.createElement("a");
@@ -1859,7 +1919,8 @@
         const params = new URLSearchParams();
         if (config.channelView === "closed") params.set("view", "closed");
         if (config.rebalanceView === "history") params.set("view", "history");
-        const hasDatasetView = config.channelView === "closed" || config.rebalanceView === "history";
+        if (config.routeView === "amounts") params.set("view", "amounts");
+        const hasDatasetView = config.channelView === "closed" || config.rebalanceView === "history" || config.routeView === "amounts";
         if (state.view !== defaultView && state.view !== "custom") {
             params.set(hasDatasetView ? "preset" : "view", state.view);
         }

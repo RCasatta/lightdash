@@ -17,7 +17,7 @@ const ROUTE_MAX_FEE_PPM: u64 = 10_000;
 const ROUTE_MIN_MAX_FEE_MSAT: u64 = 5_000;
 const ROUTES_SCHEMA_VERSION: u32 = 8;
 const ROUTES_MAX_AGE_SECONDS: i64 = 24 * 60 * 60;
-const ROUTE_AMOUNTS_SAT: [u64; 5] = [1_000, 10_000, 100_000, 1_000_000, 10_000_000];
+pub(crate) const ROUTE_AMOUNTS_SAT: [u64; 4] = [1_000, 10_000, 100_000, 1_000_000];
 const ROUTE_AMOUNT_BUDGET: StdDuration = StdDuration::from_secs(10 * 60);
 const ROUTE_TOTAL_BUDGET: StdDuration = StdDuration::from_secs(55 * 60);
 const ROUTE_PROGRESS_INTERVAL: usize = 100;
@@ -997,7 +997,6 @@ fn render_routes_page(
                             li { a href="routes-10000.html" { (format!("{} sats (0.0001 BTC)", format_sats(10_000))) } }
                             li { a href="routes-100000.html" { (format!("{} sats (0.001 BTC)", format_sats(100_000))) } }
                             li { a href="routes-1000000.html" { (format!("{} sats (0.01 BTC)", format_sats(1_000_000))) } }
-                            li { a href="routes-10000000.html" { (format!("{} sats (0.1 BTC)", format_sats(10_000_000))) } }
                         }
                     }
 

@@ -13,12 +13,12 @@ use crate::history;
 use crate::lnplus::{self, PoolNode, PoolNodesSource};
 use crate::routes::{self, RouteCandidate, RouteRun};
 use crate::snapshot_metadata::{
-    build_dataset_metadata, lnplus_pools_dataset, route_candidate_snapshot_fields, DatasetCounts,
-    DatasetMetadata,
+    build_dataset_metadata, lnplus_pools_dataset, route_candidate_snapshot_fields,
+    route_partners_dataset, DatasetCounts, DatasetMetadata,
 };
 use crate::store::{RebalancePart, Store};
 
-pub(crate) const SCHEMA_VERSION: u32 = 28;
+pub(crate) const SCHEMA_VERSION: u32 = 30;
 const REBALANCE_SOURCE_90D_SECONDS: u64 = 90 * 24 * 60 * 60;
 
 #[derive(Deserialize, Serialize)]
@@ -270,6 +270,39 @@ struct RouteCandidateSnapshot {
     candidate: RouteCandidate,
     weighted_route_score: f64,
     weighted_route_rank: usize,
+    #[serde(flatten)]
+    lnplus: LnPlusOfferFields,
+}
+
+#[derive(Serialize)]
+struct RoutePartnerSnapshot {
+    node_id: String,
+    alias: String,
+    connectable: bool,
+    channel_count: u64,
+    average_fee_ppm: f64,
+    fee_diversity: f64,
+    weighted_route_score: f64,
+    weighted_route_rank: usize,
+    total_appearances: u64,
+    appearances_1k_sat: u64,
+    appearances_10k_sat: u64,
+    appearances_100k_sat: u64,
+    appearances_1m_sat: u64,
+    largest_amount_sat: u64,
+    past_channel_count: usize,
+    past_capacity_msat: u64,
+    past_lifetime_days: Option<i64>,
+    past_net_revenue_msat: Option<i128>,
+    past_net_capacity_return_percent: Option<f64>,
+    past_local_closes: usize,
+    past_remote_closes: usize,
+    #[serde(flatten)]
+    lnplus: LnPlusOfferFields,
+}
+
+#[derive(Serialize)]
+struct LnPlusOfferFields {
     lnplus_pool_member: Option<bool>,
     lnplus_pool_offer_open: Option<bool>,
     lnplus_pool_credits_sat: Option<u64>,
@@ -394,15 +427,41 @@ pub fn run_snapshot(
             }
         }
     };
+    let forward_metrics = aggregate_channel_forwards(store);
+    let rebalance_metrics = aggregate_channel_rebalances(store);
+    let closed_channels: Vec<_> = store
+        .closed_channels
+        .closedchannels
+        .iter()
+        .map(|channel| {
+            build_closed_channel_snapshot(store, channel, &forward_metrics, &rebalance_metrics)
+        })
+        .collect();
     if include_routes {
         let candidates_path = directory.join(&datasets["route_candidates"].path);
-        let candidates: Vec<RouteCandidate> = read_json(&candidates_path)?;
+        let mut candidates: Vec<RouteCandidate> = read_json(&candidates_path)?;
         let runs_path = directory.join(&datasets["route_runs"].path);
-        let runs: Vec<RouteRun> = read_json(&runs_path)?;
-        let candidates = enrich_route_candidates(candidates, &runs, lnplus_pools.as_deref());
+        let mut runs: Vec<RouteRun> = read_json(&runs_path)?;
+        // Caches built by an older node binary may still contain retired probe amounts.
+        runs.retain(|run| routes::ROUTE_AMOUNTS_SAT.contains(&run.amount_sat));
+        candidates.retain(|candidate| routes::ROUTE_AMOUNTS_SAT.contains(&candidate.amount_sat));
+        write_json(&runs_path, &runs)?;
+        let runs_dataset = datasets
+            .get_mut("route_runs")
+            .expect("imported routes include route_runs");
+        runs_dataset.record_count = runs.len();
+        let (candidates, partners) =
+            build_route_snapshots(candidates, &runs, lnplus_pools.as_deref(), &closed_channels);
+        let partners_path = "route-partners.json".to_string();
+        write_json(directory.join(&partners_path), &partners)?;
+        datasets.insert(
+            "route_partners".to_string(),
+            route_partners_dataset(&partners_path, partners.len()),
+        );
         let candidates_dataset = datasets
             .get_mut("route_candidates")
             .expect("imported routes include route_candidates");
+        candidates_dataset.record_count = candidates.len();
         candidates_dataset
             .fields
             .extend(route_candidate_snapshot_fields());
@@ -429,8 +488,6 @@ pub fn run_snapshot(
     let summary = build_summary(store, &channel_funds_history);
     write_json(directory.join("summary.json"), &summary)?;
 
-    let forward_metrics = aggregate_channel_forwards(store);
-    let rebalance_metrics = aggregate_channel_rebalances(store);
     let channels: Vec<_> = store
         .funds
         .channels
@@ -439,14 +496,6 @@ pub fn run_snapshot(
         .collect();
     write_json(directory.join("channels.json"), &channels)?;
 
-    let closed_channels: Vec<_> = store
-        .closed_channels
-        .closedchannels
-        .iter()
-        .map(|channel| {
-            build_closed_channel_snapshot(store, channel, &forward_metrics, &rebalance_metrics)
-        })
-        .collect();
     write_json(directory.join("closed-channels.json"), &closed_channels)?;
 
     write_json_lines(
@@ -1171,11 +1220,29 @@ fn weighted_route_scores(candidates: &[RouteCandidate], runs: &[RouteRun]) -> Ha
     scores
 }
 
-fn enrich_route_candidates(
+fn lnplus_offer_fields(
+    pools: Option<&HashMap<&str, &LnPlusPoolSnapshot>>,
+    node_id: &str,
+) -> LnPlusOfferFields {
+    let pool = pools.and_then(|pools| pools.get(node_id).copied());
+    LnPlusOfferFields {
+        lnplus_pool_member: pools.map(|_| pool.is_some()),
+        lnplus_pool_offer_open: pools.map(|_| pool.is_some_and(|pool| pool.offer_open)),
+        lnplus_pool_credits_sat: pool.map(|pool| pool.credits_balance_sat),
+        lnplus_pool_min_channel_size_sat: pool.map(|pool| pool.min_channel_size_sat),
+        lnplus_connection: pool.map(|pool| pool.connection.clone()),
+        lnplus_negative_ratings: pool.map(|pool| pool.negative_ratings),
+        lnplus_url: pool.map(|pool| pool.url.clone()),
+    }
+}
+
+/// Per-amount candidate rows enriched with node-level fields, plus one row per candidate node
+fn build_route_snapshots(
     candidates: Vec<RouteCandidate>,
     runs: &[RouteRun],
     lnplus_pools: Option<&[LnPlusPoolSnapshot]>,
-) -> Vec<RouteCandidateSnapshot> {
+    closed_channels: &[ClosedChannelSnapshot],
+) -> (Vec<RouteCandidateSnapshot>, Vec<RoutePartnerSnapshot>) {
     let scores = weighted_route_scores(&candidates, runs);
     let mut ranked: Vec<(&String, &f64)> = scores.iter().collect();
     ranked.sort_by(|a, b| b.1.total_cmp(a.1).then_with(|| a.0.cmp(b.0)));
@@ -1190,29 +1257,101 @@ fn enrich_route_candidates(
             .map(|pool| (pool.node_id.as_str(), pool))
             .collect()
     });
+    let mut closed_by_peer: HashMap<&str, Vec<&ClosedChannelSnapshot>> = HashMap::new();
+    for channel in closed_channels {
+        if let Some(peer_id) = channel.peer_id.as_deref() {
+            closed_by_peer.entry(peer_id).or_default().push(channel);
+        }
+    }
 
-    candidates
+    let mut partners: BTreeMap<usize, RoutePartnerSnapshot> = BTreeMap::new();
+    for candidate in &candidates {
+        let rank = ranks[candidate.node_id.as_str()];
+        let partner = partners.entry(rank).or_insert_with(|| {
+            let past = closed_by_peer
+                .get(candidate.node_id.as_str())
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            new_route_partner(candidate, scores[&candidate.node_id], rank, past, {
+                lnplus_offer_fields(pools.as_ref(), &candidate.node_id)
+            })
+        });
+        partner.total_appearances += candidate.appearances;
+        if candidate.appearances > 0 {
+            partner.largest_amount_sat = partner.largest_amount_sat.max(candidate.amount_sat);
+        }
+        match candidate.amount_sat {
+            1_000 => partner.appearances_1k_sat += candidate.appearances,
+            10_000 => partner.appearances_10k_sat += candidate.appearances,
+            100_000 => partner.appearances_100k_sat += candidate.appearances,
+            1_000_000 => partner.appearances_1m_sat += candidate.appearances,
+            _ => {}
+        }
+    }
+
+    let candidates = candidates
         .into_iter()
-        .map(|candidate| {
-            let pool = pools
-                .as_ref()
-                .and_then(|pools| pools.get(candidate.node_id.as_str()).copied());
-            RouteCandidateSnapshot {
-                weighted_route_score: scores[&candidate.node_id],
-                weighted_route_rank: ranks[candidate.node_id.as_str()],
-                lnplus_pool_member: pools.as_ref().map(|_| pool.is_some()),
-                lnplus_pool_offer_open: pools
-                    .as_ref()
-                    .map(|_| pool.is_some_and(|pool| pool.offer_open)),
-                lnplus_pool_credits_sat: pool.map(|pool| pool.credits_balance_sat),
-                lnplus_pool_min_channel_size_sat: pool.map(|pool| pool.min_channel_size_sat),
-                lnplus_connection: pool.map(|pool| pool.connection.clone()),
-                lnplus_negative_ratings: pool.map(|pool| pool.negative_ratings),
-                lnplus_url: pool.map(|pool| pool.url.clone()),
-                candidate,
-            }
+        .map(|candidate| RouteCandidateSnapshot {
+            weighted_route_score: scores[&candidate.node_id],
+            weighted_route_rank: ranks[candidate.node_id.as_str()],
+            lnplus: lnplus_offer_fields(pools.as_ref(), &candidate.node_id),
+            candidate,
         })
-        .collect()
+        .collect();
+    (candidates, partners.into_values().collect())
+}
+
+fn new_route_partner(
+    candidate: &RouteCandidate,
+    weighted_route_score: f64,
+    weighted_route_rank: usize,
+    past: &[&ClosedChannelSnapshot],
+    lnplus: LnPlusOfferFields,
+) -> RoutePartnerSnapshot {
+    let aged: Vec<(&ClosedChannelSnapshot, i64)> = past
+        .iter()
+        .filter_map(|channel| Some((*channel, channel.age_days?)))
+        .collect();
+    let capacity_years: f64 = aged
+        .iter()
+        .map(|(channel, days)| channel.capacity_msat as f64 * *days as f64 / 365.0)
+        .sum();
+    let aged_revenue: i128 = aged
+        .iter()
+        .map(|(channel, _)| channel.net_revenue_msat)
+        .sum();
+    RoutePartnerSnapshot {
+        node_id: candidate.node_id.clone(),
+        alias: candidate.alias.clone(),
+        connectable: candidate.connectable,
+        channel_count: candidate.channel_count,
+        average_fee_ppm: candidate.average_fee_ppm,
+        fee_diversity: candidate.fee_diversity,
+        weighted_route_score,
+        weighted_route_rank,
+        total_appearances: 0,
+        appearances_1k_sat: 0,
+        appearances_10k_sat: 0,
+        appearances_100k_sat: 0,
+        appearances_1m_sat: 0,
+        largest_amount_sat: 0,
+        past_channel_count: past.len(),
+        past_capacity_msat: past.iter().map(|channel| channel.capacity_msat).sum(),
+        past_lifetime_days: (!aged.is_empty()).then(|| aged.iter().map(|(_, days)| days).sum()),
+        past_net_revenue_msat: (!past.is_empty())
+            .then(|| past.iter().map(|channel| channel.net_revenue_msat).sum()),
+        past_net_capacity_return_percent: (capacity_years > 0.0)
+            .then(|| aged_revenue as f64 / capacity_years * 100.0),
+        past_local_closes: past
+            .iter()
+            .filter(|channel| channel.closer.as_deref() == Some("local"))
+            .count(),
+        past_remote_closes: past
+            .iter()
+            .filter(|channel| channel.closer.as_deref() == Some("remote"))
+            .count(),
+        lnplus,
+    }
 }
 
 fn read_json<T: DeserializeOwned>(path: &Path) -> io::Result<T> {
@@ -1260,9 +1399,9 @@ mod tests {
     use crate::history::ChannelFundsHistoryPoint;
 
     use super::{
-        annualized_capacity_return_percent, average_channel_funds, enrich_route_candidates,
+        annualized_capacity_return_percent, average_channel_funds, build_route_snapshots,
         is_node_id, is_pending_channel_balance, percentage, ratio_ppm, route_amount_weight,
-        timestamp_in_lookback, weighted_route_scores, LnPlusPoolSnapshot,
+        timestamp_in_lookback, weighted_route_scores, ClosedChannelSnapshot, LnPlusPoolSnapshot,
     };
     use crate::routes::{RouteCandidate, RouteRun};
 
@@ -1456,7 +1595,7 @@ mod tests {
         ];
         let pools = [lnplus_pool("a", 5_000_000)];
 
-        let enriched = enrich_route_candidates(candidates, &runs, Some(&pools));
+        let (enriched, _) = build_route_snapshots(candidates, &runs, Some(&pools), &[]);
 
         assert_eq!(enriched[0].weighted_route_rank, 2);
         assert_eq!(enriched[1].weighted_route_rank, 2);
@@ -1465,13 +1604,13 @@ mod tests {
             enriched[1].weighted_route_score
         );
         assert_eq!(enriched[2].weighted_route_rank, 1);
-        assert_eq!(enriched[0].lnplus_pool_member, Some(true));
-        assert_eq!(enriched[0].lnplus_pool_offer_open, Some(true));
-        assert_eq!(enriched[2].lnplus_pool_offer_open, Some(false));
-        assert_eq!(enriched[0].lnplus_pool_credits_sat, Some(5_000_000));
-        assert_eq!(enriched[0].lnplus_negative_ratings, Some(2));
-        assert_eq!(enriched[2].lnplus_pool_member, Some(false));
-        assert_eq!(enriched[2].lnplus_pool_credits_sat, None);
+        assert_eq!(enriched[0].lnplus.lnplus_pool_member, Some(true));
+        assert_eq!(enriched[0].lnplus.lnplus_pool_offer_open, Some(true));
+        assert_eq!(enriched[2].lnplus.lnplus_pool_offer_open, Some(false));
+        assert_eq!(enriched[0].lnplus.lnplus_pool_credits_sat, Some(5_000_000));
+        assert_eq!(enriched[0].lnplus.lnplus_negative_ratings, Some(2));
+        assert_eq!(enriched[2].lnplus.lnplus_pool_member, Some(false));
+        assert_eq!(enriched[2].lnplus.lnplus_pool_credits_sat, None);
 
         let json = serde_json::to_value(&enriched[0]).unwrap();
         assert_eq!(json["node_id"], "a");
@@ -1480,14 +1619,73 @@ mod tests {
 
     #[test]
     fn enriched_candidates_report_unknown_pool_membership_without_lnplus() {
-        let enriched = enrich_route_candidates(
+        let (enriched, _) = build_route_snapshots(
             vec![route_candidate(1_000, "a", 1)],
             &[route_run(1_000, 10)],
             None,
+            &[],
         );
 
-        assert_eq!(enriched[0].lnplus_pool_member, None);
-        assert_eq!(enriched[0].lnplus_url, None);
+        assert_eq!(enriched[0].lnplus.lnplus_pool_member, None);
+        assert_eq!(enriched[0].lnplus.lnplus_url, None);
+    }
+
+    fn closed_channel(peer_id: &str, closer: &str, age_days: i64) -> ClosedChannelSnapshot {
+        ClosedChannelSnapshot {
+            channel_id: format!("{peer_id}-{closer}-{age_days}"),
+            short_channel_id: None,
+            peer_id: Some(peer_id.to_string()),
+            peer_alias: None,
+            opener: "local".to_string(),
+            closer: Some(closer.to_string()),
+            capacity_msat: 1_000_000_000,
+            final_local_balance_msat: 0,
+            total_htlcs_sent: None,
+            funding_txid: String::new(),
+            last_commitment_txid: None,
+            last_stable_connection_at: None,
+            close_cause: "user".to_string(),
+            age_days: Some(age_days),
+            lease_fee_earnings_msat: 0,
+            lease_fee_cost_msat: 0,
+            net_revenue_msat: 10_000_000,
+            net_capacity_return_percent: None,
+            indirect_capacity_contribution_percent: None,
+            combined_capacity_return_percent: None,
+        }
+    }
+
+    #[test]
+    fn route_partners_group_amounts_and_past_channels_by_node() {
+        let runs = [route_run(1_000, 100), route_run(100_000, 100)];
+        let candidates = vec![
+            route_candidate(1_000, "a", 3),
+            route_candidate(100_000, "a", 2),
+            route_candidate(1_000, "b", 40),
+        ];
+        let closed = [
+            closed_channel("a", "local", 365),
+            closed_channel("a", "remote", 365),
+        ];
+
+        let (_, partners) = build_route_snapshots(candidates, &runs, None, &closed);
+
+        assert_eq!(partners.len(), 2);
+        assert_eq!(partners[0].node_id, "b");
+        assert_eq!(partners[0].weighted_route_rank, 1);
+        assert_eq!(partners[0].past_channel_count, 0);
+        assert_eq!(partners[0].past_net_revenue_msat, None);
+        let a = &partners[1];
+        assert_eq!(a.total_appearances, 5);
+        assert_eq!(a.appearances_1k_sat, 3);
+        assert_eq!(a.appearances_100k_sat, 2);
+        assert_eq!(a.largest_amount_sat, 100_000);
+        assert_eq!(a.past_channel_count, 2);
+        assert_eq!(a.past_lifetime_days, Some(730));
+        assert_eq!(a.past_net_revenue_msat, Some(20_000_000));
+        assert!((a.past_net_capacity_return_percent.unwrap() - 1.0).abs() < 1e-9);
+        assert_eq!((a.past_local_closes, a.past_remote_closes), (1, 1));
+        assert_eq!(a.lnplus.lnplus_pool_member, None);
     }
 
     #[test]

@@ -68,11 +68,17 @@ pub fn run_dashboard2(snapshot_directory: &str, output_directory: &str) -> Resul
     {
         let runs_path = snapshot_file(snapshot_directory, &runs_dataset.path)?;
         let candidates_path = snapshot_file(snapshot_directory, &candidates_dataset.path)?;
+        let partners_dataset = manifest
+            .datasets
+            .get("route_partners")
+            .ok_or_else(|| "snapshot route datasets are missing route_partners".to_string())?;
+        let partners_path = snapshot_file(snapshot_directory, &partners_dataset.path)?;
         copy_file(&runs_path, &data_directory.join("route-runs.json"))?;
         copy_file(
             &candidates_path,
             &data_directory.join("route-candidates.json"),
         )?;
+        copy_file(&partners_path, &data_directory.join("route-partners.json"))?;
         let runs: Vec<RouteRun> = read_json(&runs_path, "route runs")?;
         let routes_manifest_path = manifest
             .files
@@ -118,7 +124,7 @@ pub fn run_dashboard2(snapshot_directory: &str, output_directory: &str) -> Resul
         copy_file(&data_source, &data_destination)?;
         copy_file(&schema_source, &schema_destination)?;
     }
-    for dataset_key in ["route_runs", "route_candidates"] {
+    for dataset_key in ["route_runs", "route_candidates", "route_partners"] {
         let Some(dataset) = manifest.datasets.get(dataset_key) else {
             continue;
         };
@@ -571,20 +577,31 @@ fn render_routes_page(
         (dynamic_table_panel(
             "Routes",
             "routes",
-            "data/route-candidates.json",
+            "data/route-partners.json",
             "json",
             "Loading route candidates…",
             true,
             html! {
-                div class="preset-group" role="group" aria-label="Route candidate views" {
-                    button type="button" class="preset-button" data-view="recurring" { "Recurring" }
-                    button type="button" class="preset-button" data-view="all" { "All" }
-                    button type="button" class="preset-button" data-view="lnplus-pool" { "Open LN+ offers" }
-                    button type="button" class="preset-button" data-view="amount-1000" { "1K sats" }
-                    button type="button" class="preset-button" data-view="amount-10000" { "10K sats" }
-                    button type="button" class="preset-button" data-view="amount-100000" { "100K sats" }
-                    button type="button" class="preset-button" data-view="amount-1000000" { "1M sats" }
-                    button type="button" class="preset-button" data-view="amount-10000000" { "10M sats" }
+                div class="channel-view-controls" {
+                    nav class="dataset-switch" aria-label="Route candidate dataset" {
+                        a href="routes.html" data-route-view-link="nodes" { "By node" }
+                        a href="routes.html?view=amounts" data-route-view-link="amounts" { "By probe amount" }
+                    }
+                    div class="preset-group" role="group" aria-label="Route partner views" data-route-view-presets="nodes" {
+                        button type="button" class="preset-button" data-view="recurring" { "Recurring" }
+                        button type="button" class="preset-button" data-view="all" { "All" }
+                        button type="button" class="preset-button" data-view="lnplus-pool" { "Open LN+ offers" }
+                        button type="button" class="preset-button" data-view="lnplus-new" { "Open offers, never connected" }
+                    }
+                    div class="preset-group" role="group" aria-label="Route candidate views" data-route-view-presets="amounts" hidden {
+                        button type="button" class="preset-button" data-view="recurring" { "Recurring" }
+                        button type="button" class="preset-button" data-view="all" { "All" }
+                        button type="button" class="preset-button" data-view="lnplus-pool" { "Open LN+ offers" }
+                        button type="button" class="preset-button" data-view="amount-1000" { "1K sats" }
+                        button type="button" class="preset-button" data-view="amount-10000" { "10K sats" }
+                        button type="button" class="preset-button" data-view="amount-100000" { "100K sats" }
+                        button type="button" class="preset-button" data-view="amount-1000000" { "1M sats" }
+                    }
                 }
             }
         ))
@@ -849,6 +866,10 @@ mod tests {
             },
         );
         manifest.datasets.insert(
+            "route_partners".to_string(),
+            crate::snapshot_metadata::route_partners_dataset("route-partners.json", 1),
+        );
+        manifest.datasets.insert(
             "route_candidates".to_string(),
             DatasetMetadata {
                 path: "route-candidates.json".to_string(),
@@ -930,6 +951,11 @@ mod tests {
         )
         .unwrap();
         fs::write(
+            snapshot.join("route-partners.json"),
+            br#"[{"node_id":"02candidate","alias":"candidate","weighted_route_score":10.0,"weighted_route_rank":1}]"#,
+        )
+        .unwrap();
+        fs::write(
             snapshot.join("routes-manifest.json"),
             br#"{"schema_version":8,"generated_at":"2026-07-16T09:00:00Z","node_id":"02testnode","source":{"amounts_sat":[1000],"sample_seed_utc_day":20000,"randomized_destination_order":true,"per_amount_budget_seconds":600,"total_budget_seconds":3300,"single_path_endpoint_capacity_filter":true,"max_fee_ppm":10000,"minimum_max_fee_msat":5000,"layers":["auto.localchans","auto.sourcefree","xpay"],"final_cltv":9,"maxdelay":2016,"maxparts":1},"datasets":{}}"#,
         )
@@ -962,6 +988,8 @@ mod tests {
         assert!(output.join("data/rebalance-status.json").is_file());
         assert!(output.join("data/route-runs.json").is_file());
         assert!(output.join("data/route-candidates.json").is_file());
+        assert!(output.join("data/route-partners.json").is_file());
+        assert!(output.join("data/route-partners.schema.json").is_file());
         assert!(output.join("data/summary.schema.json").is_file());
         assert!(output.join("data/channels.schema.json").is_file());
         assert!(output.join("data/closed-channels.schema.json").is_file());

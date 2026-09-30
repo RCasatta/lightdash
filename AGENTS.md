@@ -136,6 +136,9 @@ Snapshot datasets currently include:
 - `route-candidates.json`: non-peer intermediaries ranked as potential channel
   partners, enriched at snapshot time with a node-level `weighted_route_score`
   and joined LN+ Liquidity Pool offer fields.
+- `route-partners.json`: one row per route candidate node with appearances per
+  probe amount, the weighted score, aggregated past-channel results, and LN+
+  offer fields. This is the default Dashboard2 Routes view.
 - `lnplus-pools.json`: every node in the public LN+ Liquidity Pool when the
   snapshot was taken.
 

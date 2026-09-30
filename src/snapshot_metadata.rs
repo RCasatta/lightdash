@@ -556,9 +556,20 @@ fn lnplus_pool_fields() -> BTreeMap<String, FieldMetadata> {
 
 /// Fields added to imported route candidates during snapshot generation
 pub(crate) fn route_candidate_snapshot_fields() -> BTreeMap<String, FieldMetadata> {
+    let mut fields = weighted_route_fields();
+    fields.extend(lnplus_offer_fields());
+    fields
+}
+
+fn weighted_route_fields() -> BTreeMap<String, FieldMetadata> {
     BTreeMap::from([
         ("weighted_route_score".into(), warning(formula(field("number", false, Some("score"), "Node-level route importance across all probe amounts, favoring larger payments and discounting amounts with few evaluated routes. Identical on every row of the same node."), "1000 * sum over amounts of log10(amount_sat / 100) * appearances / (evaluated_routes + 100)"), "Larger probe amounts usually evaluate far fewer routes, so their contribution remains noisy even after smoothing.")),
         ("weighted_route_rank".into(), formula(field("integer", false, Some("rank"), "Node rank by descending weighted_route_score, shared by every row of the same node."), "1-based position of the node after sorting by descending weighted_route_score, then ascending node_id")),
+    ])
+}
+
+fn lnplus_offer_fields() -> BTreeMap<String, FieldMetadata> {
+    BTreeMap::from([
         ("lnplus_pool_member".into(), source(field("boolean", true, None, "Whether the candidate currently offers LN+ Liquidity Pool credits; null when LN+ data was not fetched."), "lnplus_pools.node_id")),
         ("lnplus_pool_offer_open".into(), source(field("boolean", true, None, "Whether the candidate is a pool member whose credits currently cover its minimum channel size; null when LN+ data was not fetched."), "lnplus_pools.offer_open")),
         ("lnplus_pool_credits_sat".into(), source(field("integer", true, Some("sat"), "Credits the candidate can still spend in the LN+ pool; null when it is not a pool member."), "lnplus_pools.credits_balance_sat")),
@@ -567,6 +578,45 @@ pub(crate) fn route_candidate_snapshot_fields() -> BTreeMap<String, FieldMetadat
         ("lnplus_negative_ratings".into(), source(field("integer", true, Some("rating"), "Negative LN+ ratings received; null when it is not a pool member."), "lnplus_pools.negative_ratings")),
         ("lnplus_url".into(), source(field("string", true, None, "LN+ profile page; null when it is not a pool member."), "lnplus_pools.url")),
     ])
+}
+
+pub(crate) fn route_partners_dataset(path: &str, record_count: usize) -> DatasetMetadata {
+    dataset(
+        path,
+        "route-partners.schema.json",
+        "json-array",
+        "One row per non-peer route candidate node, combining its appearances across all probe amounts, the weighted route score, results of past channels with it, and its current LN+ Liquidity Pool offer. Ordered by weighted_route_rank.",
+        record_count,
+        Some("node_id"),
+        route_partner_fields(),
+    )
+}
+
+fn route_partner_fields() -> BTreeMap<String, FieldMetadata> {
+    let mut fields = BTreeMap::from([
+        ("node_id".into(), source(field("string", false, None, "Public key of the non-peer intermediary node."), "route_candidates.node_id")),
+        ("alias".into(), source(field("string", false, None, "Gossip alias advertised by the candidate node."), "route_candidates.alias")),
+        ("connectable".into(), source(field("boolean", false, None, "Whether the candidate advertises at least one network address in its current node announcement."), "route_candidates.connectable")),
+        ("channel_count".into(), source(field("integer", false, Some("channel"), "Number of public channel records associated with the candidate."), "route_candidates.channel_count")),
+        ("average_fee_ppm".into(), source(field("number", false, Some("ppm"), "Mean advertised proportional fee across the candidate's public channel directions."), "route_candidates.average_fee_ppm")),
+        ("fee_diversity".into(), source(field("number", false, Some("ratio"), "Existing fee-diversity score derived from the candidate's public channel policies."), "route_candidates.fee_diversity")),
+        ("total_appearances".into(), aggregation(field("integer", false, Some("route"), "Successful route probes containing the node, summed over all probe amounts."), "sum(route_candidates.appearances) per node_id")),
+        ("appearances_1k_sat".into(), source(field("integer", false, Some("route"), "Appearances in 1,000 sat probes; 0 when absent."), "route_candidates.appearances where amount_sat = 1000")),
+        ("appearances_10k_sat".into(), source(field("integer", false, Some("route"), "Appearances in 10,000 sat probes; 0 when absent."), "route_candidates.appearances where amount_sat = 10000")),
+        ("appearances_100k_sat".into(), source(field("integer", false, Some("route"), "Appearances in 100,000 sat probes; 0 when absent."), "route_candidates.appearances where amount_sat = 100000")),
+        ("appearances_1m_sat".into(), source(field("integer", false, Some("route"), "Appearances in 1,000,000 sat probes; 0 when absent."), "route_candidates.appearances where amount_sat = 1000000")),
+        ("largest_amount_sat".into(), formula(field("integer", false, Some("sat"), "Largest probe amount whose routes contained the node."), "max(amount_sat) where appearances > 0")),
+        ("past_channel_count".into(), source(field("integer", false, Some("channel"), "Closed local channels with this node."), "closed_channels.peer_id")),
+        ("past_capacity_msat".into(), aggregation(field("integer", false, Some("msat"), "Capacity of all closed channels with this node."), "sum(closed_channels.capacity_msat)")),
+        ("past_lifetime_days".into(), aggregation(field("integer", true, Some("day"), "Combined lifetime of closed channels with this node whose lifetime is known; null when none is known."), "sum(closed_channels.age_days)")),
+        ("past_net_revenue_msat".into(), aggregation(field("integer", true, Some("msat"), "Net revenue attributed to closed channels with this node; null when there were none."), "sum(closed_channels.net_revenue_msat)")),
+        ("past_net_capacity_return_percent".into(), warning(formula(field("number", true, Some("percent_per_year"), "Annualized net return on capacity across closed channels with this node, weighting each channel by capacity and lifetime; null without a known lifetime."), "100 * sum(net_revenue_msat) / sum(capacity_msat * age_days / 365) over channels with known age_days"), "Excludes indirect capacity contribution; compare with closed_channels.combined_capacity_return_percent for the full attribution.")),
+        ("past_local_closes".into(), source(field("integer", false, Some("channel"), "Closed channels with this node that the local node closed."), "closed_channels.closer = local")),
+        ("past_remote_closes".into(), source(field("integer", false, Some("channel"), "Closed channels with this node that the peer closed."), "closed_channels.closer = remote")),
+    ]);
+    fields.extend(weighted_route_fields());
+    fields.extend(lnplus_offer_fields());
+    fields
 }
 
 #[cfg(test)]
