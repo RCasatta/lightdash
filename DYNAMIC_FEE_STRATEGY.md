@@ -8,24 +8,35 @@ relationship with [SLING_REBALANCE_STRATEGY.md](SLING_REBALANCE_STRATEGY.md).
 ## Objective
 
 The policy tries to discover an attractive forwarding price while maintaining
-an absolute minimum outbound reserve target:
+a minimum outbound reserve:
 
-- a settled outbound forward is positive price evidence
+- settled outbound forwards routing at least 5,000 sats in the last 24 hours are
+  positive price evidence
+- smaller settled outbound traffic keeps the price unchanged
 - a channel with no forwarding history should search downward quickly
 - an established channel should search downward slowly
-- a channel below the 50,000-sat reserve should not search downward
+- a channel below its depleted threshold should not search downward
 - failed, offered, and local-failed HTLCs must not affect price
 
 The controller deliberately does not use forward attempts, TPPM, historical
-PPM, raw forward count, or routed amount in its fee step. TPPM and historical
-PPM remain useful for analysis and Sling budgets. TPPM is the time-decayed,
+PPM, or raw forward count in its fee step. TPPM and historical PPM remain
+useful for analysis and Sling budgets. TPPM is the time-decayed,
 amount-weighted full realized fee rate over settled outbound forwards of at
 least 1,000 sats; it includes the base fee.
 
-The 50,000-sat threshold is intentionally absolute rather than proportional to
-channel capacity. It is an operational reserve target, not an attempt to
-price scarcity across the full balance range. HTLC maximum policy is the
-primary control on how remaining liquidity can be used.
+## Depleted threshold
+
+A channel's depleted threshold is:
+
+```text
+depleted_threshold_sat = max(50,000, channel_capacity_sat / 20)
+```
+
+Channels up to 1,000,000 sats therefore use the fixed 50,000-sat reserve, while
+larger channels keep 5% of their capacity. The threshold is an operational
+reserve target, not an attempt to price scarcity across the full balance range.
+HTLC maximum policy is the primary control on how remaining liquidity can be
+used.
 
 ## Production cadence
 
@@ -50,22 +61,21 @@ Every normal channel is classified into one of three states.
 
 A channel is bootstrap when:
 
-- it has at least 50,000 local sats
+- its local balance is at least its depleted threshold
 - it has never had a settled outbound forward retained by Core Lightning
 
-Without a recent settlement, its PPM decreases by 15% per day. This searches
+Without recent forwarding, its PPM decreases by 15% per day. This searches
 quickly from the initial high fee.
 
 ### Normal
 
 A channel is normal when:
 
-- it has at least 50,000 local sats
+- its local balance is at least its depleted threshold
 - it has at least one settled outbound forward in its retained history
 
-Without a recent settlement, its PPM decreases by 2% per day. This is close to
-decreasing 5% every three days, but requires no idle counter or additional
-datastore state:
+Without recent forwarding, its PPM decreases by 2% per day. This is close to
+decreasing 5% every three days, but requires no idle counter:
 
 ```text
 0.98^3 = 0.941192
@@ -75,13 +85,12 @@ The normal-price half-life is about 34 idle days.
 
 ### Depleted
 
-A channel is depleted whenever it has fewer than 50,000 local sats, regardless
-of forwarding history.
+A channel is depleted whenever its local balance is below its depleted
+threshold, regardless of forwarding history.
 
-Without a recent settlement, its PPM increases by 1% per day. The purpose is to
-prevent downward price search while Sling restores the absolute reserve, not to
-use fees as the primary way to discourage channel use. It does not jump or
-reset the channel to 2,500 PPM.
+Without recent forwarding, its PPM increases by 1% per day. The purpose is to
+prevent downward price search while Sling restores the reserve, not to use fees
+as the primary way to discourage channel use.
 
 If a depleted channel later returns to normal balance, the normal 2% daily
 decrease is roughly twice as fast as the preceding 1% increase:
@@ -98,9 +107,11 @@ The daily decision is:
 ```text
 if peer availability < 80%:
     disable forwarding through the HTLC range
-else if settled outbound forward in the last 24 hours:
+else if settled outbound forwards in the last 24 hours routed >= 5,000 sats:
     increase PPM by 5%
-else if local balance < 50,000 sats:
+else if any settled outbound forward in the last 24 hours:
+    keep PPM unchanged
+else if local balance < depleted threshold:
     increase PPM by 1%
 else if no settled outbound forward has ever been retained:
     decrease PPM by 15%
@@ -108,9 +119,10 @@ else:
     decrease PPM by 2%
 ```
 
-A recent settlement overrides channel state. For example, a depleted channel
-with a settlement receives the 5% forwarding increase, not a stacked 6%
-increase.
+Recent forwarding overrides channel state. For example, a depleted channel
+with enough recent settled volume receives the 5% forwarding increase, not a
+stacked 6% increase, and a depleted channel with only a small recent settlement
+keeps its price.
 
 The depleted state has precedence over bootstrap and normal classification when
 there is no recent settlement.
@@ -120,8 +132,9 @@ there is no recent settlement.
 | Condition | Daily PPM action |
 |---|---:|
 | Availability below 80% | Keep PPM; disable HTLC forwarding |
-| Settled outbound forward in last 24 hours | `+5%` |
-| No recent settlement, below 50,000 local sats | `+1%` |
+| Settled outbound forwards in last 24 hours routed at least 5,000 sats | `+5%` |
+| Settled outbound forwards in last 24 hours routed less than 5,000 sats | unchanged |
+| No recent settlement, below depleted threshold | `+1%` |
 | No recent settlement, never settled outbound | `-15%` |
 | No recent settlement, established channel | `-2%` |
 
@@ -129,40 +142,36 @@ Every result is clamped to 1–5,000 PPM.
 
 The base fee remains 1,000 msat.
 
-## Rounding
+## Fractional PPM
 
-PPM is an integer. Increases round upward so low values always make progress:
+Channel PPM is an integer, but percentage steps are applied to an unrounded
+value so small steps accumulate at low fees instead of being lost to rounding.
+Each run:
 
-```text
-forwarded_ppm = ceil(current_ppm * 1.05)
-depleted_ppm = ceil(current_ppm * 1.01)
-```
+1. Loads the stored unrounded PPM from the Core Lightning datastore key
+   `lightdash/fee_ppm_exact/<short_channel_id>`.
+2. Uses it only if it still rounds to the PPM currently set on the channel.
+   Otherwise the fee was changed outside this controller, or never stored, and
+   the current integer PPM becomes the starting point.
+3. Applies the percentage step to the unrounded value and clamps it to
+   1–5,000 PPM.
+4. Sets the channel fee to the result rounded to the nearest integer.
+5. Stores the new unrounded value, even when the rounded fee did not change.
 
-Examples:
-
-```text
-10 PPM + 5% = 11 PPM
-100 PPM + 1% = 101 PPM
-101 PPM + 1% = 103 PPM
-```
-
-Decreases round downward:
-
-```text
-bootstrap_ppm = floor(current_ppm * 0.85)
-normal_ppm = floor(current_ppm * 0.98)
-```
-
-The final clamp prevents a decrease below 1 PPM or an increase above 5,000 PPM.
+For example, a 5 PPM channel decreasing 2% per day keeps advertising 5 PPM
+for five days while its stored value falls from 4.900 to 4.520, then advertises
+4 PPM on the sixth day (4.429). Rounding to the nearest integer every day
+instead would keep it at 5 PPM forever, because 4.9 rounds back to 5.
 
 ## Forward evidence
 
-Only a record satisfying both conditions is positive price evidence:
+Only a record satisfying both conditions counts as outbound forwarding:
 
 - `status == "settled"`
 - `out_channel == channel being priced`
 
-Recent evidence uses the existing 24-hour forwarding window. All retained
+The recent window contains forwards received in the last 24 hours. Its routed
+amount is the sum of `out_msat` over those settled forwards. All retained
 settled outbound forwards determine whether a channel has graduated from
 bootstrap to normal.
 
@@ -180,7 +189,7 @@ evidence that a higher price was accepted.
 
 ## HTLC and availability behavior
 
-The existing operational safeguards remain unchanged:
+The operational safeguards are:
 
 - below 80% peer availability, Lightdash sets both HTLC limits to 1 msat
 - otherwise maximum HTLC is the largest power of two no greater than current
@@ -192,10 +201,10 @@ The maximum-HTLC rule, rather than a capacity-relative fee curve, is the main
 mechanism limiting use as local liquidity falls.
 
 This is a recovery target, not a hard balance guarantee. Maximum HTLC is based
-on current local balance rather than `local_balance - 50,000`, so an accepted
-forward can cross the boundary. A strict 50,000-sat reserve would require
-subtracting it when calculating maximum HTLC or disabling outbound forwarding
-at the boundary.
+on current local balance rather than local balance minus the depleted
+threshold, so an accepted forward can cross the boundary. A strict reserve
+would require subtracting it when calculating maximum HTLC or disabling
+outbound forwarding at the boundary.
 
 ## Relationship with Sling
 
@@ -204,7 +213,7 @@ The state policies have complementary roles:
 - bootstrap fee discovery finds whether a new channel has demand
 - normal pricing searches slowly around an accepted region
 - depleted pricing preserves and gradually raises the retained price while the
-  fixed reserve is restored
+  reserve is restored
 - Sling attempts to restore depleted targets from cheap, locally liquid sources
 
 The deployed order is intentional:
@@ -214,26 +223,26 @@ The deployed order is intentional:
 02:13  Sling target and job generation
 ```
 
-The depleted increase can also gradually relax Sling's current-channel-PPM cap
-for established channels when their history-derived rebalance budget is higher.
-Sling retains its independent safety caps and profitability limitations
-documented in `SLING_REBALANCE_STRATEGY.md`.
+Sling's ordinary rebalance budget is 75% of the lower of TPPM and the current
+channel PPM, so the depleted increase can gradually raise that budget for
+channels whose TPPM is above their current PPM. Sling retains its independent
+safety caps and profitability filter documented in
+`SLING_REBALANCE_STRATEGY.md`.
 
-Sling's ordinary rebalance budget clamp remains independently fixed at 10 PPM
-before the existing current-channel-PPM cap is applied. Lowering the forwarding
-floor to 1 PPM does not change Sling's own budget constant.
+The ordinary rebalance budget follows the forwarding floor down to 1 PPM,
+while Sling's source-PPM ceiling keeps its own independent 10 PPM floor.
 
 For a channel with fewer than 10 local sats, Sling performs one bounded
-100,000-sat bootstrap at up to 1,100 PPM. The amount is twice the depleted
-threshold, so one successful operation restores the channel above the
-50,000-sat reserve. Its potentially high fee is acceptable as a one-time
-bootstrap cost; it is not an ongoing unconstrained rebalance policy.
+100,000-sat bootstrap at up to 1,100 PPM. The amount is twice the 50,000-sat
+base reserve, so one successful operation restores channels up to 1,000,000
+sats above their depleted threshold. Larger channels need ordinary Sling jobs
+to reach their 5%-of-capacity threshold.
 
 ## Why this policy is intentionally simple
 
-The policy needs no persisted idle counter or learned demand model. Current
-balance, the latest 24-hour settled window, and retained settled history fully
-determine the action.
+The policy needs no idle counter or learned demand model. Current balance,
+capacity, the latest 24-hour settled window, retained settled history, and the
+stored unrounded PPM fully determine the action.
 
 The deployment also aims for one channel per peer and uses splicing to change
 capacity. Under that operating model, channel-scoped and peer-scoped pricing
@@ -243,7 +252,7 @@ keeps decisions reconstructible.
 This makes every decision easy to reconstruct:
 
 ```text
-state + recent settlement + current PPM = next PPM
+state + recent settled volume + unrounded PPM = next PPM
 ```
 
 The asymmetry is intentional:
@@ -251,31 +260,20 @@ The asymmetry is intentional:
 - unknown price: move down quickly
 - previously accepted price: move down gently
 - scarce inventory: move up very gently
-- newly accepted price: test upward
-
-## Migration caveat
-
-Before this policy, depleted channels were forced to a minimum of 2,500 PPM.
-The new controller cannot determine whether an existing 2,500 PPM value was
-learned by forwarding or imposed by the old floor.
-
-Consequently, an already depleted channel at 2,500 PPM will initially increase
-by 1% per day until liquidity returns. Once it has at least 50,000 local sats,
-it follows bootstrap or normal behavior based on retained settlement history.
-
-This is a one-time transition issue. New depletion events no longer overwrite
-the previous price with 2,500 PPM.
+- newly accepted price with meaningful volume: test upward
+- accepted price with little volume: hold
 
 ## Known tradeoffs
 
 - A single settled HTLC, even a small MPP part, graduates a channel to normal.
-- Every settlement receives the same 5% step regardless of amount.
+- Every 24-hour window with at least 5,000 routed sats receives the same 5%
+  step regardless of how much more was routed.
 - A normal channel adapts slowly to a genuine downward market-price change.
 - The bootstrap/normal distinction depends on Core Lightning retaining at
   least one successful forward. Deployments which prune successful forwards
   can eventually misclassify an old channel as bootstrap.
-- The recent window uses `received_time`, matching the existing Store filter,
-  rather than settlement time or a forward watermark.
+- The recent window uses `received_time` rather than settlement time or a
+  forward watermark.
 - Daily fee changes produce more gossip updates than a multi-day idle counter,
   though the deployed cadence remains within Core Lightning's documented
   update limits.
