@@ -3,7 +3,7 @@
 Status: description of the policy currently implemented in `src/sling.rs`.
 
 This document is an implementation reference for Lightdash's Sling policy. For
-the proposed long-term economic coupling between fees and rebalancing, see
+the fee controller it interacts with, see
 [DYNAMIC_FEE_STRATEGY.md](DYNAMIC_FEE_STRATEGY.md).
 
 ## Purpose
@@ -11,17 +11,16 @@ the proposed long-term economic coupling between fees and rebalancing, see
 Lightdash uses Sling to pull local liquidity into depleted channels from
 channels which currently appear cheap and locally liquid.
 
-The implemented policy is primarily balance- and capacity-driven:
+The implemented policy is balance-driven with a profitability filter:
 
 - source candidates must be above 70% local balance and below a target-specific
   PPM ceiling
 - targets must be at or below 30% local balance
+- ordinary targets must have earned at least twice their rebalance cost over
+  the last 90 days
 - ordinary jobs pull toward 50% local balance
 - rebalances use small, variable operation sizes
-- the fee budget is derived from realized forwarding PPM when history exists
-
-Recent settled routed amount does not currently control target eligibility or
-the total amount replenished.
+- the fee budget is derived from realized and current forwarding PPM
 
 ## Policy constants
 
@@ -31,25 +30,24 @@ the total amount replenished.
 | Source PPM fallback without target history | `< 300` |
 | Minimum source local balance | `> 70%` |
 | Maximum target local balance | `<= 30%` |
+| Profitability window | `90 days` |
+| Minimum fee-to-rebalance-cost ratio | `2` |
 | Ordinary job target balance | `50%` |
 | Minimum operation amount | `10,000 sats` |
 | Capacity amount hint | `5% of capacity` |
-| Ordinary budget clamp before current-PPM cap | `10–1,100 PPM` |
-| Realized-fee budget multiplier | `60%` |
+| Budget multiplier | `75%` |
+| Budget clamp | `1–1,100 PPM` |
+| Budget without local channel info | `10 PPM` |
 | Candidate `depleteuptopercent` | `0.5` |
 | Candidate `depleteuptoamount` | `1,000,000 sats` |
 | Dust bootstrap threshold | `< 10 local sats` |
 | Dust bootstrap amount | `100,000 sats` |
 | Dust bootstrap maximum budget | `1,100 PPM` |
 
-The 10 PPM rebalance budget clamp is independent from the dynamic fee policy's
-1 PPM forwarding floor. For targets with fee history, the existing
-current-channel-PPM cap can still lower the final budget below that clamp. The
-100,000-sat dust bootstrap amount still reuses the dynamic fee depleted
-threshold:
+The 100,000-sat dust bootstrap amount reuses the fee controller's base
+depleted threshold:
 
 ```text
-ordinary bootstrap budget = BUDGET_PPM_MIN
 dust bootstrap amount = 2 * DEPLETED_LOCAL_BALANCE_SAT
 ```
 
@@ -75,11 +73,11 @@ source_ppm_ceiling
 ```
 
 The 30% allocation is a simple source-opportunity-cost allowance alongside the
-existing 60% realized-fee route-cost multiplier. A target worth 500 PPM
-therefore accepts sources below 150 PPM, one worth 1,000 PPM accepts sources
-below 300 PPM, and one worth 3,000 PPM accepts sources below 900 PPM. Taking
-the lower of historical and current target PPM also makes the ceiling fall as
-the dynamic fee controller searches downward.
+75% budget multiplier. A target worth 500 PPM therefore accepts sources below
+150 PPM, one worth 1,000 PPM accepts sources below 300 PPM, and one worth
+3,000 PPM accepts sources below 900 PPM. Taking the lower of historical and
+current target PPM also makes the ceiling fall as the dynamic fee controller
+searches downward.
 
 When the target has no usable historical effective PPM, the source ceiling
 falls back to 300 PPM. Dust bootstraps also use this fallback.
@@ -96,17 +94,8 @@ Lightdash examines every normal channel. A channel is a target when:
 - it has a short channel ID
 - at least one source candidate exists
 
-There is no current requirement for:
-
-- a settled forward in the last 24 hours
-- a minimum recent routed amount
-- a positive historical net margin
-- a minimum number of forwards
-
-Forward history affects the ordinary PPM budget, but not target eligibility.
-
 Targets follow one of two paths: a dust bootstrap or an ordinary persistent
-job.
+job. Only ordinary jobs are subject to the profitability filter.
 
 ## Dust bootstrap
 
@@ -122,26 +111,40 @@ lightning-cli sling-once -k \
   onceamount=100000
 ```
 
-This path deliberately ignores the ordinary history-derived budget. It may pay
-up to 1,100 PPM, but only for a single 100,000-sat bootstrap.
+This path deliberately ignores the ordinary budget and profitability filter.
+It may pay up to 1,100 PPM, but only for a single 100,000-sat bootstrap, so an
+unproven channel can still enter fee discovery.
 
-The amount is twice the fee controller's 50,000-sat depleted threshold. A
-successful bootstrap therefore moves the channel out of that absolute
-depleted state and lets bootstrap or normal dynamic fee behavior resume,
-depending on whether the channel has retained settled outbound history.
+The amount is twice the fee controller's 50,000-sat base depleted threshold. A
+successful bootstrap therefore moves channels up to 1,000,000 sats out of the
+depleted state and lets bootstrap or normal dynamic fee behavior resume. Larger
+channels have a 5%-of-capacity depleted threshold and need ordinary jobs to
+leave it.
 
-The 50,000-sat value is a fixed operational reserve target, not a percentage-based
-scarcity trigger. Dynamic fees are not used to discourage channel use across
-the whole balance range; the fee controller's maximum-HTLC rule limits use as
-local liquidity falls. The dust operation can accept a relatively high fee
-because it is one bounded bootstrap whose 100,000-sat amount is designed to
-restore that reserve, not a recurring unconstrained rebalance.
-
-This recovery policy does not itself guarantee a hard 50,000-sat local floor;
-an accepted forward can cross the boundary before Sling restores liquidity.
+This recovery policy does not itself guarantee a hard local floor; an accepted
+forward can cross the boundary before Sling restores liquidity.
 
 Dust bootstraps are executed immediately when `EXECUTE_SLING` is set. They are
 not persistent jobs and do not require `sling-go`.
+
+## Profitability filter
+
+Before creating an ordinary job, Lightdash compares, over the trailing 90 days:
+
+- **recent fees:** forwarding fees earned by settled forwards leaving through
+  the target, by resolution time
+- **recent cost:** fees paid for bookkeeper-matched rebalance parts whose
+  target was this channel
+
+The target is skipped when:
+
+```text
+recent_fees_msat == 0
+  or recent_fees_msat < 2 * recent_cost_msat
+```
+
+A channel must therefore have earned direct outbound revenue in the last 90
+days, and its rebalance spending must stay at most half of that revenue.
 
 ## Ordinary target amount
 
@@ -183,40 +186,31 @@ use the same predictable amount.
 
 ## Ordinary rebalance budget
 
-Lightdash reads two realized forwarding metrics for the target:
-
-- **TPPM:** time-decayed, amount-weighted full fee PPM with a seven-day
-  half-life; it includes the base fee and excludes forwards smaller than
-  1,000 sats
-- **historical effective PPM:** all-time forwarding fees divided by all-time
-  routed amount
-
-Only finite values greater than zero are usable.
-
-When one or both metrics are available:
+The budget uses the target's **TPPM**: the time-decayed, amount-weighted full
+fee PPM with a seven-day half-life. It includes the base fee and excludes
+forwards smaller than 1,000 sats. Only finite values greater than zero are
+usable.
 
 ```text
-realized_ppm
-  = arithmetic_mean(all usable metrics)
+target_value_ppm
+  = min(tppm, current_channel_ppm)   when TPPM is usable
+  = current_channel_ppm              otherwise
 
 budget_ppm
-  = truncate(realized_ppm * 0.60)
-  |> clamp(10, 1100)
-  |> min(current_channel_ppm, when available)
+  = truncate(target_value_ppm * 0.75)
+  |> clamp(1, 1100)
 ```
 
-When neither metric is usable, the budget is exactly 10 PPM. This early
-fallback does not apply the current-channel-PPM cap, although the fee
-controller normally keeps channel PPM at or above 10.
+When Lightdash cannot resolve the target's local channel announcement, the
+budget is exactly 10 PPM.
 
 The budget is what Lightdash is willing to pay for replenishment, not what it
-charges for outbound forwarding. The 60% multiplier reserves an intended gross
-spread between past forwarding revenue and rebalance cost.
+charges for outbound forwarding. The 75% multiplier reserves an intended gross
+spread between forwarding revenue and rebalance cost, while the profitability
+filter checks the realized spread over the last 90 days.
 
-Both input metrics include the full realized fee. TPPM uses exact millisatoshi
-amounts and excludes forwards smaller than 1,000 sats, while historical
-effective PPM includes all forwards after per-forward values have been
-truncated to sats.
+For example, a target with a TPPM of 2,947 and a current fee of 1,223 PPM gets
+a budget of `truncate(1,223 * 0.75) = 917 PPM`.
 
 ## Ordinary Sling job
 
@@ -227,7 +221,7 @@ lightning-cli sling-job -k \
   scid=<target_scid> \
   direction=pull \
   amount=<jittered_operation_amount_sat> \
-  maxppm=<history_derived_budget_ppm> \
+  maxppm=<budget_ppm> \
   target=0.5 \
   candidates=<target_specific_candidate_scids> \
   depleteuptopercent=0.5 \
@@ -264,6 +258,9 @@ the run began. It does not by itself guarantee a 50% post-rebalance balance.
 
 ## Execution lifecycle
 
+The deployed `lightdash_rebalance` service runs `lightdash sling` daily at
+02:13 with `EXECUTE_SLING=1`, after the 00:01 fee adjustment.
+
 Without `EXECUTE_SLING`, the command is a dry run. It computes candidates,
 targets, budgets, and amounts and logs the proposed commands without changing
 Sling state.
@@ -274,46 +271,46 @@ With `EXECUTE_SLING`:
 2. Lightdash runs `sling-deletejob all`.
 3. Dust targets with fallback candidates execute immediately through
    `sling-once`.
-4. Ordinary targets with target-specific candidates are recreated through
-   `sling-job`.
-5. Targets without candidates are skipped.
-6. If at least one ordinary job was created, Lightdash runs `sling-go`.
+4. Unprofitable ordinary targets are skipped.
+5. Remaining ordinary targets with target-specific candidates are recreated
+   through `sling-job`.
+6. Targets without candidates are skipped.
+7. If at least one ordinary job was created, Lightdash runs `sling-go`.
 
 Jobs are therefore not updated in place or preserved across Lightdash runs.
 Every executing run replaces the complete Sling job set.
 
 ## Relationship with dynamic fees
 
-The current policies are connected in limited but important ways:
+The policies are connected in limited but important ways:
 
-- the dust bootstrap amount is derived from the dynamic fee depleted threshold
-- ordinary Sling budgets use TPPM and historical effective PPM
-- an ordinary budget is normally capped at the current advertised channel PPM
+- the dust bootstrap amount is derived from the fee controller's base depleted
+  threshold
+- ordinary budgets are capped by the current advertised channel PPM, so the
+  fee controller's price search moves the budget with it
+- the source ceiling uses the lower of historical and current target PPM
 - source candidates must advertise an outbound PPM below the target-specific
   ceiling
-- channels may advertise as low as 1 PPM while Sling's independent pre-cap
-  rebalance budget clamp remains 10 PPM
+- the budget can follow the 1 PPM forwarding floor, while the source ceiling
+  keeps an independent 10 PPM floor
 
-They do not yet share a unified market-price estimate, inventory multiplier,
-replacement-cost floor, demand cap, or source opportunity-cost estimate.
-
-The intended future direction is specified in
-`DYNAMIC_FEE_STRATEGY.md`: preserve small operations, but replenish only
-demand-supported liquidity whose expected forwarding revenue exceeds realized
-rebalance cost, source opportunity cost, and the required profit margin.
+They do not share a unified market-price estimate, inventory multiplier,
+replacement-cost floor, demand cap, or measured source opportunity cost.
 
 ## Current limitations
 
-- Target eligibility is based on balance, not recent proven demand.
+- The profitability filter counts only direct outbound fees; a target valued
+  mainly for its incoming-side route contribution never qualifies for an
+  ordinary job.
 - A persistent job may replenish more than recent routed demand because
   `target=0.5` is not a total-amount cap.
 - The dust bootstrap can pay 1,100 PPM without realized forwarding history.
 - Candidate selection uses current advertised source PPM as a simple proxy for
   opportunity cost rather than measuring direct or indirect opportunity cost.
 - TPPM excludes forwards smaller than 1,000 sats while historical effective
-  PPM includes them.
-- Historical metrics use sat-truncated forwarding fees.
-- Rebalance profitability is not checked later using the realized Sling cost.
+  PPM, used for the source ceiling, includes them and uses sat-truncated fees.
+- Profitability is evaluated only when the daily run recreates jobs, not while
+  a job is running.
 - The fixed 1,000,000-sat candidate depletion cap weakens the intended 50%
   floor on channels larger than 2,000,000 sats.
 - Executing when no target has eligible candidates still stops and deletes all
@@ -321,4 +318,4 @@ rebalance cost, source opportunity cost, and the required profit margin.
 
 These are descriptions of the current policy, not reasons to reintroduce
 failed forwarding attempts as demand. Only settled traffic should be used for
-future economic target selection.
+economic target selection.
