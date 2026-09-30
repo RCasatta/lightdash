@@ -83,7 +83,8 @@ All build, test, formatting, and CLI commands must be run through
 
 ## Snapshot and Dashboard Architecture
 
-Generate the analytical snapshot first, then render Dashboard:
+Generate the analytical snapshot first, then render Dashboard. Without `--ssh`
+or `--test-data`, commands query the local `lightning-cli`:
 
 ```bash
 direnv exec . cargo run -- snapshot target/snapshot
@@ -251,8 +252,9 @@ use crate::store::Store;
 
 ### Testing Patterns
 
-Debug builds read bundled fixtures instead of calling `lightning-cli`, unless
-`--ssh` is given. `cmd::using_test_data()` makes that decision:
+The global `--test-data` flag makes commands read bundled fixtures instead of
+calling `lightning-cli`, in any build. It conflicts with `--ssh` and skips
+datastore writes. `cmd::using_test_data()` makes that decision:
 
 ```rust
 pub fn list_funds() -> ListFunds {
@@ -325,7 +327,7 @@ enum Commands {
 
 ```bash
 # Generate a test-data snapshot and Dashboard site
-direnv exec . cargo run -- snapshot target/snapshot
+direnv exec . cargo run -- --test-data snapshot target/snapshot
 direnv exec . cargo run -- dashboard target/snapshot target/site
 
 # Serve Dashboard locally; opening through file:// will not load JSON data

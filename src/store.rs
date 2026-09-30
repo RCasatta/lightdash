@@ -1351,6 +1351,7 @@ mod tests {
     #[cfg(feature = "large-fixture-tests")]
     #[test]
     fn gz_bkpr_fixture_matches_expected_rebalance_parts() {
+        cmd::enable_test_data();
         let events = cmd::bkpr_list_account_events();
         let parts = match_rebalance_parts(&events.events, &HashMap::new());
 

@@ -21,8 +21,8 @@ When `--ssh` is used, Lightdash runs `lightdash history export` on the remote
 node and imports the resulting tar stream. Local snapshots read
 `/var/lib/lightdash/history/processed` directly. Use `--history-directory` to
 override that path or `--without-history` to intentionally create a snapshot
-without historical datasets. Debug test-data snapshots omit history unless a
-history directory is explicitly supplied.
+without historical datasets. Snapshots made with `--test-data` omit history
+unless a history directory is explicitly supplied.
 
 Snapshots also include cached route analysis by default. The cache lives at
 `/var/lib/lightdash/routes/processed` and is refreshed when it is at least 24
@@ -120,7 +120,12 @@ lightdash --ssh name@host snapshot target/snapshot
 lightdash dashboard target/snapshot target/site
 ```
 
-In debug builds, specifying `--ssh` overrides the bundled test data.
+Use the global `--test-data` option instead to read the bundled `test-json/`
+fixtures without any node, for development:
+
+```bash
+lightdash --test-data snapshot target/snapshot
+```
 
 ## Project Structure
 

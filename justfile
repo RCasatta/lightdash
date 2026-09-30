@@ -1,8 +1,8 @@
 set dotenv-load
 
-# Generate a snapshot and the dashboard from it
+# Generate a test-data snapshot and the dashboard from it
 dashboard:
-    cargo run -- snapshot target/snapshot
+    cargo run -- --test-data snapshot target/snapshot
     cargo run -- dashboard target/snapshot target/site
 
 # Serve the generated dashboard with miniserve

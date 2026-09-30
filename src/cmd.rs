@@ -6,11 +6,13 @@ use std::fs::{self, File};
 use std::io;
 use std::path::PathBuf;
 use std::process::{Command, Output as ProcessOutput};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 
 use crate::error_panic;
 
 static SSH_DESTINATION: OnceLock<String> = OnceLock::new();
+static TEST_DATA: AtomicBool = AtomicBool::new(false);
 const DEFAULT_LOCAL_AVAILDB_PATH: &str = ".lightning/bitcoin/summars/availdb.json";
 const TEST_AVAILDB_PATH: &str = "test-json/availdb.json";
 pub const GETROUTES_LAYERS: [&str; 3] = ["auto.localchans", "auto.sourcefree", "xpay"];
@@ -31,8 +33,13 @@ pub fn configure_ssh(destination: Option<String>) -> Result<(), String> {
         .map_err(|_| "SSH destination was already configured".to_string())
 }
 
+/// Read bundled `test-json/` fixtures instead of querying a node, and skip datastore writes.
+pub fn enable_test_data() {
+    TEST_DATA.store(true, Ordering::Relaxed);
+}
+
 pub fn using_test_data() -> bool {
-    cfg!(debug_assertions) && SSH_DESTINATION.get().is_none()
+    TEST_DATA.load(Ordering::Relaxed)
 }
 
 pub(crate) fn using_ssh() -> bool {
@@ -904,6 +911,7 @@ mod tests {
 
     #[test]
     fn gz_bkpr_fixture_matches_confirmed_rebalance_totals() {
+        enable_test_data();
         let events = bkpr_list_account_events();
         let rebalance_events: Vec<_> = events
             .events

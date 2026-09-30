@@ -23,6 +23,9 @@ struct Cli {
     /// Execute lightning-cli on a remote host through SSH
     #[arg(long, global = true, value_name = "USER@HOST")]
     ssh: Option<String>,
+    /// Read bundled test-json fixtures instead of querying a node; never writes to a node
+    #[arg(long, global = true, conflicts_with = "ssh")]
+    test_data: bool,
     #[command(subcommand)]
     command: Commands,
 }
@@ -123,6 +126,10 @@ fn main() {
     init_logging();
     log::info!("Lightdash starting");
     let cli = Cli::parse();
+    if cli.test_data {
+        log::info!("Using bundled test-json fixtures instead of a node");
+        cmd::enable_test_data();
+    }
     if let Err(e) = cmd::configure_ssh(cli.ssh) {
         error_panic!("configuring SSH command mode failed: {e}");
     }
