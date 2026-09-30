@@ -1,9 +1,5 @@
 set dotenv-load
 
-# Generate CLN analytics dataset from remote node
-dataset:
-    ./scripts/fetch-dataset.sh > node_analytics.json.xz
-
 # Generate a snapshot and the dashboard from it
 dashboard:
     cargo run -- snapshot target/snapshot
