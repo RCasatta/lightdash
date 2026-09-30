@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use flate2::read::GzDecoder;
+use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::Value;
 use std::fs::{self, File};
@@ -91,94 +92,88 @@ pub fn read_availdb_json(path: Option<&str>) -> Result<Value, String> {
         .map_err(|e| format!("parsing availdb `{}` failed: {e}", local_path.display()))
 }
 
-pub fn list_funds() -> ListFunds {
-    let v = if using_test_data() {
-        gz_json_file("test-json/listfunds.gz")
-    } else {
-        cmd_result("lightning-cli", &["listfunds"])
-    };
-    serde_json::from_value(v).unwrap()
+/// Where a node query reads its data in `--test-data` mode.
+enum Fixture {
+    Gz(&'static str),
+    Xz(&'static str),
+    Plain(&'static str),
 }
 
-pub fn list_nodes() -> ListNodes {
-    let v = if using_test_data() {
-        gz_json_file("test-json/listnodes.gz")
+/// Runs a read-only `lightning-cli` query, or reads its fixture in `--test-data` mode, and
+/// parses the response. Errors name the RPC so a failed collection is easy to diagnose.
+fn query_node<T: DeserializeOwned>(fixture: Fixture, rpc: &str) -> Result<T, String> {
+    let value = if using_test_data() {
+        match fixture {
+            Fixture::Gz(path) => read_gz_json(path)?,
+            Fixture::Xz(path) => cmd_result_fallible("xzcat", &[path])?,
+            Fixture::Plain(path) => {
+                let content = fs::read_to_string(path)
+                    .map_err(|e| format!("reading fixture `{path}` failed: {e}"))?;
+                serde_json::from_str(&content)
+                    .map_err(|e| format!("parsing fixture `{path}` failed: {e}"))?
+            }
+        }
     } else {
-        cmd_result("lightning-cli", &["listnodes"])
+        cmd_result_fallible("lightning-cli", &[rpc])?
     };
-    serde_json::from_value(v).unwrap()
+    if let (Some(code), Some(message)) = (value.get("code"), value.get("message")) {
+        return Err(format!(
+            "`lightning-cli {rpc}` returned error {code}: {message}"
+        ));
+    }
+    serde_json::from_value(value).map_err(|e| format!("parsing `{rpc}` response failed: {e}"))
 }
 
-pub fn list_channels() -> ListChannels {
-    let v = if using_test_data() {
-        gz_json_file("test-json/listchannels.gz")
-    } else {
-        cmd_result("lightning-cli", &["listchannels"])
-    };
-    serde_json::from_value(v).unwrap()
+pub fn list_funds() -> Result<ListFunds, String> {
+    query_node(Fixture::Gz("test-json/listfunds.gz"), "listfunds")
 }
 
-pub fn list_peers() -> ListPeers {
-    let v = if using_test_data() {
-        gz_json_file("test-json/listpeers.gz")
-    } else {
-        cmd_result("lightning-cli", &["listpeers"])
-    };
-    serde_json::from_value(v).unwrap()
+pub fn list_nodes() -> Result<ListNodes, String> {
+    query_node(Fixture::Gz("test-json/listnodes.gz"), "listnodes")
 }
 
-pub fn list_peer_channels() -> ListPeerChannels {
-    let v = if using_test_data() {
-        cmd_result("xzcat", &["test-json/listpeerchannels.xz"])
-    } else {
-        cmd_result("lightning-cli", &["listpeerchannels"])
-    };
-    serde_json::from_value(v).unwrap()
+pub fn list_channels() -> Result<ListChannels, String> {
+    query_node(Fixture::Gz("test-json/listchannels.gz"), "listchannels")
 }
 
-pub fn list_forwards() -> ListForwards {
-    let v = if using_test_data() {
-        cmd_result("xzcat", &["test-json/listforwards.xz"])
-    } else {
-        cmd_result("lightning-cli", &["listforwards"])
-    };
-    serde_json::from_value(v).unwrap()
+pub fn list_peers() -> Result<ListPeers, String> {
+    query_node(Fixture::Gz("test-json/listpeers.gz"), "listpeers")
 }
 
-pub fn list_closed_channels() -> ListClosedChannels {
-    let v = if using_test_data() {
-        gz_json_file("test-json/listclosedchannels.gz")
-    } else {
-        cmd_result("lightning-cli", &["listclosedchannels"])
-    };
-    serde_json::from_value(v).unwrap()
+pub fn list_peer_channels() -> Result<ListPeerChannels, String> {
+    query_node(
+        Fixture::Xz("test-json/listpeerchannels.xz"),
+        "listpeerchannels",
+    )
 }
 
-pub fn bkpr_list_account_events() -> BkprListAccountEvents {
-    let v = if using_test_data() {
-        gz_json_file("test-json/bkpr-listaccountevents.gz")
-    } else {
-        cmd_result("lightning-cli", &["bkpr-listaccountevents"])
-    };
-    serde_json::from_value(v).unwrap()
+pub fn list_forwards() -> Result<ListForwards, String> {
+    query_node(Fixture::Xz("test-json/listforwards.xz"), "listforwards")
 }
 
-pub fn bkpr_list_income() -> BkprListIncome {
-    let v = if using_test_data() {
-        cmd_result("cat", &["test-json/bkpr-listincome"])
-    } else {
-        cmd_result("lightning-cli", &["bkpr-listincome"])
-    };
-    serde_json::from_value(v).unwrap()
+pub fn list_closed_channels() -> Result<ListClosedChannels, String> {
+    query_node(
+        Fixture::Gz("test-json/listclosedchannels.gz"),
+        "listclosedchannels",
+    )
 }
 
-pub fn get_info() -> GetInfo {
-    let v = if using_test_data() {
-        cmd_result("cat", &["test-json/getinfo"])
-    } else {
-        cmd_result("lightning-cli", &["getinfo"])
-    };
-    serde_json::from_value(v).unwrap()
+pub fn bkpr_list_account_events() -> Result<BkprListAccountEvents, String> {
+    query_node(
+        Fixture::Gz("test-json/bkpr-listaccountevents.gz"),
+        "bkpr-listaccountevents",
+    )
+}
+
+pub fn bkpr_list_income() -> Result<BkprListIncome, String> {
+    query_node(
+        Fixture::Plain("test-json/bkpr-listincome"),
+        "bkpr-listincome",
+    )
+}
+
+pub fn get_info() -> Result<GetInfo, String> {
+    query_node(Fixture::Plain("test-json/getinfo"), "getinfo")
 }
 
 pub fn get_routes(
@@ -348,14 +343,10 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
-fn gz_json_file(path: &str) -> Value {
-    let file = File::open(path).unwrap_or_else(|e| {
-        error_panic!("opening `{path}` returned {e:?}");
-    });
-    let decoder = GzDecoder::new(file);
-    serde_json::from_reader(decoder).unwrap_or_else(|e| {
-        error_panic!("parsing gzip json `{path}` returned {e:?}");
-    })
+fn read_gz_json(path: &str) -> Result<Value, String> {
+    let file = File::open(path).map_err(|e| format!("opening fixture `{path}` failed: {e}"))?;
+    serde_json::from_reader(GzDecoder::new(file))
+        .map_err(|e| format!("parsing gzip fixture `{path}` failed: {e}"))
 }
 
 // fn lcli_named(subcmd: &str, args: &[&str]) -> String {
@@ -912,7 +903,7 @@ mod tests {
     #[test]
     fn gz_bkpr_fixture_matches_confirmed_rebalance_totals() {
         enable_test_data();
-        let events = bkpr_list_account_events();
+        let events = bkpr_list_account_events().unwrap();
         let rebalance_events: Vec<_> = events
             .events
             .iter()

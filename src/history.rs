@@ -102,7 +102,7 @@ struct ChannelFundsHistoryRecord {
 }
 
 pub fn run_rebuild(raw_directory: &str, output_directory: &str) -> Result<(), String> {
-    let node_id = cmd::get_info().id;
+    let node_id = cmd::get_info()?.id;
     rebuild_history(
         Path::new(raw_directory),
         Path::new(output_directory),

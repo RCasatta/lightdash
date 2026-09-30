@@ -336,7 +336,7 @@ fn route_max_fee_msat(amount_msat: u64) -> u64 {
 }
 
 pub fn run_cache_refresh(directory: &str) -> Result<(), String> {
-    let store = Store::new(None);
+    let store = Store::new(None)?;
     ensure_cached_routes(&store, Path::new(directory), true)?;
     Ok(())
 }
@@ -344,9 +344,9 @@ pub fn run_cache_refresh(directory: &str) -> Result<(), String> {
 pub fn run_export(directory: &str, refresh_if_stale: bool) -> Result<(), String> {
     let directory = Path::new(directory);
     if refresh_if_stale {
-        let node_id = get_info().id;
+        let node_id = get_info()?.id;
         if !cached_routes_are_fresh(directory, &node_id) {
-            let store = Store::new(None);
+            let store = Store::new(None)?;
             ensure_cached_routes(&store, directory, false)?;
         }
     }

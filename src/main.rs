@@ -152,7 +152,7 @@ fn main() {
             without_routes,
             without_lnplus,
         } => {
-            let store = Store::new(availdb);
+            let store = load_store(availdb);
             if let Err(e) = snapshot::run_snapshot(
                 &store,
                 &directory,
@@ -196,19 +196,26 @@ fn main() {
             }
         },
         Commands::Sling => {
-            let store = Store::new(None);
+            let store = load_store(None);
 
             sling::run_sling(&store);
         }
         Commands::Fees { availdb } => {
-            let store = Store::new(availdb);
+            let store = load_store(availdb);
 
             fees::run_fees(&store);
         }
         Commands::Htlc => {
-            htlc::run_htlc();
+            if let Err(e) = htlc::run_htlc() {
+                error_panic!("adjusting HTLC maximums failed: {e}");
+            }
         }
     }
+}
+
+/// Collects node data for a command, stopping with a clear error when a query fails.
+fn load_store(availdb: Option<String>) -> Store {
+    Store::new(availdb).unwrap_or_else(|e| error_panic!("collecting node data failed: {e}"))
 }
 
 fn init_logging() {

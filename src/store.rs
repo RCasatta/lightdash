@@ -215,20 +215,20 @@ pub(crate) fn match_rebalance_parts(
 
 impl Store {
     /// Create a new Store by fetching all data from the Lightning node
-    pub fn new(availdb: Option<String>) -> Self {
+    pub fn new(availdb: Option<String>) -> Result<Self, String> {
         let start_time = std::time::Instant::now();
         log::debug!("Fetching data from Lightning node...");
         let now = Utc::now();
-        let info = cmd::get_info();
-        let channels = cmd::list_channels();
-        let peer_channels = cmd::list_peer_channels();
-        let peers = cmd::list_peers();
-        let funds = cmd::list_funds();
-        let forwards = cmd::list_forwards();
-        let account_events = cmd::bkpr_list_account_events();
-        let income_events = cmd::bkpr_list_income().income_events;
-        let nodes = cmd::list_nodes();
-        let closed_channels = cmd::list_closed_channels();
+        let info = cmd::get_info()?;
+        let channels = cmd::list_channels()?;
+        let peer_channels = cmd::list_peer_channels()?;
+        let peers = cmd::list_peers()?;
+        let funds = cmd::list_funds()?;
+        let forwards = cmd::list_forwards()?;
+        let account_events = cmd::bkpr_list_account_events()?;
+        let income_events = cmd::bkpr_list_income()?.income_events;
+        let nodes = cmd::list_nodes()?;
+        let closed_channels = cmd::list_closed_channels()?;
         log::debug!("Data fetched successfully");
         let forward_cache = build_forward_cache(&forwards, now);
         log::info!(
@@ -328,7 +328,7 @@ impl Store {
             duration.as_secs_f64()
         );
 
-        store
+        Ok(store)
     }
 
     /// Get normal channels (channels in CHANNELD_NORMAL state)
@@ -1352,7 +1352,7 @@ mod tests {
     #[test]
     fn gz_bkpr_fixture_matches_expected_rebalance_parts() {
         cmd::enable_test_data();
-        let events = cmd::bkpr_list_account_events();
+        let events = cmd::bkpr_list_account_events().unwrap();
         let parts = match_rebalance_parts(&events.events, &HashMap::new());
 
         assert_eq!(parts.len(), 1827);

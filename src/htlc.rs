@@ -12,10 +12,10 @@ use std::cmp::max;
 use crate::cmd::{cmd_result, list_peer_channels, using_test_data};
 use crate::fees::largest_power_of_two_leq;
 
-pub fn run_htlc() {
+pub fn run_htlc() -> Result<(), String> {
     log::info!("Running HTLC max adjustment");
 
-    let channels = list_peer_channels();
+    let channels = list_peer_channels()?;
     log::info!("Found {} channels", channels.channels.len());
 
     let channels_to_adjust: Vec<_> = channels
@@ -47,6 +47,7 @@ pub fn run_htlc() {
     }
 
     log::info!("HTLC max adjustment completed");
+    Ok(())
 }
 
 fn set_channel_htlc_max(short_channel_id: &str, htlc_max: u64) {
