@@ -41,15 +41,19 @@ The implemented policy is balance-driven with a profitability filter:
 | Candidate `depleteuptopercent` | `0.5` |
 | Candidate `depleteuptoamount` | `1,000,000 sats` |
 | Dust bootstrap threshold | `< 10 local sats` |
-| Dust bootstrap amount | `100,000 sats` |
+| Dust bootstrap amount | `channel reserve + 100,000 sats` |
 | Dust bootstrap maximum budget | `1,100 PPM` |
 
-The 100,000-sat dust bootstrap amount reuses the fee controller's base
-depleted threshold:
+The dust bootstrap leaves twice the fee controller's base depleted threshold
+spendable. The channel reserve is pulled on top, because nothing above it is
+spendable until it is filled:
 
 ```text
-dust bootstrap amount = 2 * DEPLETED_LOCAL_BALANCE_SAT
+dust bootstrap amount = our_reserve + 2 * DEPLETED_LOCAL_BALANCE_SAT
 ```
+
+`our_reserve` comes from `listpeerchannels.our_reserve_msat`, rounded up to
+whole sats, or is assumed to be 1% of capacity when it is not reported.
 
 ## Source candidate selection
 
@@ -107,15 +111,18 @@ lightning-cli sling-once -k \
   direction=pull \
   candidates=<candidate_scids_below_300_ppm> \
   maxppm=1100 \
-  amount=100000 \
-  onceamount=100000
+  amount=<reserve_plus_100000> \
+  onceamount=<reserve_plus_100000>
 ```
 
 This path deliberately ignores the ordinary budget and profitability filter.
-It may pay up to 1,100 PPM, but only for a single 100,000-sat bootstrap, so an
-unproven channel can still enter fee discovery.
+It may pay up to 1,100 PPM, but only for a single bootstrap, so an unproven
+channel can still enter fee discovery.
 
-The amount is twice the fee controller's 50,000-sat base depleted threshold. A
+Without the reserve term, a 10,000,000-sat channel with its 100,000-sat reserve
+would end the bootstrap with nothing spendable, and could neither forward nor
+qualify for ordinary jobs. With it, every bootstrap leaves 100,000 spendable
+sats, twice the fee controller's 50,000-sat base depleted threshold. A
 successful bootstrap therefore moves channels up to 1,000,000 sats out of the
 depleted state and lets bootstrap or normal dynamic fee behavior resume. Larger
 channels have a 5%-of-capacity depleted threshold and need ordinary jobs to
@@ -284,8 +291,8 @@ Every executing run replaces the complete Sling job set.
 
 The policies are connected in limited but important ways:
 
-- the dust bootstrap amount is derived from the fee controller's base depleted
-  threshold
+- the dust bootstrap's spendable target is derived from the fee controller's
+  base depleted threshold
 - ordinary budgets are capped by the current advertised channel PPM, so the
   fee controller's price search moves the budget with it
 - the source ceiling uses the lower of historical and current target PPM

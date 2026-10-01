@@ -258,10 +258,11 @@ The ordinary rebalance budget follows the forwarding floor down to 1 PPM,
 while Sling's source-PPM ceiling keeps its own independent 10 PPM floor.
 
 For a channel with fewer than 10 local sats, Sling performs one bounded
-100,000-sat bootstrap at up to 1,100 PPM. The amount is twice the 50,000-sat
-base reserve, so one successful operation restores channels up to 1,000,000
-sats above their depleted threshold. Larger channels need ordinary Sling jobs
-to reach their 5%-of-capacity threshold.
+bootstrap at up to 1,100 PPM that pulls the channel reserve plus 100,000 sats,
+leaving 100,000 spendable sats, twice the 50,000-sat base threshold. One
+successful operation restores channels up to 1,000,000 sats above their
+depleted threshold. Larger channels need ordinary Sling jobs to reach their
+5%-of-capacity threshold.
 
 ## Why this policy is intentionally simple
 

@@ -469,6 +469,15 @@ impl Store {
         ))
     }
 
+    /// Channel reserve we must keep on our side, from `listpeerchannels`.
+    pub fn our_reserve_msat(&self, short_channel_id: &str) -> Option<u64> {
+        self.peer_channels
+            .channels
+            .iter()
+            .find(|channel| channel.short_channel_id.as_deref() == Some(short_channel_id))?
+            .our_reserve_msat
+    }
+
     pub fn forwards_len(&self) -> usize {
         self.forwards.forwards.len()
     }

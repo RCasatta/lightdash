@@ -18,10 +18,13 @@ const BUDGET_PPM_TARGET_VALUE_MULTIPLIER: f64 = 0.75;
 // this is what we are willing to pay, not what we are willing to charge.
 const BUDGET_PPM_MAX: u64 = 1100;
 
-// Bootstrap rebalances make the channel greater than the depleted threshold,
-// triggering dynamic fee search.
+// Bootstrap rebalances give an empty channel enough spendable liquidity to start dynamic fee
+// search. The channel reserve must be filled before anything becomes spendable, so the pulled
+// amount is the reserve plus this spendable target.
 const LOW_LOCAL_BOOTSTRAP_THRESHOLD_SAT: u64 = 10;
-const LOW_LOCAL_BOOTSTRAP_AMOUNT_SAT: u64 = crate::fees::DEPLETED_LOCAL_BALANCE_SAT * 2;
+const LOW_LOCAL_BOOTSTRAP_SPENDABLE_SAT: u64 = crate::fees::DEPLETED_LOCAL_BALANCE_SAT * 2;
+// Core Lightning's usual reserve, used when listpeerchannels does not report one.
+const DEFAULT_RESERVE_CAPACITY_DIVISOR: u64 = 100;
 
 // We are okay paying a lot for first bootstrap, because it is one-shot and amount-limited.
 const LOW_LOCAL_BOOTSTRAP_MAX_PPM: u64 = BUDGET_PPM_MAX;
@@ -135,6 +138,13 @@ fn compute_capacity_rebalance_amounts(
     } else {
         Some(amount)
     }
+}
+
+fn low_local_bootstrap_amount_sat(our_reserve_msat: Option<u64>, channel_capacity_sat: u64) -> u64 {
+    let reserve_sat = our_reserve_msat
+        .map(|reserve_msat| reserve_msat.div_ceil(1000))
+        .unwrap_or(channel_capacity_sat / DEFAULT_RESERVE_CAPACITY_DIVISOR);
+    LOW_LOCAL_BOOTSTRAP_SPENDABLE_SAT + reserve_sat
 }
 
 fn should_bootstrap_low_local(local_balance_sat: u64) -> bool {
@@ -333,12 +343,14 @@ pub fn run_sling(store: &Store) {
         let local_balance_sat = channel.our_amount_msat / 1000;
 
         if should_bootstrap_low_local(local_balance_sat) {
+            let bootstrap_amount_sat =
+                low_local_bootstrap_amount_sat(store.our_reserve_msat(scid), channel_capacity_sat);
             let candidates = compute_candidates(store, &channels, SOURCE_PPM_FALLBACK);
             if candidates.is_empty() {
                 skipped_no_candidates += 1;
                 let result = "skip-no-cand";
                 log::info!(
-                    "balance:{:>5.1}% amount:{LOW_LOCAL_BOOTSTRAP_AMOUNT_SAT:>6}s tppm:{tppm_log:>6} hist_fee_ppm:{historical_fee_ppm_log:>6} channel_ppm:{my_ppm_log:>5} maxppm:{LOW_LOCAL_BOOTSTRAP_MAX_PPM:>4} src_ppm_max:<{SOURCE_PPM_FALLBACK:>4} cand:{:>3} result:{result:<12} alias:{alias}",
+                    "balance:{:>5.1}% amount:{bootstrap_amount_sat:>6}s tppm:{tppm_log:>6} hist_fee_ppm:{historical_fee_ppm_log:>6} channel_ppm:{my_ppm_log:>5} maxppm:{LOW_LOCAL_BOOTSTRAP_MAX_PPM:>4} src_ppm_max:<{SOURCE_PPM_FALLBACK:>4} cand:{:>3} result:{result:<12} alias:{alias}",
                     balance * 100.0,
                     0,
                 );
@@ -348,8 +360,8 @@ pub fn run_sling(store: &Store) {
             bootstrap += 1;
             let candidates_arg = format!("candidates={}", candidates_to_json(&candidates));
             let scid_arg = format!("scid={scid}");
-            let amount_arg = format!("amount={LOW_LOCAL_BOOTSTRAP_AMOUNT_SAT}");
-            let onceamount_arg = format!("onceamount={LOW_LOCAL_BOOTSTRAP_AMOUNT_SAT}");
+            let amount_arg = format!("amount={bootstrap_amount_sat}");
+            let onceamount_arg = format!("onceamount={bootstrap_amount_sat}");
             let maxppm_arg = format!("maxppm={LOW_LOCAL_BOOTSTRAP_MAX_PPM}");
             let args = low_local_bootstrap_args(
                 &scid_arg,
@@ -360,7 +372,7 @@ pub fn run_sling(store: &Store) {
             );
             let result = "bootstrap";
             log::info!(
-                "balance:{:>5.1}% amount:{LOW_LOCAL_BOOTSTRAP_AMOUNT_SAT:>6}s tppm:{tppm_log:>6} hist_fee_ppm:{historical_fee_ppm_log:>6} channel_ppm:{my_ppm_log:>5} maxppm:{LOW_LOCAL_BOOTSTRAP_MAX_PPM:>4} src_ppm_max:<{SOURCE_PPM_FALLBACK:>4} cand:{:>3} result:{result:<12} alias:{alias}",
+                "balance:{:>5.1}% amount:{bootstrap_amount_sat:>6}s tppm:{tppm_log:>6} hist_fee_ppm:{historical_fee_ppm_log:>6} channel_ppm:{my_ppm_log:>5} maxppm:{LOW_LOCAL_BOOTSTRAP_MAX_PPM:>4} src_ppm_max:<{SOURCE_PPM_FALLBACK:>4} cand:{:>3} result:{result:<12} alias:{alias}",
                 balance * 100.0,
                 candidates.len(),
             );
@@ -480,9 +492,9 @@ mod tests {
     use super::{
         compute_base_rebalance_amount, compute_budget_ppm, compute_capacity_rebalance_amounts,
         compute_job_amount, compute_source_ppm_max, enrich_sling_stats_with_last_channel_partner,
-        is_target_eligible, low_local_bootstrap_args, should_bootstrap_low_local,
-        should_skip_unprofitable_target, BOOTSTRAP_MAX_PPM, BUDGET_PPM_MAX, BUDGET_PPM_MIN,
-        BUDGET_PPM_TARGET_VALUE_MULTIPLIER, SOURCE_PPM_FALLBACK,
+        is_target_eligible, low_local_bootstrap_amount_sat, low_local_bootstrap_args,
+        should_bootstrap_low_local, should_skip_unprofitable_target, BOOTSTRAP_MAX_PPM,
+        BUDGET_PPM_MAX, BUDGET_PPM_MIN, BUDGET_PPM_TARGET_VALUE_MULTIPLIER, SOURCE_PPM_FALLBACK,
     };
     use serde_json::Value;
 
@@ -722,5 +734,27 @@ mod tests {
                 .and_then(Value::as_str),
             Some("867798x3251x1")
         );
+    }
+
+    #[test]
+    fn low_local_bootstrap_fills_the_reserve_and_leaves_100k_spendable() {
+        // A 10M-sat channel keeps a 100k-sat reserve: a plain 100k pull would leave 0 spendable.
+        assert_eq!(
+            low_local_bootstrap_amount_sat(Some(100_000_000), 10_000_000),
+            200_000
+        );
+        assert_eq!(
+            low_local_bootstrap_amount_sat(Some(10_000_000), 1_000_000),
+            110_000
+        );
+        assert_eq!(
+            low_local_bootstrap_amount_sat(Some(546_500), 50_000),
+            100_547
+        );
+    }
+
+    #[test]
+    fn low_local_bootstrap_assumes_a_one_percent_reserve_when_unknown() {
+        assert_eq!(low_local_bootstrap_amount_sat(None, 20_000_000), 300_000);
     }
 }
