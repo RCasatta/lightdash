@@ -254,16 +254,16 @@ use crate::store::Store;
 
 The global `--test-data` flag makes commands read bundled fixtures instead of
 calling `lightning-cli`, in any build. It conflicts with `--ssh` and skips
-datastore writes. `cmd::using_test_data()` makes that decision:
+datastore writes. `cmd::using_test_data()` makes that decision.
+
+Read-only node queries go through `cmd::query_node`, which reads the given
+fixture in test-data mode and otherwise runs the RPC. It returns a `Result`
+whose error names the failing RPC, so collection failures stop a command once
+with a clear message:
 
 ```rust
-pub fn list_funds() -> ListFunds {
-    let v = if using_test_data() {
-        gz_json_file("test-json/listfunds.gz")
-    } else {
-        cmd_result("lightning-cli", &["listfunds"])
-    };
-    serde_json::from_value(v).unwrap()
+pub fn list_funds() -> Result<ListFunds, String> {
+    query_node(Fixture::Gz("test-json/listfunds.gz"), "listfunds")
 }
 ```
 
