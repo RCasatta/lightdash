@@ -192,19 +192,44 @@ evidence that a higher price was accepted.
 The operational safeguards are:
 
 - below 80% peer availability, Lightdash sets both HTLC limits to 1 msat
-- otherwise maximum HTLC is the largest power of two no greater than current
-  local balance
+- otherwise maximum HTLC is the largest power of two no greater than what a
+  single HTLC can actually carry (see below), and at least 1 msat
 - minimum HTLC remains at least 100,000 msat unless maximum HTLC is smaller
 
-HTLC changes and fee changes are sent in the same `setchannel` command.
+The basis for maximum HTLC is:
+
+```text
+basis = spendable_msat + outgoing HTLCs currently in flight
+basis = min(basis, 2^32 - 1 msat)   when the peer lacks large-channel support
+```
+
+`spendable_msat` already excludes the channel reserve (1% of capacity), the
+commitment fee when we opened the channel, and the per-HTLC protocol limit for
+peers without `option_support_large_channel`. Basing the maximum on the local
+balance instead would advertise amounts that fail at our node: a 10,000,000-sat
+channel holding exactly its 100,000-sat reserve can forward nothing.
+
+`spendable_msat` also drops while our own outgoing HTLCs are in flight. Adding
+them back keeps the basis equal to balance minus reserve and fees, which moves
+only when HTLCs settle, so forwards in flight do not cause extra gossip.
+Incoming HTLCs do not affect it until they settle.
+
+The power-of-two floor publishes only the order of magnitude of the spendable
+balance, and changes only when a settled payment crosses a power-of-two
+boundary.
+
+HTLC changes and fee changes are sent in the same `setchannel` command. The
+minutely `lightdash htlc` job applies the same rule between fee runs but only
+ever lowers the maximum, lowering the minimum with it when needed. Increases
+happen only in the daily fee run, at most once per channel per day.
+
 The maximum-HTLC rule, rather than a capacity-relative fee curve, is the main
 mechanism limiting use as local liquidity falls.
 
-This is a recovery target, not a hard balance guarantee. Maximum HTLC is based
-on current local balance rather than local balance minus the depleted
-threshold, so an accepted forward can cross the boundary. A strict reserve
-would require subtracting it when calculating maximum HTLC or disabling
-outbound forwarding at the boundary.
+This is a recovery target, not a hard balance guarantee. Maximum HTLC limits a
+single HTLC, so several concurrent HTLCs, such as parts of one multi-part
+payment, can together exceed what is spendable. It also ignores the depleted
+threshold, so an accepted forward can cross that boundary.
 
 ## Relationship with Sling
 

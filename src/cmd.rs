@@ -384,6 +384,8 @@ pub struct ListPeerChannels {
 pub struct ListPeerChannelsChannel {
     pub state: String,
     #[serde(default)]
+    pub peer_id: String,
+    #[serde(default)]
     pub short_channel_id: Option<String>,
     #[serde(default)]
     pub channel_id: Option<String>,
@@ -400,9 +402,21 @@ pub struct ListPeerChannelsChannel {
     #[serde(default)]
     pub spendable_msat: u64,
     #[serde(default)]
+    pub minimum_htlc_out_msat: u64,
+    #[serde(default)]
     pub maximum_htlc_out_msat: u64,
     #[serde(default)]
+    pub htlcs: Vec<PeerChannelHtlc>,
+    #[serde(default)]
     pub status: Vec<String>,
+}
+
+/// An HTLC currently in flight on a channel.
+#[derive(Deserialize, Debug)]
+pub struct PeerChannelHtlc {
+    /// `out` for HTLCs we offered, `in` for HTLCs the peer offered.
+    pub direction: String,
+    pub amount_msat: u64,
 }
 
 #[derive(Deserialize, Debug)]
@@ -428,6 +442,33 @@ pub struct Peer {
     pub num_channels: u64,
     #[serde(default)]
     pub features: Option<String>,
+}
+
+impl Peer {
+    /// Whether the peer's INIT features advertise `option_support_large_channel` (bits 18/19).
+    /// Unknown features count as unsupported.
+    pub fn supports_large_channels(&self) -> bool {
+        self.features.as_deref().is_some_and(|features| {
+            feature_bit_is_set(features, 18) || feature_bit_is_set(features, 19)
+        })
+    }
+}
+
+/// Reads BOLT 9 feature `bit` from a hex feature bitmap, counting from the rightmost byte.
+pub(crate) fn feature_bit_is_set(features: &str, bit: usize) -> bool {
+    if features.len() % 2 != 0 {
+        return false;
+    }
+
+    let byte_from_end = bit / 8;
+    let Some(start) = features.len().checked_sub((byte_from_end + 1) * 2) else {
+        return false;
+    };
+    let Ok(byte) = u8::from_str_radix(&features[start..start + 2], 16) else {
+        return false;
+    };
+
+    byte & (1 << (bit % 8)) != 0
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -774,9 +815,33 @@ pub struct ListDatastore {
 #[cfg(test)]
 mod command_tests {
     use super::{
-        build_remote_command, lightning_cli_json_args, normalize_remote_home_path,
-        parse_get_routes_outcome, shell_quote, GetRoutes, GetRoutesOutcome, ListPeerChannels,
+        build_remote_command, feature_bit_is_set, lightning_cli_json_args,
+        normalize_remote_home_path, parse_get_routes_outcome, shell_quote, GetRoutes,
+        GetRoutesOutcome, ListPeerChannels, Peer,
     };
+
+    #[test]
+    fn large_channel_support_reads_feature_bits_18_and_19() {
+        let peer = |features: Option<&str>| Peer {
+            id: "peer".to_string(),
+            num_channels: 1,
+            features: features.map(str::to_string),
+        };
+        assert!(peer(Some("040000")).supports_large_channels());
+        assert!(peer(Some("080000")).supports_large_channels());
+        assert!(!peer(Some("020000")).supports_large_channels());
+        assert!(!peer(None).supports_large_channels());
+    }
+
+    #[test]
+    fn bolt_feature_bits_are_read_from_the_rightmost_byte() {
+        assert!(feature_bit_is_set("01", 0));
+        assert!(feature_bit_is_set("4000000000000000", 62));
+        assert!(feature_bit_is_set("8000000000000000", 63));
+        assert!(!feature_bit_is_set("0000000000000000", 62));
+        assert!(!feature_bit_is_set("01", 62));
+        assert!(!feature_bit_is_set("not-hex", 0));
+    }
 
     #[test]
     fn lightning_cli_output_is_json_without_notifications() {

@@ -63,15 +63,26 @@ pub fn run_fees(store: &Store) {
         };
         let alias_or_id = store.get_node_alias(&fund.peer_id);
         let avail = store.avail_map.get(&fund.peer_id).cloned();
+        let htlc_max_basis_msat = store
+            .htlc_max_basis_msat(&short_channel_id)
+            .unwrap_or_else(|| {
+                log::warn!(
+                    "{short_channel_id} missing from listpeerchannels; basing max HTLC on local balance"
+                );
+                fund.our_amount_msat
+            });
 
         let trend = calc_setchannel(
-            &alias_or_id,
             fund,
             our,
             &forwards_24h,
-            ever_settled_out_channels.contains(short_channel_id.as_str()),
-            avail,
-            exact_ppms.get(&short_channel_id).copied(),
+            ChannelContext {
+                alias: &alias_or_id,
+                ever_forwarded: ever_settled_out_channels.contains(short_channel_id.as_str()),
+                avail,
+                stored_exact_ppm: exact_ppms.get(&short_channel_id).copied(),
+                htlc_max_basis_msat,
+            },
         );
         match trend {
             "EQU" => equ_count += 1,
@@ -82,6 +93,42 @@ pub fn run_fees(store: &Store) {
         }
     }
     log::info!("setchannel trend: EQU:{equ_count} INC:{inc_count} DEC:{dec_count} DIS:{dis_count}");
+}
+
+/// Largest single HTLC Core Lightning offers to a peer without large-channel support:
+/// `spendable_msat` is capped at this value for such peers.
+const MAX_HTLC_WITHOUT_LARGE_CHANNELS_MSAT: u64 = 4_294_967_295;
+
+/// The amount a single forwarded HTLC can carry without failing at our node.
+///
+/// `spendable_msat` already excludes the channel reserve and commitment fees, and is capped at
+/// 2^32 - 1 msat for peers without large-channel support, but it also drops while our own
+/// outgoing HTLCs are in flight. Adding those back keeps the basis stable until HTLCs settle,
+/// so the advertised maximum does not change, and gossip, with every forward in flight.
+pub fn htlc_max_basis_msat(
+    channel: &crate::cmd::ListPeerChannelsChannel,
+    peer_supports_large_channels: bool,
+) -> u64 {
+    let outgoing_in_flight_msat = channel
+        .htlcs
+        .iter()
+        .filter(|htlc| htlc.direction == "out")
+        .map(|htlc| htlc.amount_msat)
+        .fold(0u64, u64::saturating_add);
+    let basis = channel
+        .spendable_msat
+        .saturating_add(outgoing_in_flight_msat);
+    if peer_supports_large_channels {
+        basis
+    } else {
+        basis.min(MAX_HTLC_WITHOUT_LARGE_CHANNELS_MSAT)
+    }
+}
+
+/// Advertised maximum HTLC: the largest power of two not above the basis, so gossip reveals
+/// only the balance's order of magnitude. Never 0, because 1 msat is the smallest valid maximum.
+pub fn htlc_max_msat(basis_msat: u64) -> u64 {
+    max(largest_power_of_two_leq(basis_msat), 1)
 }
 
 /// Returns the largest power of 2 that is less than or equal to n.
@@ -187,15 +234,30 @@ fn save_exact_ppm(short_channel_id: &str, exact_ppm: f64) {
     }
 }
 
+/// Per-channel inputs to [`calc_setchannel`] beyond the channel's funds and gossip policy.
+pub struct ChannelContext<'a> {
+    pub alias: &'a str,
+    /// Whether the channel has ever had a settled outbound forward.
+    pub ever_forwarded: bool,
+    pub avail: Option<f64>,
+    pub stored_exact_ppm: Option<f64>,
+    /// See [`htlc_max_basis_msat`].
+    pub htlc_max_basis_msat: u64,
+}
+
 pub fn calc_setchannel(
-    alias: &str,
     fund: &crate::cmd::Fund,
     our: &crate::cmd::Channel,
     forwards_24h: &[Forward],
-    ever_forwarded: bool,
-    avail: Option<f64>,
-    stored_exact_ppm: Option<f64>,
+    context: ChannelContext,
 ) -> &'static str {
+    let ChannelContext {
+        alias,
+        ever_forwarded,
+        avail,
+        stored_exact_ppm,
+        htlc_max_basis_msat,
+    } = context;
     let short_channel_id = fund.short_channel_id();
     let short_channel_id = short_channel_id.as_str();
     let channel_fund_perc_ours = fund.perc_float(); // how full of our funds is the channel
@@ -241,8 +303,7 @@ pub fn calc_setchannel(
         }
     }
 
-    // Compute the largest power of 2 <= our_amount_msat for max HTLC
-    let new_max_htlc_msat = max(largest_power_of_two_leq(our_amount_msat), 1); // max_htlc canno be 0 when min_htlc is 1
+    let new_max_htlc_msat = htlc_max_msat(htlc_max_basis_msat);
 
     let new_min_htlc_msat = min(
         max(MIN_HTLC, current_min_htlc_sat), // some peer may enforce an higher than MIN_HTLC minimum value, thus we use the higher value
@@ -495,6 +556,54 @@ mod tests {
         assert_close(
             adjusted_ppm(PPM_MAX as f64, FeeState::Depleted, ForwardActivity::None),
             PPM_MAX as f64,
+        );
+    }
+
+    fn peer_channel(spendable_msat: u64, htlcs: &str) -> crate::cmd::ListPeerChannelsChannel {
+        serde_json::from_str(&format!(
+            r#"{{"state":"CHANNELD_NORMAL","spendable_msat":{spendable_msat},"htlcs":[{htlcs}]}}"#
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn htlc_max_basis_adds_back_outgoing_in_flight_htlcs_only() {
+        let channel = peer_channel(
+            3_091_478_000,
+            r#"{"direction":"out","amount_msat":316217000},{"direction":"in","amount_msat":5000000}"#,
+        );
+
+        assert_eq!(htlc_max_basis_msat(&channel, true), 3_407_695_000);
+        assert_eq!(htlc_max_msat(3_407_695_000), 2_147_483_648);
+    }
+
+    #[test]
+    fn htlc_max_follows_spendable_not_the_reserved_balance() {
+        // A 10M-sat channel holding exactly its 100k-sat reserve can forward nothing.
+        let channel = peer_channel(0, "");
+
+        assert_eq!(htlc_max_msat(htlc_max_basis_msat(&channel, true)), 1);
+    }
+
+    #[test]
+    fn htlc_max_basis_keeps_the_per_htlc_cap_without_large_channel_support() {
+        let capped = peer_channel(
+            MAX_HTLC_WITHOUT_LARGE_CHANNELS_MSAT,
+            r#"{"direction":"out","amount_msat":1000000000}"#,
+        );
+        let large = peer_channel(6_627_699_020, "");
+
+        assert_eq!(
+            htlc_max_basis_msat(&capped, false),
+            MAX_HTLC_WITHOUT_LARGE_CHANNELS_MSAT
+        );
+        assert_eq!(
+            htlc_max_msat(htlc_max_basis_msat(&capped, false)),
+            2_147_483_648
+        );
+        assert_eq!(
+            htlc_max_msat(htlc_max_basis_msat(&large, true)),
+            4_294_967_296
         );
     }
 

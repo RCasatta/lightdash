@@ -446,7 +446,27 @@ impl Store {
             .features
             .as_deref()?;
 
-        Some(feature_bit_is_set(features, 62) || feature_bit_is_set(features, 63))
+        Some(cmd::feature_bit_is_set(features, 62) || cmd::feature_bit_is_set(features, 63))
+    }
+
+    /// Basis for the advertised maximum HTLC; `None` when the channel is missing from
+    /// `listpeerchannels`. See [`crate::fees::htlc_max_basis_msat`].
+    pub fn htlc_max_basis_msat(&self, short_channel_id: &str) -> Option<u64> {
+        let channel = self
+            .peer_channels
+            .channels
+            .iter()
+            .find(|channel| channel.short_channel_id.as_deref() == Some(short_channel_id))?;
+        let peer_supports_large_channels = self
+            .peers
+            .peers
+            .iter()
+            .find(|peer| peer.id == channel.peer_id)
+            .is_some_and(cmd::Peer::supports_large_channels);
+        Some(crate::fees::htlc_max_basis_msat(
+            channel,
+            peer_supports_large_channels,
+        ))
     }
 
     pub fn forwards_len(&self) -> usize {
@@ -782,22 +802,6 @@ impl Store {
     }
 }
 
-fn feature_bit_is_set(features: &str, bit: usize) -> bool {
-    if features.len() % 2 != 0 {
-        return false;
-    }
-
-    let byte_from_end = bit / 8;
-    let Some(start) = features.len().checked_sub((byte_from_end + 1) * 2) else {
-        return false;
-    };
-    let Ok(byte) = u8::from_str_radix(&features[start..start + 2], 16) else {
-        return false;
-    };
-
-    byte & (1 << (bit % 8)) != 0
-}
-
 /// Helper struct to compute the average fee of the channels of a node
 #[derive(Default)]
 pub struct ChannelFee {
@@ -843,16 +847,6 @@ mod tests {
     const INCOMING_SCID: &str = "147440x1x0";
     const OUTGOING_SCID: &str = "147440x2x0";
     const NOW_TIMESTAMP: i64 = 2_000_000_000;
-
-    #[test]
-    fn bolt_feature_bits_are_read_from_the_rightmost_byte() {
-        assert!(feature_bit_is_set("01", 0));
-        assert!(feature_bit_is_set("4000000000000000", 62));
-        assert!(feature_bit_is_set("8000000000000000", 63));
-        assert!(!feature_bit_is_set("0000000000000000", 62));
-        assert!(!feature_bit_is_set("01", 62));
-        assert!(!feature_bit_is_set("not-hex", 0));
-    }
 
     fn parse_events(json: &str) -> Vec<cmd::BkprAccountEvent> {
         serde_json::from_str::<cmd::BkprListAccountEvents>(json)
