@@ -28,6 +28,9 @@ const DEFAULT_RESERVE_CAPACITY_DIVISOR: u64 = 100;
 
 // We are okay paying a lot for first bootstrap, because it is one-shot and amount-limited.
 const LOW_LOCAL_BOOTSTRAP_MAX_PPM: u64 = BUDGET_PPM_MAX;
+// Peer-opened channels often fill naturally from inbound forwards in their first days, which
+// makes a paid bootstrap wasted. Only bootstrap channels still empty after this many days.
+const LOW_LOCAL_BOOTSTRAP_MIN_AGE_DAYS: i64 = 5;
 
 const BOOTSTRAP_CAPACITY_DIVISOR: u64 = 20;
 const CANDIDATE_DEPLETE_UP_TO_PERCENT: &str = "0.5";
@@ -149,6 +152,11 @@ fn low_local_bootstrap_amount_sat(our_reserve_msat: Option<u64>, channel_capacit
 
 fn should_bootstrap_low_local(local_balance_sat: u64) -> bool {
     local_balance_sat < LOW_LOCAL_BOOTSTRAP_THRESHOLD_SAT
+}
+
+/// A channel of unknown age is treated as old enough, so it is never stuck without bootstrap.
+fn is_too_young_for_bootstrap(age_days: Option<i64>) -> bool {
+    age_days.is_some_and(|age_days| age_days < LOW_LOCAL_BOOTSTRAP_MIN_AGE_DAYS)
 }
 
 fn should_skip_unprofitable_target(recent_fees_msat: u64, recent_cost_msat: u64) -> bool {
@@ -299,6 +307,7 @@ pub fn run_sling(store: &Store) {
     let mut skipped_profitability = 0u64;
     let mut suggested = 0u64;
     let mut bootstrap = 0u64;
+    let mut skipped_bootstrap_young = 0u64;
 
     for channel in &channels {
         let balance = channel.perc_float();
@@ -343,6 +352,18 @@ pub fn run_sling(store: &Store) {
         let local_balance_sat = channel.our_amount_msat / 1000;
 
         if should_bootstrap_low_local(local_balance_sat) {
+            let age_days = store.get_channel_age_days(scid);
+            if is_too_young_for_bootstrap(age_days) {
+                skipped_bootstrap_young += 1;
+                let result = "skip-young";
+                log::info!(
+                    "balance:{:>5.1}% age_days:{} min_age_days:{LOW_LOCAL_BOOTSTRAP_MIN_AGE_DAYS} result:{result:<12} alias:{alias}",
+                    balance * 100.0,
+                    age_days.unwrap_or_default(),
+                );
+                continue;
+            }
+
             let bootstrap_amount_sat =
                 low_local_bootstrap_amount_sat(store.our_reserve_msat(scid), channel_capacity_sat);
             let candidates = compute_candidates(store, &channels, SOURCE_PPM_FALLBACK);
@@ -471,9 +492,10 @@ pub fn run_sling(store: &Store) {
     }
 
     log::info!(
-        "Sling summary: suggested:{} bootstrap:{} skipped_balance:{} skipped_profitability:{} skipped_small_amount:{} skipped_no_candidates:{} skipped_missing_scid:{} targets_without_local_channel_info:{}",
+        "Sling summary: suggested:{} bootstrap:{} skipped_bootstrap_young:{} skipped_balance:{} skipped_profitability:{} skipped_small_amount:{} skipped_no_candidates:{} skipped_missing_scid:{} targets_without_local_channel_info:{}",
         suggested,
         bootstrap,
+        skipped_bootstrap_young,
         skipped_balance,
         skipped_profitability,
         skipped_small_amount,
@@ -492,9 +514,10 @@ mod tests {
     use super::{
         compute_base_rebalance_amount, compute_budget_ppm, compute_capacity_rebalance_amounts,
         compute_job_amount, compute_source_ppm_max, enrich_sling_stats_with_last_channel_partner,
-        is_target_eligible, low_local_bootstrap_amount_sat, low_local_bootstrap_args,
-        should_bootstrap_low_local, should_skip_unprofitable_target, BOOTSTRAP_MAX_PPM,
-        BUDGET_PPM_MAX, BUDGET_PPM_MIN, BUDGET_PPM_TARGET_VALUE_MULTIPLIER, SOURCE_PPM_FALLBACK,
+        is_target_eligible, is_too_young_for_bootstrap, low_local_bootstrap_amount_sat,
+        low_local_bootstrap_args, should_bootstrap_low_local, should_skip_unprofitable_target,
+        BOOTSTRAP_MAX_PPM, BUDGET_PPM_MAX, BUDGET_PPM_MIN, BUDGET_PPM_TARGET_VALUE_MULTIPLIER,
+        SOURCE_PPM_FALLBACK,
     };
     use serde_json::Value;
 
@@ -659,6 +682,14 @@ mod tests {
         assert!(should_bootstrap_low_local(2));
         assert!(should_bootstrap_low_local(9));
         assert!(!should_bootstrap_low_local(10));
+    }
+
+    #[test]
+    fn low_local_bootstrap_waits_five_days_for_natural_inbound() {
+        assert!(is_too_young_for_bootstrap(Some(0)));
+        assert!(is_too_young_for_bootstrap(Some(4)));
+        assert!(!is_too_young_for_bootstrap(Some(5)));
+        assert!(!is_too_young_for_bootstrap(None));
     }
 
     #[test]
