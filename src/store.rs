@@ -1,5 +1,5 @@
 use crate::cmd::{self, Forward, SettledForward};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
@@ -368,7 +368,7 @@ impl Store {
                 let Some(datetime) = DateTime::from_timestamp(timestamp as i64, 0) else {
                     return false;
                 };
-                self.now.signed_duration_since(datetime).num_days() <= days
+                self.is_within(datetime, TimeDelta::days(days))
             })
             .map(|part| part.fees_msat)
             .sum()
@@ -385,7 +385,7 @@ impl Store {
                 let Some(datetime) = DateTime::from_timestamp(timestamp as i64, 0) else {
                     return false;
                 };
-                self.now.signed_duration_since(datetime).num_days() <= days
+                self.is_within(datetime, TimeDelta::days(days))
             })
             .collect();
 
@@ -544,7 +544,7 @@ impl Store {
         self.forward_cache
             .settled
             .iter()
-            .filter(|f| self.now.signed_duration_since(f.resolved_time).num_days() <= days)
+            .filter(|f| self.is_within(f.resolved_time, TimeDelta::days(days)))
             .map(|f| f.fee_sat)
             .sum()
     }
@@ -555,7 +555,7 @@ impl Store {
         self.forward_cache
             .settled
             .iter()
-            .filter(|f| self.now.signed_duration_since(f.resolved_time).num_days() <= days)
+            .filter(|f| self.is_within(f.resolved_time, TimeDelta::days(days)))
             .map(|f| f.out_sat)
             .sum()
     }
@@ -640,12 +640,7 @@ impl Store {
             .settled
             .iter()
             .filter(|forward| forward.out_channel == short_channel_id)
-            .filter(|forward| {
-                self.now
-                    .signed_duration_since(forward.resolved_time)
-                    .num_hours()
-                    <= days * 24
-            })
+            .filter(|forward| self.is_within(forward.resolved_time, TimeDelta::days(days)))
             .map(|forward| forward.fee_msat)
             .sum()
     }
@@ -804,10 +799,18 @@ impl Store {
             .filter(move |f| {
                 let received_time =
                     DateTime::from_timestamp(f.received_time as i64, 0).unwrap_or(self.now);
-                self.now.signed_duration_since(received_time).num_hours() <= hours
+                self.is_within(received_time, TimeDelta::hours(hours))
             })
             .cloned()
             .collect()
+    }
+
+    /// Whether `time` falls within the trailing `window` ending at the snapshot time.
+    ///
+    /// Compares exact durations: truncating to whole hours or days would widen the window by
+    /// up to one unit, so consecutive daily runs would both count the same forward.
+    fn is_within(&self, time: DateTime<Utc>, window: TimeDelta) -> bool {
+        self.now.signed_duration_since(time) <= window
     }
 }
 
@@ -1012,6 +1015,50 @@ mod tests {
             store.get_channel_rebalance_target_cost_last_days_msat(OUTGOING_SCID, 90),
             1_000
         );
+    }
+
+    #[test]
+    fn trailing_windows_do_not_round_to_whole_units() {
+        let hour = 60 * 60;
+        let day = 24 * hour;
+        let store = test_store(
+            vec![fund(OUTGOING_SCID, 1_000_000_000)],
+            vec![
+                forward(
+                    INCOMING_SCID,
+                    OUTGOING_SCID,
+                    3_000,
+                    "settled",
+                    NOW_TIMESTAMP - 24 * hour + 60,
+                ),
+                forward(
+                    INCOMING_SCID,
+                    OUTGOING_SCID,
+                    7_000,
+                    "settled",
+                    NOW_TIMESTAMP - 24 * hour - 30 * 60,
+                ),
+            ],
+            vec![RebalancePart {
+                payment_id: "payment".to_string(),
+                part_id: 0,
+                source_account: "source-account".to_string(),
+                target_account: "target-account".to_string(),
+                source_channel_id: Some(INCOMING_SCID.to_string()),
+                target_channel_id: Some(OUTGOING_SCID.to_string()),
+                debit_msat: 1_001_000,
+                credit_msat: 1_000_000,
+                fees_msat: 1_000,
+                timestamp: Some((NOW_TIMESTAMP - 90 * day - 12 * hour) as u64),
+            }],
+        );
+
+        assert_eq!(store.filter_forwards_by_hours(24).len(), 1);
+        assert_eq!(
+            store.get_channel_forwarding_fees_last_days_msat(OUTGOING_SCID, 1),
+            3_000
+        );
+        assert!(store.rebalance_parts_last_days(90).is_empty());
     }
 
     fn test_store(
