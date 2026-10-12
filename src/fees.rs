@@ -54,6 +54,7 @@ pub fn run_fees(store: &Store) {
     let mut inc_count = 0;
     let mut dec_count = 0;
     let mut dis_count = 0;
+    let mut err_count = 0;
 
     for fund in normal_channels.iter() {
         let short_channel_id = fund.short_channel_id();
@@ -89,10 +90,13 @@ pub fn run_fees(store: &Store) {
             "INC" => inc_count += 1,
             "DEC" => dec_count += 1,
             "DIS" => dis_count += 1,
+            "ERR" => err_count += 1,
             _ => {}
         }
     }
-    log::info!("setchannel trend: EQU:{equ_count} INC:{inc_count} DEC:{dec_count} DIS:{dis_count}");
+    log::info!(
+        "setchannel trend: EQU:{equ_count} INC:{inc_count} DEC:{dec_count} DIS:{dis_count} ERR:{err_count}"
+    );
 }
 
 /// Largest single HTLC Core Lightning offers to a peer without large-channel support:
@@ -288,7 +292,6 @@ pub fn calc_setchannel(
         if avail < 0.8 {
             // the channel is not available enough, "disable" it by setting htlc to 1msat
 
-            let cmd = "lightning-cli";
             let args = format!("setchannel {short_channel_id} {FEE_BASE} {current_ppm} 1 1");
             let splitted_args: Vec<&str> = args.split(' ').collect();
             log::info!(
@@ -296,8 +299,13 @@ pub fn calc_setchannel(
                 avail * 100.0
             );
             if std::env::var("EXECUTE_SETCHANNEL").is_ok() {
-                let result = crate::cmd::cmd_result(cmd, &splitted_args);
-                log::debug!("cmd return: {result}");
+                match crate::cmd::node_action(&splitted_args) {
+                    Ok(result) => log::debug!("cmd return: {result}"),
+                    Err(e) => {
+                        log::error!("disabling {short_channel_id} with {alias} failed: {e}");
+                        return "ERR";
+                    }
+                }
             }
             return "DIS";
         }
@@ -356,8 +364,14 @@ pub fn calc_setchannel(
             log::info!("executing `{cmd} {args}` {alias}");
 
             let splitted_args: Vec<&str> = args.split(' ').collect();
-            let result = crate::cmd::cmd_result(cmd, &splitted_args);
-            log::debug!("cmd return: {result}");
+            match crate::cmd::node_action(&splitted_args) {
+                Ok(result) => log::debug!("cmd return: {result}"),
+                Err(e) => {
+                    // Keep the stored exact ppm and timestamp matching the channel as it is.
+                    log::error!("setchannel {short_channel_id} with {alias} failed: {e}");
+                    return "ERR";
+                }
+            }
 
             // Save timestamp to datastore
             let timestamp = Utc::now().timestamp().to_string();

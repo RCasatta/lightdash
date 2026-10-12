@@ -11,7 +11,7 @@
 
 use std::collections::HashSet;
 
-use crate::cmd::{cmd_result, list_peer_channels, list_peers, using_test_data};
+use crate::cmd::{list_peer_channels, list_peers, node_action, using_test_data};
 use crate::fees::{htlc_max_basis_msat, htlc_max_msat};
 
 pub fn run_htlc() -> Result<(), String> {
@@ -27,6 +27,7 @@ pub fn run_htlc() -> Result<(), String> {
     log::info!("Found {} channels", channels.channels.len());
 
     let mut adjusted = 0;
+    let mut failed = 0;
     for channel in channels
         .channels
         .iter()
@@ -53,18 +54,27 @@ pub fn run_htlc() -> Result<(), String> {
                 .map(|min| format!(" min_htlc:{}->{min}", channel.minimum_htlc_out_msat))
                 .unwrap_or_default()
         );
-        set_channel_htlc_limits(scid, new_htlc_min, new_htlc_max);
-        adjusted += 1;
+        match set_channel_htlc_limits(scid, new_htlc_min, new_htlc_max) {
+            Ok(()) => adjusted += 1,
+            Err(e) => {
+                log::error!("adjusting HTLC limits of {scid} failed: {e}");
+                failed += 1;
+            }
+        }
     }
 
-    log::info!("HTLC max adjustment completed, adjusted {adjusted} channels");
+    log::info!("HTLC max adjustment completed, adjusted {adjusted} channels, failed {failed}");
     Ok(())
 }
 
-fn set_channel_htlc_limits(short_channel_id: &str, htlc_min: Option<u64>, htlc_max: u64) {
+fn set_channel_htlc_limits(
+    short_channel_id: &str,
+    htlc_min: Option<u64>,
+    htlc_max: u64,
+) -> Result<(), String> {
     if using_test_data() {
         log::debug!("Test data: would set htlcmax={htlc_max} for {short_channel_id}");
-        return;
+        return Ok(());
     }
 
     let mut args = vec![
@@ -77,6 +87,7 @@ fn set_channel_htlc_limits(short_channel_id: &str, htlc_min: Option<u64>, htlc_m
         args.push(format!("htlcmin={htlc_min}"));
     }
     log::info!("Executing: `lightning-cli {}`", args.join(" "));
-    let result = cmd_result("lightning-cli", &args);
+    let result = node_action(&args)?;
     log::debug!("setchannel result: {result}");
+    Ok(())
 }

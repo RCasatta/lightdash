@@ -272,6 +272,51 @@ fn cmd_result_fallible(cmd: &str, args: &[impl AsRef<str>]) -> Result<Value, Str
     })
 }
 
+/// Runs a `lightning-cli` command that changes node state, such as `setchannel` or `sling-job`.
+///
+/// Unlike [`cmd_result`], a failed action is an `Err` instead of a value that looks like a
+/// result: `lightning-cli --json` prints RPC errors as a JSON object on stdout, which parses.
+pub fn node_action(args: &[impl AsRef<str>]) -> Result<Value, String> {
+    let args: Vec<&str> = args.iter().map(|arg| arg.as_ref()).collect();
+    let (description, result) = execute_command("lightning-cli", &args);
+    let data = result.map_err(|error| format!("executing `{description}` failed: {error}"))?;
+    let stdout = String::from_utf8_lossy(&data.stdout);
+    let stderr = String::from_utf8_lossy(&data.stderr);
+    action_outcome(&description, data.status.success(), &stdout, &stderr)
+}
+
+fn action_outcome(
+    description: &str,
+    succeeded: bool,
+    stdout: &str,
+    stderr: &str,
+) -> Result<Value, String> {
+    let value: Option<Value> = serde_json::from_str(stdout).ok();
+    if let Some(error) = value.as_ref().and_then(rpc_error) {
+        return Err(format!("`{description}` returned error {error}"));
+    }
+    if !succeeded {
+        return Err(format!(
+            "`{description}` failed with stdout `{}` stderr `{}`",
+            stdout.trim(),
+            stderr.trim()
+        ));
+    }
+    value.ok_or_else(|| {
+        format!(
+            "`{description}` returned non-JSON stdout `{}`",
+            stdout.trim()
+        )
+    })
+}
+
+/// The `code: message` of a JSON-RPC error response.
+fn rpc_error(value: &Value) -> Option<String> {
+    let code = value.get("code")?;
+    let message = value.get("message")?;
+    Some(format!("{code}: {message}"))
+}
+
 fn lightning_cli_json_args<'a>(args: &[&'a str]) -> Vec<&'a str> {
     let mut json_args = Vec::with_capacity(args.len() + 2);
     json_args.extend(["--json", "--notifications=none"]);
@@ -728,16 +773,8 @@ pub fn datastore_string(
     ];
 
     log::debug!("Executing lightning-cli with args: {:?}", args);
-    let response_value = cmd_result("lightning-cli", &args);
+    let response_value = node_action(&args)?;
     log::debug!("Received response: {:?}", response_value);
-
-    // It's also good practice to check for an error response before parsing
-    if response_value.get("code").is_some() {
-        return Err(format!(
-            "lightning-cli returned an error: {:?}",
-            response_value
-        ));
-    }
 
     serde_json::from_value(response_value)
         .map_err(|e| format!("Failed to parse successful response JSON: {} ", e,))
@@ -817,10 +854,26 @@ pub struct ListDatastore {
 #[cfg(test)]
 mod command_tests {
     use super::{
-        build_remote_command, feature_bit_is_set, lightning_cli_json_args,
+        action_outcome, build_remote_command, feature_bit_is_set, lightning_cli_json_args,
         normalize_remote_home_path, parse_get_routes_outcome, shell_quote, GetRoutes,
         GetRoutesOutcome, ListPeerChannels, Peer,
     };
+
+    #[test]
+    fn node_action_rejects_rpc_errors_and_failed_exits() {
+        let rpc_error = r#"{"code": -32602, "message": "Unknown channel"}"#;
+        let err = action_outcome("setchannel", false, rpc_error, "").unwrap_err();
+        assert!(err.contains("-32602"), "{err}");
+        assert!(err.contains("Unknown channel"), "{err}");
+
+        // An error object is a failure even if the exit status claims success.
+        assert!(action_outcome("setchannel", true, rpc_error, "").is_err());
+        assert!(action_outcome("ssh", false, "", "Connection refused").is_err());
+        assert!(action_outcome("setchannel", true, "not json", "").is_err());
+
+        let ok = action_outcome("setchannel", true, r#"{"channels": []}"#, "").unwrap();
+        assert_eq!(ok["channels"], serde_json::json!([]));
+    }
 
     #[test]
     fn large_channel_support_reads_feature_bits_18_and_19() {

@@ -206,17 +206,20 @@ fn reset_existing_sling_jobs() {
         "EXECUTE_SLING is set, stopping and deleting existing sling jobs before creating new ones"
     );
 
-    let result = crate::cmd::cmd_result(CMD, &["sling-stop"]);
-    log::debug!("sling-stop return: {result}");
-
-    let result = crate::cmd::cmd_result(CMD, &["sling-deletejob", "all"]);
-    log::debug!("sling-deletejob all return: {result}");
+    for args in [&["sling-stop"][..], &["sling-deletejob", "all"]] {
+        match crate::cmd::node_action(args) {
+            Ok(result) => log::debug!("{} return: {result}", args.join(" ")),
+            Err(e) => log::warn!("resetting sling jobs: {e}"),
+        }
+    }
 }
 
 fn start_sling_jobs() {
     log::info!("EXECUTE_SLING is set, starting created sling jobs with sling-go");
-    let result = crate::cmd::cmd_result(CMD, &["sling-go"]);
-    log::debug!("sling-go return: {result}");
+    match crate::cmd::node_action(&["sling-go"]) {
+        Ok(result) => log::debug!("sling-go return: {result}"),
+        Err(e) => log::error!("starting sling jobs failed: {e}"),
+    }
 }
 
 fn get_sling_stats(scid: Option<&str>) -> Value {
@@ -308,6 +311,7 @@ pub fn run_sling(store: &Store) {
     let mut suggested = 0u64;
     let mut bootstrap = 0u64;
     let mut skipped_bootstrap_young = 0u64;
+    let mut failed = 0u64;
 
     for channel in &channels {
         let balance = channel.perc_float();
@@ -402,8 +406,14 @@ pub fn run_sling(store: &Store) {
             if execute_sling {
                 log::info!("executing `{CMD} sling-once` {alias} scid:{scid}");
 
-                let result = crate::cmd::cmd_result(CMD, &args);
-                log::debug!("cmd return: {result}");
+                match crate::cmd::node_action(&args) {
+                    Ok(result) => log::debug!("cmd return: {result}"),
+                    Err(e) => {
+                        log::error!("bootstrap of {alias} scid:{scid} failed: {e}");
+                        bootstrap -= 1;
+                        failed += 1;
+                    }
+                }
             }
             continue;
         }
@@ -485,16 +495,20 @@ pub fn run_sling(store: &Store) {
         if execute_sling {
             log::info!("executing `{CMD} sling-job` {alias} scid:{scid}");
 
-            let result = crate::cmd::cmd_result(CMD, &args);
-            log::debug!("cmd return: {result}");
+            if let Err(e) = crate::cmd::node_action(&args) {
+                log::error!("creating sling job for {alias} scid:{scid} failed: {e}");
+                failed += 1;
+                continue;
+            }
         }
         suggested += 1;
     }
 
     log::info!(
-        "Sling summary: suggested:{} bootstrap:{} skipped_bootstrap_young:{} skipped_balance:{} skipped_profitability:{} skipped_small_amount:{} skipped_no_candidates:{} skipped_missing_scid:{} targets_without_local_channel_info:{}",
+        "Sling summary: suggested:{} bootstrap:{} failed:{} skipped_bootstrap_young:{} skipped_balance:{} skipped_profitability:{} skipped_small_amount:{} skipped_no_candidates:{} skipped_missing_scid:{} targets_without_local_channel_info:{}",
         suggested,
         bootstrap,
+        failed,
         skipped_bootstrap_young,
         skipped_balance,
         skipped_profitability,
