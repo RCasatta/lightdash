@@ -102,6 +102,12 @@ enum Fixture {
 /// Runs a read-only `lightning-cli` query, or reads its fixture in `--test-data` mode, and
 /// parses the response. Errors name the RPC so a failed collection is easy to diagnose.
 fn query_node<T: DeserializeOwned>(fixture: Fixture, rpc: &str) -> Result<T, String> {
+    query_node_args(fixture, &[rpc])
+}
+
+/// Like [`query_node`], for an RPC that takes positional parameters after its name.
+fn query_node_args<T: DeserializeOwned>(fixture: Fixture, args: &[&str]) -> Result<T, String> {
+    let rpc = args.join(" ");
     let value = if using_test_data() {
         match fixture {
             Fixture::Gz(path) => read_gz_json(path)?,
@@ -114,7 +120,7 @@ fn query_node<T: DeserializeOwned>(fixture: Fixture, rpc: &str) -> Result<T, Str
             }
         }
     } else {
-        cmd_result_fallible("lightning-cli", &[rpc])?
+        cmd_result_fallible("lightning-cli", args)?
     };
     if let (Some(code), Some(message)) = (value.get("code"), value.get("message")) {
         return Err(format!(
@@ -126,6 +132,23 @@ fn query_node<T: DeserializeOwned>(fixture: Fixture, rpc: &str) -> Result<T, Str
 
 pub fn list_funds() -> Result<ListFunds, String> {
     query_node(Fixture::Gz("test-json/listfunds.gz"), "listfunds")
+}
+
+/// `listfunds` including spent wallet outputs, so funds that returned from a closing channel
+/// stay visible after they were spent again. The fixture predates this call and only holds
+/// unspent outputs.
+pub fn list_funds_with_spent() -> Result<ListFunds, String> {
+    query_node_args(
+        Fixture::Gz("test-json/listfunds.gz"),
+        &["listfunds", "true"],
+    )
+}
+
+pub fn list_transactions() -> Result<ListTransactions, String> {
+    query_node(
+        Fixture::Plain("test-json/listtransactions"),
+        "listtransactions",
+    )
 }
 
 pub fn list_nodes() -> Result<ListNodes, String> {
@@ -568,7 +591,27 @@ pub struct Fund {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Output {
+    pub txid: String,
+    pub output: u32,
     pub amount_msat: u64,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ListTransactions {
+    pub transactions: Vec<Transaction>,
+}
+
+/// A wallet-tracked transaction; `rawtx` and scripts are not needed and left unparsed.
+#[derive(Deserialize, Debug, Clone)]
+pub struct Transaction {
+    pub hash: String,
+    pub inputs: Vec<TransactionInput>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct TransactionInput {
+    pub txid: String,
+    pub index: u32,
 }
 
 impl Fund {

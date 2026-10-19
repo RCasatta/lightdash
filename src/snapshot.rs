@@ -17,11 +17,13 @@ use crate::snapshot_metadata::{
 };
 use crate::store::{RebalancePart, Store};
 
+mod pending;
 mod route_partners;
 
+use pending::ClosingFunds;
 use route_partners::{build_lnplus_pools_snapshot, build_route_snapshots};
 
-pub(crate) const SCHEMA_VERSION: u32 = 30;
+pub(crate) const SCHEMA_VERSION: u32 = 31;
 const REBALANCE_SOURCE_90D_SECONDS: u64 = 90 * 24 * 60 * 60;
 
 #[derive(Deserialize, Serialize)]
@@ -419,7 +421,10 @@ pub fn run_snapshot(
         write_json(directory.join(&dataset.schema_path), dataset)?;
     }
 
-    let summary = build_summary(store, &channel_funds_history);
+    let transactions = cmd::list_transactions().map_err(io::Error::other)?;
+    let wallet_outputs = cmd::list_funds_with_spent().map_err(io::Error::other)?;
+    let closing_funds = ClosingFunds::new(&transactions.transactions, &wallet_outputs.outputs);
+    let summary = build_summary(store, &channel_funds_history, &closing_funds);
     write_json(directory.join("summary.json"), &summary)?;
 
     let channels: Vec<_> = store
@@ -465,6 +470,7 @@ pub fn run_snapshot(
 fn build_summary(
     store: &Store,
     channel_funds_history: &[history::ChannelFundsHistoryPoint],
+    closing_funds: &ClosingFunds,
 ) -> SummarySnapshot {
     let roic = store.get_roic_data();
     let periods = [
@@ -524,7 +530,7 @@ fn build_summary(
         .iter()
         .map(|output| output.amount_msat)
         .sum();
-    let pending_channels = store
+    let pending_channel_balances_msat = store
         .funds
         .channels
         .iter()
@@ -534,11 +540,10 @@ fn build_summary(
                 .map(|peer_channel| peer_channel.status.as_slice());
             is_pending_channel_balance(&channel.state, peer_status)
         })
+        .map(|channel| closing_funds.pending_msat(channel))
+        .filter(|pending_msat| *pending_msat > 0)
         .collect::<Vec<_>>();
-    let pending_channel_balance_msat = pending_channels
-        .iter()
-        .map(|channel| channel.our_amount_msat)
-        .sum();
+    let pending_channel_balance_msat = pending_channel_balances_msat.iter().sum();
     let normal_channel_balance_msat = normal_channels
         .iter()
         .map(|channel| channel.our_amount_msat)
@@ -555,7 +560,7 @@ fn build_summary(
         settled_forward_count: store.settled_forwards().len(),
         onchain_balance_msat,
         pending_channel_balance_msat,
-        pending_channel_count: pending_channels.len(),
+        pending_channel_count: pending_channel_balances_msat.len(),
         estimated_total_balance_msat: normal_channel_balance_msat
             + onchain_balance_msat
             + pending_channel_balance_msat,

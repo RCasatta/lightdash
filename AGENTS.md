@@ -313,6 +313,7 @@ enum Commands {
 | `src/store.rs` | Data store for fetched node data |
 | `src/snapshot.rs` | Versioned JSON/JSONL analytical snapshot generation |
 | `src/snapshot/route_partners.rs` | Weighted route score, per-node route partners, LN+ pool join |
+| `src/snapshot/pending.rs` | Closing-channel funds not yet returned to the wallet |
 | `src/snapshot_metadata.rs` | Canonical dataset and metric descriptions |
 | `src/dashboard.rs` | Snapshot-driven site generation and shared HTML shell |
 | `src/dashboard.js` | Dynamic Dashboard tables and metadata tooltips |
