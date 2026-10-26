@@ -594,6 +594,9 @@ pub struct Output {
     pub txid: String,
     pub output: u32,
     pub amount_msat: u64,
+    /// Reserved for an in-flight transaction, such as an unconfirmed channel funding.
+    #[serde(default)]
+    pub reserved: bool,
 }
 
 #[derive(Deserialize, Debug)]

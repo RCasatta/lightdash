@@ -524,12 +524,7 @@ fn build_summary(
         .sum();
     let (network_average_fee_ppm, network_median_fee_ppm) = store.network_channel_fees();
     let (node_average_fee_ppm, node_median_fee_ppm) = store.node_channel_fees();
-    let onchain_balance_msat = store
-        .funds
-        .outputs
-        .iter()
-        .map(|output| output.amount_msat)
-        .sum();
+    let onchain_balance_msat = onchain_balance_msat(&store.funds.outputs);
     let pending_channel_balances_msat = store
         .funds
         .channels
@@ -598,6 +593,19 @@ fn build_summary(
             },
         },
     }
+}
+
+/// Wallet balance excluding reserved outputs.
+///
+/// Reserved outputs are inputs of an in-flight transaction, such as a channel funding waiting
+/// for confirmation, whose effects are already counted as pending channel balance and
+/// unconfirmed change.
+fn onchain_balance_msat(outputs: &[cmd::Output]) -> u64 {
+    outputs
+        .iter()
+        .filter(|output| !output.reserved)
+        .map(|output| output.amount_msat)
+        .sum()
 }
 
 fn is_pending_channel_balance(state: &str, peer_status: Option<&[String]>) -> bool {
@@ -1158,10 +1166,10 @@ mod tests {
 
     use super::{
         annualized_capacity_return_percent, average_channel_funds,
-        channel_balance_target_stddev_percentage_points, is_pending_channel_balance, percentage,
-        ratio_ppm, timestamp_in_lookback,
+        channel_balance_target_stddev_percentage_points, is_pending_channel_balance,
+        onchain_balance_msat, percentage, ratio_ppm, timestamp_in_lookback,
     };
-    use crate::cmd::Fund;
+    use crate::cmd::{Fund, Output};
 
     #[test]
     fn pending_channel_balance_excludes_normal_and_fully_resolved_channels() {
@@ -1180,6 +1188,23 @@ mod tests {
         assert!(is_pending_channel_balance("CLOSINGD_SIGEXCHANGE", None));
         assert!(is_pending_channel_balance("ONCHAIN", Some(&unresolved)));
         assert!(!is_pending_channel_balance("ONCHAIN", Some(&resolved)));
+    }
+
+    #[test]
+    fn onchain_balance_excludes_outputs_reserved_for_in_flight_funding() {
+        let output = |txid: &str, amount_msat, reserved| Output {
+            txid: txid.to_string(),
+            output: 0,
+            amount_msat,
+            reserved,
+        };
+        let outputs = vec![
+            output("funding-input", 5_900_000_000, true),
+            output("unconfirmed-change", 850_000_000, false),
+            output("confirmed", 100_000_000, false),
+        ];
+
+        assert_eq!(onchain_balance_msat(&outputs), 950_000_000);
     }
 
     #[test]

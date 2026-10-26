@@ -132,6 +132,7 @@ mod tests {
             txid: txid.to_string(),
             output,
             amount_msat,
+            reserved: false,
         }
     }
 
